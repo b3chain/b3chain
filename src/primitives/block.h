@@ -53,6 +53,9 @@ public:
 
     uint256 GetHash() const;
 
+    /** b3chain: Compute the double-BLAKE3-256 proof-of-work hash of the header. */
+    uint256 GetPoWHash() const;
+
     NodeSeconds Time() const
     {
         return NodeSeconds{std::chrono::seconds{nTime}};

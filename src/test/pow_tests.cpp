@@ -5,8 +5,10 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <pow.h>
+#include <primitives/block.h>
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
+#include <uint256.h>
 #include <util/chaintype.h>
 
 #include <boost/test/unit_test.hpp>
@@ -206,6 +208,33 @@ BOOST_AUTO_TEST_CASE(ChainParams_TESTNET4_sanity)
 BOOST_AUTO_TEST_CASE(ChainParams_SIGNET_sanity)
 {
     sanity_check_chainparams(*m_node.args, ChainType::SIGNET);
+}
+
+// b3chain: Verify GetPoWHash() returns a different value from GetHash()
+// and that it is deterministic (same header -> same PoW hash).
+BOOST_AUTO_TEST_CASE(pow_hash_uses_blake3)
+{
+    CBlockHeader header;
+    header.nVersion = 1;
+    header.hashPrevBlock.SetNull();
+    header.hashMerkleRoot.SetNull();
+    header.nTime = 1700000000;
+    header.nBits = 0x207fffff;
+    header.nNonce = 0;
+
+    uint256 sha_hash = header.GetHash();
+    uint256 pow_hash = header.GetPoWHash();
+
+    // The BLAKE3-based PoW hash must differ from the SHA256d identity hash
+    BOOST_CHECK(sha_hash != pow_hash);
+
+    // Determinism: calling twice must yield the same result
+    BOOST_CHECK(header.GetPoWHash() == pow_hash);
+
+    // Changing the nonce must change the PoW hash
+    header.nNonce = 1;
+    uint256 pow_hash2 = header.GetPoWHash();
+    BOOST_CHECK(pow_hash != pow_hash2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

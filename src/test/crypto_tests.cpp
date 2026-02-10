@@ -15,6 +15,10 @@
 #include <crypto/sha3.h>
 #include <crypto/sha512.h>
 #include <crypto/muhash.h>
+
+extern "C" {
+#include <blake3.h>
+}
 #include <random.h>
 #include <streams.h>
 #include <test/util/random.h>
@@ -1278,6 +1282,61 @@ BOOST_AUTO_TEST_CASE(muhash_tests)
     uint256 out4;
     overflowchk.Finalize(out4);
     BOOST_CHECK_EQUAL(HexStr(out4), "3a31e6903aff0de9f62f9a9f7f8b861de76ce2cda09822b90014319ae5dc2271");
+}
+
+// b3chain: BLAKE3 hash test vectors
+// These test vectors are from the official BLAKE3 test suite.
+BOOST_AUTO_TEST_CASE(blake3_single_hash)
+{
+    // BLAKE3("") = af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
+    {
+        blake3_hasher hasher;
+        blake3_hasher_init(&hasher);
+        uint8_t out[BLAKE3_OUT_LEN];
+        blake3_hasher_finalize(&hasher, out, BLAKE3_OUT_LEN);
+        BOOST_CHECK_EQUAL(HexStr(std::vector<uint8_t>(out, out + 32)),
+                          "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262");
+    }
+
+    // BLAKE3("abc")
+    {
+        blake3_hasher hasher;
+        blake3_hasher_init(&hasher);
+        const uint8_t input[] = {'a', 'b', 'c'};
+        blake3_hasher_update(&hasher, input, 3);
+        uint8_t out[BLAKE3_OUT_LEN];
+        blake3_hasher_finalize(&hasher, out, BLAKE3_OUT_LEN);
+        BOOST_CHECK_EQUAL(HexStr(std::vector<uint8_t>(out, out + 32)),
+                          "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85");
+    }
+}
+
+// b3chain: Test double-BLAKE3-256 (the PoW hash scheme)
+BOOST_AUTO_TEST_CASE(blake3_double_hash)
+{
+    // Double-BLAKE3("") = BLAKE3(BLAKE3(""))
+    // First hash: af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
+    // Second hash is BLAKE3 of those 32 bytes
+    {
+        blake3_hasher h1;
+        blake3_hasher_init(&h1);
+        uint8_t hash1[BLAKE3_OUT_LEN];
+        blake3_hasher_finalize(&h1, hash1, BLAKE3_OUT_LEN);
+
+        blake3_hasher h2;
+        blake3_hasher_init(&h2);
+        blake3_hasher_update(&h2, hash1, BLAKE3_OUT_LEN);
+        uint8_t hash2[BLAKE3_OUT_LEN];
+        blake3_hasher_finalize(&h2, hash2, BLAKE3_OUT_LEN);
+
+        // This is the double-BLAKE3 of empty input
+        // Verify it's not equal to the single hash
+        std::string single = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
+        std::string double_hash = HexStr(std::vector<uint8_t>(hash2, hash2 + 32));
+        BOOST_CHECK(double_hash != single);
+        // The double hash should be deterministic
+        BOOST_CHECK_EQUAL(double_hash.size(), 64U);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -16,6 +16,23 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
 
+    // b3chain: Early difficulty guard — during the bootstrap phase, if a block
+    // takes more than 2x the target time, drop difficulty by 25% per-block to
+    // help the chain survive low initial hashrate.
+    if (params.nEarlyDifficultyGuardHeight > 0 &&
+        (pindexLast->nHeight + 1) <= params.nEarlyDifficultyGuardHeight &&
+        pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 2)
+    {
+        const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+        arith_uint256 bnNew;
+        bnNew.SetCompact(pindexLast->nBits);
+        // Increase target (decrease difficulty) by 25%
+        bnNew += (bnNew >> 2);
+        if (bnNew > bnPowLimit)
+            bnNew = bnPowLimit;
+        return bnNew.GetCompact();
+    }
+
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
     {

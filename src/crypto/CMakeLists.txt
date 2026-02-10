@@ -27,6 +27,16 @@ target_link_libraries(bitcoin_crypto
     core_interface
 )
 
+# BLAKE3 portable C implementation for b3chain PoW
+add_library(bitcoin_crypto_blake3 STATIC EXCLUDE_FROM_ALL
+  blake3/blake3.c
+  blake3/blake3_dispatch.c
+  blake3/blake3_portable.c
+)
+target_include_directories(bitcoin_crypto_blake3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/blake3)
+target_link_libraries(bitcoin_crypto_blake3 PRIVATE core_interface)
+target_link_libraries(bitcoin_crypto PUBLIC bitcoin_crypto_blake3)
+
 if(HAVE_SSE41)
   target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_SSE41)
   target_sources(bitcoin_crypto PRIVATE sha256_sse41.cpp)

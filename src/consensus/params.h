@@ -118,6 +118,10 @@ struct Params {
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+    /** b3chain: Allow faster downward difficulty adjustment for the first N blocks.
+     *  During this early phase, if blocks take >2x the target, difficulty drops
+     *  more aggressively per-block to help the chain bootstrap. 0 = disabled. */
+    int nEarlyDifficultyGuardHeight{0};
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};
