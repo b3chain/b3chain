@@ -72,7 +72,7 @@ The B3Chain repo's [root README](/README.md) contains relevant information on th
 
 ### Miscellaneous
 - [Assets Attribution](assets-attribution.md)
-- [b3chain.conf Configuration File](bitcoin-conf.md)
+- [b3chain.conf Configuration File](b3chain-conf.md)
 - [CJDNS Support](cjdns.md)
 - [Files](files.md)
 - [Fuzz-testing](fuzzing.md)
