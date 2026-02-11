@@ -280,6 +280,7 @@ if(ENABLE_IPC)
     bitcoin_ipc
   )
   import_plugins(bitcoin-gui)
+  set_target_properties(bitcoin-gui PROPERTIES OUTPUT_NAME b3chain-gui)
   install_binary_component(bitcoin-gui INTERNAL)
   if(WIN32)
     set_target_properties(bitcoin-gui PROPERTIES WIN32_EXECUTABLE TRUE)

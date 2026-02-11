@@ -10,7 +10,7 @@ The Bitcoin Core software has historically employed a monolithic architecture. T
 
 ## Current Architecture
 
-The current system features two primary executables: `bitcoind` and `bitcoin-qt`. `bitcoind` combines a Bitcoin P2P node with an integrated JSON-RPC server, wallet, and indexes. `bitcoin-qt` extends this by incorporating a Qt-based GUI. This monolithic structure, although robust, presents challenges such as limited operational flexibility and increased security risks due to the tight integration of components.
+The current system features two primary executables: `b3chaind` and `b3chain-qt`. `b3chaind` combines a B3Chain P2P node with an integrated JSON-RPC server, wallet, and indexes. `b3chain-qt` extends this by incorporating a Qt-based GUI. This monolithic structure, although robust, presents challenges such as limited operational flexibility and increased security risks due to the tight integration of components.
 
 ## Proposed Architecture
 

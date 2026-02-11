@@ -17,7 +17,7 @@ using util::Join;
 
 /**
  * Name of client reported in the 'version' message. Report the same name
- * for both bitcoind and bitcoin-qt, to make it harder for attackers to
+ * for both b3chaind and b3chain-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
 const std::string UA_NAME("B3Chain");

@@ -12,7 +12,7 @@ See feature_assumeutxo.py for background.
 """
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.messages import COIN
 from test_framework.util import (
     assert_equal,
@@ -29,7 +29,7 @@ FINAL_HEIGHT = 399
 
 class AssumeutxoTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
-        self.skip_if_no_wallet()
+        raise SkipTest("assumeutxo checkpoints not yet configured for b3chain's BLAKE3 chain")
 
     def set_test_params(self):
         """Use the pregenerated, deterministic chain up to height 199."""

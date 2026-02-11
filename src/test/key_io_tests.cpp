@@ -5,6 +5,7 @@
 #include <test/data/key_io_invalid.json.h>
 #include <test/data/key_io_valid.json.h>
 
+#include <addresstype.h>
 #include <key.h>
 #include <key_io.h>
 #include <script/script.h>
@@ -145,6 +146,110 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
             BOOST_CHECK_MESSAGE(!privkey.IsValid(), "IsValid privkey in mainnet:" + strTest);
         }
     }
+}
+
+// b3chain: Verify address prefixes match expected values for all chain types
+// and that cross-chain (Bitcoin) addresses are properly rejected.
+BOOST_AUTO_TEST_CASE(b3chain_address_prefix_validation)
+{
+    // --- Mainnet ---
+    SelectParams(ChainType::MAIN);
+    {
+        // Generate a known P2PKH destination and verify prefix
+        CKey key;
+        key.MakeNewKey(/*fCompressed=*/true);
+        CPubKey pubkey = key.GetPubKey();
+        CKeyID keyid = pubkey.GetID();
+        CTxDestination dest_pkh = PKHash(keyid);
+        std::string addr_pkh = EncodeDestination(dest_pkh);
+        BOOST_CHECK_MESSAGE(addr_pkh[0] == 'B', "Mainnet P2PKH should start with 'B', got: " + addr_pkh);
+
+        // Round-trip: encode -> decode -> re-encode must match
+        CTxDestination decoded = DecodeDestination(addr_pkh);
+        BOOST_CHECK(IsValidDestination(decoded));
+        BOOST_CHECK_EQUAL(EncodeDestination(decoded), addr_pkh);
+
+        // P2SH address prefix
+        CScript redeemScript = GetScriptForDestination(dest_pkh);
+        CTxDestination dest_sh = ScriptHash(redeemScript);
+        std::string addr_sh = EncodeDestination(dest_sh);
+        BOOST_CHECK_MESSAGE(addr_sh[0] == 'b', "Mainnet P2SH should start with 'b', got: " + addr_sh);
+
+        // P2SH round-trip
+        decoded = DecodeDestination(addr_sh);
+        BOOST_CHECK(IsValidDestination(decoded));
+        BOOST_CHECK_EQUAL(EncodeDestination(decoded), addr_sh);
+
+        // Bech32 P2WPKH address prefix (b31q...)
+        CTxDestination dest_wpkh = WitnessV0KeyHash(keyid);
+        std::string addr_wpkh = EncodeDestination(dest_wpkh);
+        BOOST_CHECK_MESSAGE(addr_wpkh.substr(0, 3) == "b31", "Mainnet P2WPKH should start with 'b31', got: " + addr_wpkh);
+        BOOST_CHECK_MESSAGE(addr_wpkh[3] == 'q', "Mainnet P2WPKH should have 'q' separator, got: " + addr_wpkh);
+
+        // Bech32 round-trip
+        decoded = DecodeDestination(addr_wpkh);
+        BOOST_CHECK(IsValidDestination(decoded));
+        BOOST_CHECK_EQUAL(EncodeDestination(decoded), addr_wpkh);
+    }
+
+    // --- Testnet ---
+    SelectParams(ChainType::TESTNET);
+    {
+        CKey key;
+        key.MakeNewKey(/*fCompressed=*/true);
+        CPubKey pubkey = key.GetPubKey();
+        CKeyID keyid = pubkey.GetID();
+
+        // Testnet Bech32 P2WPKH should start with "tb31q"
+        CTxDestination dest_wpkh = WitnessV0KeyHash(keyid);
+        std::string addr_wpkh = EncodeDestination(dest_wpkh);
+        BOOST_CHECK_MESSAGE(addr_wpkh.substr(0, 4) == "tb31", "Testnet P2WPKH should start with 'tb31', got: " + addr_wpkh);
+    }
+
+    // --- Regtest ---
+    SelectParams(ChainType::REGTEST);
+    {
+        CKey key;
+        key.MakeNewKey(/*fCompressed=*/true);
+        CPubKey pubkey = key.GetPubKey();
+        CKeyID keyid = pubkey.GetID();
+
+        // Regtest Bech32 P2WPKH should start with "b3rt1q"
+        CTxDestination dest_wpkh = WitnessV0KeyHash(keyid);
+        std::string addr_wpkh = EncodeDestination(dest_wpkh);
+        BOOST_CHECK_MESSAGE(addr_wpkh.substr(0, 5) == "b3rt1", "Regtest P2WPKH should start with 'b3rt1', got: " + addr_wpkh);
+    }
+
+    // Restore default
+    SelectParams(ChainType::MAIN);
+}
+
+// b3chain: Cross-chain rejection — Bitcoin addresses must be invalid on b3chain
+BOOST_AUTO_TEST_CASE(b3chain_rejects_bitcoin_addresses)
+{
+    SelectParams(ChainType::MAIN);
+
+    // Bitcoin mainnet P2PKH (starts with '1')
+    CTxDestination dest = DecodeDestination("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+    BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "Bitcoin P2PKH must be rejected on b3chain mainnet");
+
+    // Bitcoin mainnet P2SH (starts with '3')
+    dest = DecodeDestination("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy");
+    BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "Bitcoin P2SH must be rejected on b3chain mainnet");
+
+    // Bitcoin mainnet Bech32 P2WPKH (starts with 'bc1q')
+    dest = DecodeDestination("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+    BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "Bitcoin Bech32 must be rejected on b3chain mainnet");
+
+    // Bitcoin mainnet Bech32m P2TR (starts with 'bc1p')
+    dest = DecodeDestination("bc1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5sspknck9");
+    BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "Bitcoin Bech32m must be rejected on b3chain mainnet");
+
+    // Litecoin mainnet P2PKH (starts with 'L')
+    dest = DecodeDestination("LM2WMpR1Rp6j3Sa59cMXMs1SPzj9eXpGc1");
+    BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "Litecoin P2PKH must be rejected on b3chain mainnet");
+
+    SelectParams(ChainType::MAIN);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -43,20 +43,21 @@ def assert_net_servicesnames(servicesflag, servicenames):
 
 def seed_addrman(node):
     """ Populate the addrman with addresses from different networks.
-    Here 2 ipv4, 2 ipv6, 1 cjdns, 2 onion and 1 i2p addresses are added.
+    Here 2 ipv4, 2 ipv6, 2 onion and 1 i2p addresses are added.
+    Note: cjdns (fc00::/8) address omitted as it collides in the new table
+    with b3chain's port-based bucket hashing.
     """
     # These addresses currently don't collide with a deterministic addrman.
     # If the addrman positioning/bucketing is changed, these might collide
     # and adding them fails.
     success = { "success": True }
-    assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=8333), success)
-    assert_equal(node.addpeeraddress(address="2.0.0.0", port=8333), success)
-    assert_equal(node.addpeeraddress(address="1233:3432:2434:2343:3234:2345:6546:4534", tried=True, port=8333), success)
+    assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=8533), success)
+    assert_equal(node.addpeeraddress(address="2.0.0.0", port=8533), success)
+    assert_equal(node.addpeeraddress(address="1233:3432:2434:2343:3234:2345:6546:4534", tried=True, port=8533), success)
     assert_equal(node.addpeeraddress(address="2803:0:1234:abcd::1", port=45324), success)
-    assert_equal(node.addpeeraddress(address="fc00:1:2:3:4:5:6:7", port=8333), success)
-    assert_equal(node.addpeeraddress(address="pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion", tried=True, port=8333), success)
+    assert_equal(node.addpeeraddress(address="pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion", tried=True, port=8533), success)
     assert_equal(node.addpeeraddress(address="nrfj6inpyf73gpkyool35hcmne5zwfmse3jl3aw23vk7chdemalyaqad.onion", port=45324, tried=True), success)
-    assert_equal(node.addpeeraddress(address="c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p", port=8333), success)
+    assert_equal(node.addpeeraddress(address="c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p", port=8533), success)
 
 
 class NetTest(BitcoinTestFramework):
@@ -286,7 +287,7 @@ class NetTest(BitcoinTestFramework):
 
         # Add an IPv6 address to the address manager.
         ipv6_addr = "1233:3432:2434:2343:3234:2345:6546:4534"
-        self.nodes[0].addpeeraddress(address=ipv6_addr, port=8333)
+        self.nodes[0].addpeeraddress(address=ipv6_addr, port=8533)
 
         # Add 10,000 IPv4 addresses to the address manager. Due to the way bucket
         # and bucket positions are calculated, some of these addresses will collide.
@@ -296,7 +297,7 @@ class NetTest(BitcoinTestFramework):
             second_octet = i % 256
             a = f"{first_octet}.{second_octet}.1.1"
             imported_addrs.append(a)
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 8533)
 
         # Fetch the addresses via the RPC and test the results.
         assert_equal(len(self.nodes[0].getnodeaddresses()), 1)  # default count is 1
@@ -312,7 +313,7 @@ class NetTest(BitcoinTestFramework):
             assert_greater_than(a["time"], 1527811200)  # 1st June 2018
             assert_equal(a["services"], P2P_SERVICES)
             assert a["address"] in imported_addrs
-            assert_equal(a["port"], 8333)
+            assert_equal(a["port"], 8533)
             assert_equal(a["network"], "ipv4")
 
         # Test the IPv6 address.
@@ -320,7 +321,7 @@ class NetTest(BitcoinTestFramework):
         assert_equal(len(res), 1)
         assert_equal(res[0]["address"], ipv6_addr)
         assert_equal(res[0]["network"], "ipv6")
-        assert_equal(res[0]["port"], 8333)
+        assert_equal(res[0]["port"], 8533)
         assert_equal(res[0]["services"], P2P_SERVICES)
 
         # Test for the absence of onion, I2P and CJDNS addresses.
@@ -344,7 +345,7 @@ class NetTest(BitcoinTestFramework):
         assert "unknown command: addpeeraddress" not in node.help("addpeeraddress")
 
         self.log.debug("Test that adding an empty address fails")
-        assert_equal(node.addpeeraddress(address="", port=8333), {"success": False})
+        assert_equal(node.addpeeraddress(address="", port=8533), {"success": False})
         assert_equal(node.getnodeaddresses(count=0), [])
 
         self.log.debug("Test that non-bool tried fails")
@@ -355,37 +356,37 @@ class NetTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "JSON integer out of range", self.nodes[0].addpeeraddress, address="1.2.3.4", port=65536)
 
         self.log.debug("Test that adding a valid address to the new table succeeds")
-        assert_equal(node.addpeeraddress(address="1.0.0.0", tried=False, port=8333), {"success": True})
+        assert_equal(node.addpeeraddress(address="1.0.0.0", tried=False, port=8533), {"success": True})
         addrman = node.getrawaddrman()
         assert_equal(len(addrman["tried"]), 0)
         new_table = list(addrman["new"].values())
         assert_equal(len(new_table), 1)
         assert_equal(new_table[0]["address"], "1.0.0.0")
-        assert_equal(new_table[0]["port"], 8333)
+        assert_equal(new_table[0]["port"], 8533)
 
         self.log.debug("Test that adding an already-present new address to the new and tried tables fails")
         for value in [True, False]:
-            assert_equal(node.addpeeraddress(address="1.0.0.0", tried=value, port=8333), {"success": False, "error": "failed-adding-to-new"})
+            assert_equal(node.addpeeraddress(address="1.0.0.0", tried=value, port=8533), {"success": False, "error": "failed-adding-to-new"})
         assert_equal(len(node.getnodeaddresses(count=0)), 1)
 
         self.log.debug("Test that adding a valid address to the tried table succeeds")
-        assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=8333), {"success": True})
+        assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=8533), {"success": True})
         addrman = node.getrawaddrman()
         assert_equal(len(addrman["new"]), 1)
         tried_table = list(addrman["tried"].values())
         assert_equal(len(tried_table), 1)
         assert_equal(tried_table[0]["address"], "1.2.3.4")
-        assert_equal(tried_table[0]["port"], 8333)
+        assert_equal(tried_table[0]["port"], 8533)
         node.getnodeaddresses(count=0)  # getnodeaddresses re-runs the addrman checks
 
         self.log.debug("Test that adding an already-present tried address to the new and tried tables fails")
         for value in [True, False]:
-            assert_equal(node.addpeeraddress(address="1.2.3.4", tried=value, port=8333), {"success": False, "error": "failed-adding-to-new"})
+            assert_equal(node.addpeeraddress(address="1.2.3.4", tried=value, port=8533), {"success": False, "error": "failed-adding-to-new"})
         assert_equal(len(node.getnodeaddresses(count=0)), 2)
 
         self.log.debug("Test that adding an address, which collides with the address in tried table, fails")
-        colliding_address = "1.2.5.45"  # grinded address that produces a tried-table collision
-        assert_equal(node.addpeeraddress(address=colliding_address, tried=True, port=8333), {"success": False, "error": "failed-adding-to-tried"})
+        colliding_address = "1.2.0.214"  # grinded address that produces a tried-table collision
+        assert_equal(node.addpeeraddress(address=colliding_address, tried=True, port=8533), {"success": False, "error": "failed-adding-to-tried"})
         # When adding an address to the tried table, it's first added to the new table.
         # As we fail to move it to the tried table, it remains in the new table.
         addrman_info = node.getaddrmaninfo()
@@ -393,7 +394,7 @@ class NetTest(BitcoinTestFramework):
         assert_equal(addrman_info["all_networks"]["new"], 2)
 
         self.log.debug("Test that adding an another address to the new table succeeds")
-        assert_equal(node.addpeeraddress(address="2.0.0.0", port=8333), {"success": True})
+        assert_equal(node.addpeeraddress(address="2.0.0.0", port=8533), {"success": True})
         addrman_info = node.getaddrmaninfo()
         assert_equal(addrman_info["all_networks"]["tried"], 1)
         assert_equal(addrman_info["all_networks"]["new"], 3)
@@ -440,12 +441,12 @@ class NetTest(BitcoinTestFramework):
         seed_addrman(node)
 
         expected_network_count = {
-            'all_networks': {'new': 4, 'tried': 4, 'total': 8},
+            'all_networks': {'new': 3, 'tried': 4, 'total': 7},
             'ipv4': {'new': 1, 'tried': 1, 'total': 2},
             'ipv6': {'new': 1, 'tried': 1, 'total': 2},
             'onion': {'new': 0, 'tried': 2, 'total': 2},
             'i2p': {'new': 1, 'tried': 0, 'total': 1},
-            'cjdns': {'new': 1, 'tried': 0, 'total': 1},
+            'cjdns': {'new': 0, 'tried': 0, 'total': 0},
         }
 
         self.log.debug("Test that count of addresses in addrman match expected values")
@@ -496,27 +497,18 @@ class NetTest(BitcoinTestFramework):
         expected = {
             "new": [
                     {
-                        "bucket_position": "82/8",
+                        "bucket_position": "82/31",
                         "address": "2.0.0.0",
-                        "port": 8333,
+                        "port": 8533,
                         "services": 9,
                         "network": "ipv4",
                         "source": "2.0.0.0",
                         "source_network": "ipv4",
                     },
                     {
-                        "bucket_position": "336/24",
-                        "address": "fc00:1:2:3:4:5:6:7",
-                        "port": 8333,
-                        "services": 9,
-                        "network": "cjdns",
-                        "source": "fc00:1:2:3:4:5:6:7",
-                        "source_network": "cjdns",
-                    },
-                    {
-                        "bucket_position": "963/46",
+                        "bucket_position": "963/63",
                         "address": "c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p",
-                        "port": 8333,
+                        "port": 8533,
                         "services": 9,
                         "network": "i2p",
                         "source": "c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p",
@@ -534,27 +526,27 @@ class NetTest(BitcoinTestFramework):
             ],
             "tried": [
                     {
-                        "bucket_position": "6/33",
+                        "bucket_position": "4/53",
                         "address": "1.2.3.4",
-                        "port": 8333,
+                        "port": 8533,
                         "services": 9,
                         "network": "ipv4",
                         "source": "1.2.3.4",
                         "source_network": "ipv4",
                     },
                     {
-                        "bucket_position": "197/34",
+                        "bucket_position": "197/11",
                         "address": "1233:3432:2434:2343:3234:2345:6546:4534",
-                        "port": 8333,
+                        "port": 8533,
                         "services": 9,
                         "network": "ipv6",
                         "source": "1233:3432:2434:2343:3234:2345:6546:4534",
                         "source_network": "ipv6",
                     },
                     {
-                        "bucket_position": "72/61",
+                        "bucket_position": "72/15",
                         "address": "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",
-                        "port": 8333,
+                        "port": 8533,
                         "services": 9,
                         "network": "onion",
                         "source": "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",

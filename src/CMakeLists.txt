@@ -325,6 +325,7 @@ if(ENABLE_IPC AND BUILD_DAEMON)
     bitcoin_ipc
     $<TARGET_NAME_IF_EXISTS:bitcoin_wallet>
   )
+  set_target_properties(bitcoin-node PROPERTIES OUTPUT_NAME b3chain-node)
   install_binary_component(bitcoin-node INTERNAL)
 endif()
 
@@ -423,6 +424,7 @@ if(BUILD_UTIL_CHAINSTATE)
   # - https://github.com/hebasto/bitcoin/pull/236#issuecomment-2183120953
   # - https://github.com/bitcoin/bitcoin/pull/30312#issuecomment-2191235833
   set_target_properties(bitcoin-chainstate PROPERTIES
+    OUTPUT_NAME b3chain-chainstate
     SKIP_BUILD_RPATH OFF
   )
   target_link_libraries(bitcoin-chainstate

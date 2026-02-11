@@ -71,9 +71,13 @@ BOOST_FIXTURE_TEST_SUITE(miner_tests, MinerTestingSetup)
 
 static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE);
 
+// b3chain: The 'nonce' field below contains legacy SHA-256d nonces from Bitcoin Core.
+// They are NOT used for mining — the test re-mines each block with BLAKE3 PoW
+// (see the while loop below that starts from nNonce=0). Only 'extranonce' is used
+// to vary the coinbase script and produce distinct block templates.
 constexpr static struct {
     unsigned int extranonce;
-    unsigned int nonce;
+    unsigned int nonce; // unused: overridden by BLAKE3 PoW mining loop
 } BLOCKINFO[]{{0, 3552706918},   {500, 37506755},   {1000, 948987788}, {400, 524762339},  {800, 258510074},  {300, 102309278},
               {1300, 54365202},  {600, 1107740426}, {1000, 203094491}, {900, 391178848},  {800, 381177271},  {600, 87188412},
               {0, 66522866},     {800, 874942736},  {1000, 89200838},  {400, 312638088},  {400, 66263693},   {500, 924648304},
@@ -573,15 +577,22 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     tx.vin[0].nSequence = CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG | 1;
     BOOST_CHECK(!TestSequenceLocks(CTransaction{tx}, tx_mempool)); // Sequence locks fail
 
-    auto block_template = mining->createNewBlock(options);
-    BOOST_REQUIRE(block_template);
+    // BIP68 is active from genesis in b3chain, so the block template containing
+    // relative-locked (BIP68-non-final) transactions will fail TestBlockValidity.
+    // Use BlockAssembler directly with test_block_validity=false to inspect the
+    // template, then verify that after advancing MTP all txs become valid.
+    {
+        BlockAssembler::Options asm_options;
+        asm_options.coinbase_output_script = options.coinbase_output_script;
+        asm_options.test_block_validity = false;
+        auto raw_template = BlockAssembler{m_node.chainman->ActiveChainstate(), m_node.mempool.get(), asm_options}.CreateNewBlock();
+        BOOST_REQUIRE(raw_template);
 
-    // None of the of the absolute height/time locked tx should have made
-    // it into the template because we still check IsFinalTx in CreateNewBlock,
-    // but relative locked txs will if inconsistently added to mempool.
-    // For now these will still generate a valid template until BIP68 soft fork
-    CBlock block{block_template->getBlock()};
-    BOOST_CHECK_EQUAL(block.vtx.size(), 3U);
+        // None of the absolute height/time locked tx should have made
+        // it into the template because we still check IsFinalTx in CreateNewBlock,
+        // but relative locked txs will if inconsistently added to mempool.
+        BOOST_CHECK_EQUAL(raw_template->block.vtx.size(), 3U);
+    }
     // However if we advance height by 1 and time by SEQUENCE_LOCK_TIME, all of them should be mined
     for (int i = 0; i < CBlockIndex::nMedianTimeSpan; ++i) {
         CBlockIndex* ancestor{Assert(m_node.chainman->ActiveChain().Tip()->GetAncestor(m_node.chainman->ActiveChain().Tip()->nHeight - i))};
@@ -590,9 +601,9 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     m_node.chainman->ActiveChain().Tip()->nHeight++;
     SetMockTime(m_node.chainman->ActiveChain().Tip()->GetMedianTimePast() + 1);
 
-    block_template = mining->createNewBlock(options);
+    auto block_template = mining->createNewBlock(options);
     BOOST_REQUIRE(block_template);
-    block = block_template->getBlock();
+    CBlock block{block_template->getBlock()};
     BOOST_CHECK_EQUAL(block.vtx.size(), 5U);
 }
 
@@ -765,7 +776,9 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
             if (txFirst.size() < 4)
                 txFirst.push_back(block.vtx[0]);
             block.hashMerkleRoot = BlockMerkleRoot(block);
-            block.nNonce = bi.nonce;
+            // Mine a valid nonce for BLAKE3 PoW (regtest difficulty is trivial)
+            block.nNonce = 0;
+            while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) ++block.nNonce;
         }
         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
         // Alternate calls between Chainman's ProcessNewBlock and submitSolution

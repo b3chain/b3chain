@@ -4,11 +4,11 @@
 # Copyright (c) 2010-2022 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Bitcoin test framework primitive and message structures
+"""B3Chain test framework primitive and message structures
 
 CBlock, CTransaction, CBlockHeader, CTxIn, CTxOut, etc....:
     data structures that should map to corresponding structures in
-    bitcoin/primitives
+    b3chain/primitives
 
 msg_block, msg_tx, msg_headers, etc.:
     data structures that represent network messages
@@ -27,6 +27,16 @@ import random
 import socket
 import time
 import unittest
+
+try:
+    import blake3 as _blake3
+    def _blake3_hash(data):
+        return _blake3.blake3(data).digest()
+except ImportError:
+    raise ImportError(
+        "The 'blake3' Python package is required for b3chain functional tests. "
+        "Install it with: pip3 install blake3"
+    )
 
 from test_framework.crypto.siphash import siphash256
 from test_framework.util import assert_equal
@@ -84,9 +94,9 @@ TX_MIN_STANDARD_VERSION = 1
 TX_MAX_STANDARD_VERSION = 3
 
 MAGIC_BYTES = {
-    "mainnet": b"\xf9\xbe\xb4\xd9",
+    "mainnet": b"\xb3\xc0\x01\x0d",
     "testnet4": b"\x1c\x16\x3f\x28",
-    "regtest": b"\xfa\xbf\xb5\xda",
+    "regtest": b"\xb3\xc2\x03\x0f",
     "signet": b"\x0a\x03\xcf\x40",
 }
 
@@ -99,7 +109,13 @@ def sha3(s):
 
 
 def hash256(s):
+    """Double SHA-256 — used for identity hashes (txid, block hash, merkle tree)."""
     return sha256(sha256(s))
+
+
+def pow_hash256(s):
+    """Double BLAKE3-256 — used for proof-of-work validation in b3chain."""
+    return _blake3_hash(_blake3_hash(s))
 
 
 def ser_compact_size(l):
@@ -752,13 +768,23 @@ class CBlockHeader:
 
     @property
     def hash_hex(self):
-        """Return block header hash as hex string."""
+        """Return block identity hash (double SHA-256) as hex string."""
         return hash256(self._serialize_header())[::-1].hex()
 
     @property
     def hash_int(self):
-        """Return block header hash as integer."""
+        """Return block identity hash (double SHA-256) as integer."""
         return uint256_from_str(hash256(self._serialize_header()))
+
+    @property
+    def pow_hash_hex(self):
+        """Return block PoW hash (double BLAKE3-256) as hex string."""
+        return pow_hash256(self._serialize_header())[::-1].hex()
+
+    @property
+    def pow_hash_int(self):
+        """Return block PoW hash (double BLAKE3-256) as integer."""
+        return uint256_from_str(pow_hash256(self._serialize_header()))
 
     def __repr__(self):
         return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x)" \
@@ -818,7 +844,7 @@ class CBlock(CBlockHeader):
 
     def is_valid(self):
         target = uint256_from_compact(self.nBits)
-        if self.hash_int > target:
+        if self.pow_hash_int > target:
             return False
         for tx in self.vtx:
             if not tx.is_valid():
@@ -828,8 +854,9 @@ class CBlock(CBlockHeader):
         return True
 
     def solve(self):
+        """Mine the block by finding a nonce that satisfies the BLAKE3 PoW target."""
         target = uint256_from_compact(self.nBits)
-        while self.hash_int > target:
+        while self.pow_hash_int > target:
             self.nNonce += 1
 
     # Calculate the block weight using witness and non-witness

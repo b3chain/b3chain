@@ -11,7 +11,7 @@
 #include <tinyformat.h>
 
 extern "C" {
-#include <blake3.h>
+#include <crypto/blake3/blake3.h>
 }
 
 uint256 CBlockHeader::GetHash() const

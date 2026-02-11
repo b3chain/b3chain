@@ -14,7 +14,7 @@ order to maximally raise the difficulty. Verify this using the getmininginfo RPC
 
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.util import (
     assert_equal,
 )
@@ -40,6 +40,9 @@ import os
 COINBASE_SCRIPT_PUBKEY="76a914eadbac7f36c37e39361168b7aaee3cb24a25312d88ac"
 
 class MiningMainnetTest(BitcoinTestFramework):
+
+    def skip_test_if_missing_module(self):
+        raise SkipTest("Test uses SHA256d-mined blocks incompatible with b3chain's BLAKE3 PoW")
 
     def set_test_params(self):
         self.num_nodes = 1
