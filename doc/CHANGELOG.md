@@ -182,6 +182,14 @@ The public Testing & Verification page includes:
 - Known limitations and honest engineering disclosure
 - Security issue reporting (security@b3chain.org)
 
+### Source code published
+
+- **Core repo**: [github.com/b3chain/b3chain](https://github.com/b3chain/b3chain) (branch: `b3chain-main`)
+- **Website repo**: [github.com/b3chain/b3chain-website](https://github.com/b3chain/b3chain-website) (branch: `main`)
+- Default branch set to `b3chain-main`
+- Bitcoin Core upstream preserved as `upstream` remote
+- Server at b3chain.org deployed via git pull from GitHub
+
 ---
 
 ## Repository Structure (B3Chain-specific files)
