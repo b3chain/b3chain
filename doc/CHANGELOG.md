@@ -190,6 +190,34 @@ The public Testing & Verification page includes:
 - Bitcoin Core upstream preserved as `upstream` remote
 - Server at b3chain.org deployed via git pull from GitHub
 
+### Comprehensive Bitcoin-to-B3Chain rebranding (Phase 5b)
+
+Complete audit and update of all remaining Bitcoin references across the codebase:
+
+**User-visible strings (207 files, 2400+ lines changed):**
+- CMakeLists.txt: Project name `B3ChainCore`, descriptions, configure summary
+- Qt GUI: All tooltip/status text (send, receive, sign/verify, PSBT, network)
+- URI scheme: `bitcoin:` -> `b3chain:` (guiutil, paymentserver, tests)
+- IPC process names: `bitcoin-node` -> `b3chain-node`
+- RPC help text: Mining commands reference "b3chain" not "bitcoin"
+- Signed message magic: `"B3Chain Signed Message:\n"`
+- Key verification string: `"B3Chain key verification\n"`
+- Unit descriptions: "B3C", "Milli-B3C", "Micro-B3C"
+- Translation context: `"b3chain-core"` throughout
+
+**Documentation:**
+- SECURITY.md: Rewritten for B3Chain (security@b3chain.org)
+- CONTRIBUTING.md: Updated project name, issue tracker, repo URLs
+- Build docs (unix/osx/windows): Binary names, clone URLs, data dirs
+- tor.md, zmq.md, tracing.md, multiprocess.md: Binary names
+- Test READMEs: Binary names updated
+
+**Protocol-level decisions:**
+- `bip324.cpp` `"bitcoin_v2_shared_secret"` kept for P2P compatibility
+- `netaddress.h` `sha256("bitcoin")` kept for protocol compatibility
+- `clientversion.cpp` Bitcoin Core copyright check kept for attribution
+- Key IO tests correctly verify Bitcoin addresses are rejected
+
 ---
 
 ## Repository Structure (B3Chain-specific files)
