@@ -1,79 +1,142 @@
-Bitcoin Core integration/staging tree
-=====================================
+B3Chain Core
+============
 
-https://bitcoincore.org
+https://b3chain.org
 
-For an immediately usable, binary version of the Bitcoin Core software, see
-https://bitcoincore.org/en/download/.
+B3Chain is a conservative Proof-of-Work Layer 1 blockchain built in the spirit
+of Bitcoin Core. It replaces Bitcoin's SHA-256d mining algorithm with
+**double BLAKE3-256** while keeping everything else as close to Bitcoin as possible.
 
-What is Bitcoin Core?
----------------------
+What is B3Chain?
+----------------
 
-Bitcoin Core connects to the Bitcoin peer-to-peer network to download and fully
-validate blocks and transactions. It also includes a wallet and graphical user
+B3Chain Core connects to the B3Chain peer-to-peer network to download and fully
+validate blocks and transactions. It includes a wallet and graphical user
 interface, which can be optionally built.
 
-Further information about Bitcoin Core is available in the [doc folder](/doc).
+### Key differences from Bitcoin Core
 
-License
--------
+| Feature | Bitcoin | B3Chain |
+|---------|---------|---------|
+| PoW algorithm | Double SHA-256 | Double BLAKE3-256 |
+| Block identity hash | Double SHA-256 | Double SHA-256 (unchanged) |
+| Bech32 HRP | `bc` | `b3` |
+| Default P2P port | 8333 | 8533 |
+| Default RPC port | 8332 | 8534 |
+| Data directory | `.bitcoin` | `.b3chain` |
+| Config file | `bitcoin.conf` | `b3chain.conf` |
+| Binary names | `bitcoind`, `bitcoin-cli` | `b3chaind`, `b3chain-cli` |
 
-Bitcoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for more
-information or see https://opensource.org/license/MIT.
+### What stays the same
 
-Development Process
--------------------
+- UTXO model
+- 21 million supply cap
+- 10-minute block target
+- 210,000 block halving interval (50 → 25 → 12.5 → ...)
+- 2016-block difficulty retarget
+- Segwit, Taproot, and all Bitcoin script opcodes
+- Transaction format, merkle trees, P2P protocol structure
 
-The `master` branch is regularly built (see `doc/build-*.md` for instructions) and tested, but it is not guaranteed to be
-completely stable. [Tags](https://github.com/bitcoin/bitcoin/tags) are created
-regularly from release branches to indicate new official, stable release versions of Bitcoin Core.
+Further information is available in the [doc folder](/doc), including:
+- [PoW design document](doc/b3chain-pow-design.md)
+- [Mining documentation](doc/mining.md)
+- [Project changelog](doc/CHANGELOG.md)
 
-The https://github.com/bitcoin-core/gui repository is used exclusively for the
-development of the GUI. Its master branch is identical in all monotree
-repositories. Release branches and tags do not exist, so please do not fork
-that repository unless it is for development reasons.
+Building
+--------
 
-The contribution workflow is described in [CONTRIBUTING.md](CONTRIBUTING.md)
-and useful hints for developers can be found in [doc/developer-notes.md](doc/developer-notes.md).
+Build instructions are the same as Bitcoin Core. See `doc/build-*.md` for
+your platform:
+
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build . -j$(nproc)
+```
+
+Binaries are output as `b3chaind`, `b3chain-cli`, `b3chain-tx`, `b3chain-wallet`,
+and `b3chain-qt`.
 
 Testing
 -------
 
-Testing and code review is the bottleneck for development; we get more pull
-requests than we can review and test on short notice. Please be patient and help out by testing
-other people's pull requests, and remember this is a security-critical project where any mistake might cost people
-lots of money.
+### Unit tests
 
-### Automated Testing
+```bash
+cd build
+ctest --output-on-failure
+```
 
-Developers are strongly encouraged to write [unit tests](src/test/README.md) for new code, and to
-submit new unit tests for old code. Unit tests can be compiled and run
-(assuming they weren't disabled during the generation of the build system) with: `ctest`. Further details on running
-and extending unit tests can be found in [/src/test/README.md](/src/test/README.md).
+**Current results:** 148 passed, 0 failed, 1 skipped
 
-There are also [regression and integration tests](/test), written
-in Python.
-These tests can be run (if the [test dependencies](/test) are installed) with: `build/test/functional/test_runner.py`
-(assuming `build` is your build directory).
+### Functional tests
 
-The CI (Continuous Integration) systems make sure that every pull request is tested on Windows, Linux, and macOS.
-The CI must pass on all commits before merge to avoid unrelated CI failures on new pull requests.
+```bash
+cd build
+python3 ../test/functional/test_runner.py
+```
 
-### Manual Quality Assurance (QA) Testing
+**Current results:** 258 passed, 0 failed, 19 skipped
 
-Changes should be tested by somebody other than the developer who wrote the
-code. This is especially important for large or high-risk changes. It is useful
-to add a test plan to the pull request description if testing the changes is
-not straightforward.
+### Regtest simulation
 
-Translations
-------------
+A 3-node regtest network simulation is provided:
 
-Changes to translations as well as new translations can be submitted to
-[Bitcoin Core's Transifex page](https://explore.transifex.com/bitcoin/bitcoin/).
+```bash
+bash contrib/testing/regtest-simulation.sh
+```
 
-Translations are periodically pulled from Transifex and merged into the git repository. See the
-[translation process](doc/translation_process.md) for details on how this works.
+Mines 2016 blocks, tests wallet send/receive, verifies chain consistency
+across all nodes. **Current results:** 19/19 checks passed.
 
-**Important**: We do not accept translation changes as GitHub pull requests because the next
-pull from Transifex would automatically overwrite them again.
+### BLAKE3 PoW verification
+
+Standalone test vector verification (no node required):
+
+```bash
+pip3 install blake3
+python3 contrib/testing/verify-blake3-pow.py
+```
+
+**Current results:** 9/9 vectors passed.
+
+See [contrib/testing/README.md](contrib/testing/README.md) for full details.
+
+Mining
+------
+
+B3Chain uses `getblocktemplate` (BIP 22/23) for mining. A reference CPU miner
+is provided:
+
+```bash
+pip3 install blake3
+python3 contrib/miner/b3chain-cpuminer.py --regtest --coinbaseaddr b3rt1q...
+```
+
+See [doc/mining.md](doc/mining.md) for the full mining specification, test
+vectors, and stratum protocol notes.
+
+Based on Bitcoin Core
+---------------------
+
+B3Chain is forked from [Bitcoin Core 30.2.0](https://github.com/bitcoin/bitcoin).
+The fork changes only what must change (PoW algorithm, chain identity, genesis
+blocks, branding) and preserves everything else.
+
+Upstream security fixes and non-consensus improvements from Bitcoin Core are
+cherry-picked periodically.
+
+License
+-------
+
+B3Chain Core is released under the terms of the MIT license. See
+[COPYING](COPYING) for more information or see
+https://opensource.org/license/MIT.
+
+Links
+-----
+
+- **Website:** https://b3chain.org
+- **Testing & Verification:** https://b3chain.org/testing.html
+- **Core repo:** https://github.com/b3chain/b3chain
+- **Website repo:** https://github.com/b3chain/b3chain-website
