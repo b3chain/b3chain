@@ -71,7 +71,7 @@ def pow_hash256(data: bytes) -> bytes:
 Used **only** for Proof-of-Work validation:
 
 - `CheckProofOfWork()` in `src/pow.cpp`
-- `bitcoin-util grind` nonce search in `src/bitcoin-util.cpp`
+- `b3chain-util grind` nonce search in `src/bitcoin-util.cpp`
 - Block validation during IBD in `src/node/blockstorage.cpp`
 - Mining (block template solving)
 
