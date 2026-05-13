@@ -15,7 +15,7 @@
 | Phase 8 | Deployment and Launch | Pending |
 | Phase 9 | Wallets, CLI, and API | Inherited from Bitcoin Core |
 | Phase 10 | Maintenance and Upgrades | Ongoing |
-| Phase 11 | Security | Self-audit pass 1: **COMPLETE** (external audit pending) |
+| Phase 11 | Security | Self-audit pass 1: **COMPLETE**; verification + inheritance + comparison + roadmap (pass 2): **COMPLETE**; external audit pending |
 
 ---
 
@@ -269,6 +269,72 @@ on every build.
 - External professional audit (to be commissioned before mainnet)
 - SLIP-0044 PR for coin_type 9333 (will be filed as a follow-up)
 - CI matrix to test SIMD BLAKE3 on every CPU feature combination
+
+---
+
+## Phase 11.2: Verification, Inheritance, BLAKE3-vs-SHA-256 Comparison, Roadmap
+
+Layered on top of the Phase 11.1 self-audit. No consensus changes; this
+phase only adds evidence and tooling.
+
+**A. Verification of the Phase 11.1 work**
+- [`doc/PHASE-11-VERIFICATION.md`](PHASE-11-VERIFICATION.md) — master
+  checklist with one row per Phase 11 deliverable, each with an
+  acceptance criterion, runnable verifier command, and expected output.
+- [`contrib/testing/audit/verify-phase11.sh`](../contrib/testing/audit/verify-phase11.sh) —
+  end-to-end verifier; flips checkboxes in `PHASE-11-VERIFICATION.md`
+  and exits non-zero on any FAIL.
+- Helpers: `verify_links.py` (on-disk link checker for the website),
+  `verify_checklist.py` (validates `SECURITY-AUDIT.md` structure).
+
+**B. Bitcoin security inheritance**
+- [`doc/SECURITY-INHERITANCE.md`](SECURITY-INHERITANCE.md) — inventory
+  mapping every Bitcoin invariant to its upstream test and B3Chain
+  status (`inherited` / `inherited-with-rebrand` / `diverged-by-design`
+  / `failing-investigation`).
+- [`contrib/testing/audit/audit-bitcoin-inheritance.sh`](../contrib/testing/audit/audit-bitcoin-inheritance.sh) —
+  runs the full upstream `ctest` + `test_runner.py --extended` suite
+  and classifies every result.
+- [`contrib/testing/audit/lib/inheritance_classify.py`](../contrib/testing/audit/lib/inheritance_classify.py) —
+  the classifier; allowlists known divergences (PoW algo, mainnet
+  UTXO snapshot fixtures), fails on anything else.
+- Public page: [`b3chain.org/testing/bitcoin-inheritance.html`](https://b3chain.org/testing/bitcoin-inheritance.html).
+
+**C. BLAKE3 vs SHA-256 comparative suite**
+- [`contrib/testing/compare/`](../contrib/testing/compare/) folder with
+  three runnable comparisons (throughput, block-validation wall time,
+  length-extension demo) and four data-only docs (ASIC landscape,
+  energy, attack surface, collision margin).
+- Shared helper: `lib/compare_common.py` (timer, host info, JSON
+  result schema, baseline loader).
+- Orchestrator: `run-all-compare.sh`.
+- CI: [`.github/workflows/compare-bench.yml`](../.github/workflows/compare-bench.yml) —
+  runs the throughput benchmark on every PR, fails if BLAKE3-d
+  regresses by more than 10% versus the pinned baseline in
+  `contrib/testing/compare/baseline.json`.
+- Public hub: [`b3chain.org/testing/compare.html`](https://b3chain.org/testing/compare.html)
+  + 7 detail pages under `testing/compare/`.
+
+**D. Tutorials and forward-looking roadmap**
+- [`contrib/testing/audit/tutorials/`](../contrib/testing/audit/tutorials/) —
+  one Markdown tutorial per audit (problem → theory → demo → exercise
+  → reading) for the 7 audits + the 51% attack page.
+- [`contrib/testing/audit/inject-tutorial.py`](../contrib/testing/audit/inject-tutorial.py) —
+  idempotent injector; weaves the tutorial markdown into the
+  corresponding website page between `<!-- TUTORIAL --> / <!-- /TUTORIAL -->`
+  markers.
+- [`doc/SECURITY-ROADMAP.md`](SECURITY-ROADMAP.md) — eight prioritised
+  improvements (OSS-Fuzz, reproducible Guix builds, continuous bench
+  CI, external cryptographic audit, bug bounty, PQC experiment,
+  checkpoint key ceremony, hardware-rooted miner integrity).
+- Public page: [`b3chain.org/testing/roadmap.html`](https://b3chain.org/testing/roadmap.html).
+
+**Acceptance check**
+- `python3 contrib/testing/audit/verify_links.py b3chain-website` →
+  exit 0; OK on 27 pages and 216 on-disk references at the time of
+  this commit.
+- `python3 contrib/testing/audit/inject-tutorial.py` → idempotent on a
+  second run (0 changed, 8 unchanged).
 
 ---
 

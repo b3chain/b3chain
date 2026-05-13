@@ -1,0 +1,13 @@
+{
+  "_comment": "Baseline numbers used by .github/workflows/compare-bench.yml to detect regressions.",
+  "_runner": "ubuntu-22.04 (GitHub Actions)",
+  "_recorded_at": "to-be-recorded-on-first-real-run",
+  "_how_to_update": "Run the throughput script on the actual CI runner image, then copy the produced rows here. Bumping these numbers is allowed but should be reviewed.",
+  "max_regression_pct": 10.0,
+  "rows": [
+    { "algo": "sha256",  "threads": 1, "hashes_per_sec": 12000000 },
+    { "algo": "sha256d", "threads": 1, "hashes_per_sec": 6000000  },
+    { "algo": "blake3",  "threads": 1, "hashes_per_sec": 9000000  },
+    { "algo": "blake3d", "threads": 1, "hashes_per_sec": 4500000  }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "pow-throughput": {
+    "comparison": "pow-throughput",
+    "rows": [
+      {
+        "algo": "sha256",
+        "threads": 1,
+        "input_bytes": 80,
+        "duration_s": 1.0,
+        "total_hashes": 3997696,
+        "hashes_per_sec": 3997696.0,
+        "ns_per_hash": 250.1440829918033
+      },
+      {
+        "algo": "sha256d",
+        "threads": 1,
+        "input_bytes": 80,
+        "duration_s": 1.0,
+        "total_hashes": 2140160,
+        "hashes_per_sec": 2140160.0,
+        "ns_per_hash": 467.2547846889952
+      },
+      {
+        "algo": "blake3",
+        "threads": 1,
+        "input_bytes": 80,
+        "duration_s": 1.0,
+        "total_hashes": 3091456,
+        "hashes_per_sec": 3091456.0,
+        "ns_per_hash": 323.4721762172905
+      },
+      {
+        "algo": "blake3d",
+        "threads": 1,
+        "input_bytes": 80,
+        "duration_s": 1.0,
+        "total_hashes": 1810432,
+        "hashes_per_sec": 1810432.0,
+        "ns_per_hash": 552.3543552036199
+      }
+    ],
+    "summary": {
+      "speedup_blake3d_vs_sha256d_single_thread": 0.845933014354067
+    },
+    "host": {
+      "hostname": "DESKTOP-NRQANR8",
+      "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+      "python": "3.10.12",
+      "cores": 32,
+      "cpu_model": "Intel(R) Core(TM) i9-14900K"
+    },
+    "timestamp": "2026-05-13T22:32:25+00:00",
+    "notes": [
+      "input size: 80 bytes",
+      "duration per measurement: 1.0s"
+    ]
+  },
+  "length-extension": {
+    "comparison": "length-extension",
+    "rows": [
+      {
+        "algo": "sha256",
+        "attack_succeeded": true,
+        "attack_microseconds": 97.52500000104192,
+        "forged_tag_hex": "82f688f4739cf2128ae7a25eab6a4e5a561d9e366cea5f7d1ae3466c8ae17ed5"
+      },
+      {
+        "algo": "blake3",
+        "attack_succeeded": false,
+        "attack_microseconds": 0.9930000146596285
+      }
+    ],
+    "summary": {
+      "sha256_le_attack_succeeded": true,
+      "blake3_le_attack_succeeded": false
+    },
+    "host": {
+      "hostname": "DESKTOP-NRQANR8",
+      "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+      "python": "3.10.12",
+      "cores": 32,
+      "cpu_model": "Intel(R) Core(TM) i9-14900K"
+    },
+    "timestamp": "2026-05-13T22:34:43+00:00",
+    "notes": [
+      "Demonstrates the classic LE attack on a naive H(secret||msg) MAC. Bitcoin's H(H(x)) construction is not vulnerable; this is a construction-level comparison, not a Bitcoin attack."
+    ]
+  }
+}

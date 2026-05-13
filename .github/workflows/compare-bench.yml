@@ -1,0 +1,146 @@
+# Copyright (c) 2026 The B3Chain Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or https://opensource.org/license/mit.
+#
+# Continuous benchmark for the BLAKE3-vs-SHA-256 throughput comparison.
+# Runs on every PR against b3chain-main; posts a markdown table as a PR
+# comment; fails if BLAKE3d throughput regresses by more than the
+# allowed percentage versus the baseline in
+# contrib/testing/compare/baseline.json.
+
+name: compare-bench
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'contrib/testing/compare/**'
+      - '.github/workflows/compare-bench.yml'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds per measurement"
+        required: false
+        default: "5"
+
+concurrency:
+  group: compare-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  bench:
+    name: throughput
+    # Pin to a specific runner image so timing is comparable run-to-run.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install blake3
+        run: pip install --quiet blake3
+
+      - name: Run throughput benchmark
+        id: bench
+        env:
+          DURATION: ${{ github.event.inputs.duration || '5' }}
+        run: |
+          set -e
+          python3 contrib/testing/compare/compare-pow-throughput.py \
+            --duration "$DURATION" \
+            --threads 1,n \
+            --no-portable \
+            > bench.out
+          cat bench.out
+          # Extract markdown table for the PR comment
+          awk '/^\| algorithm/,/^$/' bench.out > bench.md
+          echo "table<<EOF" >> "$GITHUB_OUTPUT"
+          cat bench.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Compare against baseline
+        id: gate
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          base_path = Path("contrib/testing/compare/baseline.json")
+          if not base_path.is_file():
+              print("no baseline.json -- skipping regression gate")
+              sys.exit(0)
+
+          base = json.loads(base_path.read_text())
+          latest_path = Path("contrib/testing/compare/results/latest.json")
+          if not latest_path.is_file():
+              print("warn: latest.json not produced; skipping gate")
+              sys.exit(0)
+          latest = json.loads(latest_path.read_text())
+          rows = latest.get("pow-throughput", {}).get("rows", [])
+          if not rows:
+              print("warn: no rows in latest results; skipping gate")
+              sys.exit(0)
+
+          allowed = base.get("max_regression_pct", 10.0)
+          fails = []
+          for ref_row in base.get("rows", []):
+              algo, threads, ref_hps = ref_row["algo"], ref_row["threads"], ref_row["hashes_per_sec"]
+              cur = next((r for r in rows if r["algo"] == algo and r["threads"] == threads), None)
+              if not cur:
+                  continue
+              regress = (ref_hps - cur["hashes_per_sec"]) / ref_hps * 100.0
+              flag = "FAIL" if regress > allowed else "ok"
+              print(f"  {algo:<12} threads={threads:<3} ref={ref_hps:>12,.0f} h/s  cur={cur['hashes_per_sec']:>12,.0f} h/s  regress={regress:+.1f}%  [{flag}]")
+              if regress > allowed:
+                  fails.append((algo, threads, regress))
+          if fails:
+              print(f"\nregression gate FAILED for {len(fails)} measurement(s) "
+                    f"(allowed: {allowed}%)")
+              sys.exit(1)
+          print("\nregression gate passed.")
+          PY
+
+      - name: Comment results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const table = fs.readFileSync('bench.md', 'utf8');
+            const sha   = (process.env.GITHUB_SHA || '').slice(0, 7);
+            const gate  = "${{ steps.gate.outcome }}";
+            const status = (gate === 'success') ? '✓ within tolerance' : '✗ regression detected';
+            const body = [
+              `### compare-bench (commit \`${sha}\`)`,
+              ``,
+              `Status: **${status}**`,
+              ``,
+              table || '_(no table produced)_',
+              ``,
+              `Baseline: \`contrib/testing/compare/baseline.json\``,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+      - name: Upload results JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-bench-${{ github.run_id }}
+          path: |
+            bench.out
+            contrib/testing/compare/results/*.json
+          retention-days: 30
