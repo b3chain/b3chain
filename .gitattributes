@@ -1,1 +1,11 @@
 src/clientversion.cpp export-subst
+
+# Always store these as LF in the index, regardless of working-tree
+# autocrlf settings, so that scripts and YAML/JSON files do not break
+# when checked out on Windows and run under bash / a Linux container.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf

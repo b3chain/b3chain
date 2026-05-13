@@ -28,7 +28,7 @@ bash contrib/testing/audit/verify-phase11.sh --dry-run  # print what would run
 bash contrib/testing/audit/verify-phase11.sh --only A2  # one row only
 ```
 
-Last run: **2026-05-13 23:25**
+Last run: **2026-05-14 00:09**
 
 ---
 
@@ -107,7 +107,7 @@ The verifier appends to this section every time it runs. The other agent's
 work is considered "done" once this section is empty after a clean run.
 
 <!-- VERIFIER-FINDINGS-START -->
-*Last verifier run: 2026-05-13 23:25*
+*Last verifier run: 2026-05-14 00:09*
 
 **Skipped:**
 
