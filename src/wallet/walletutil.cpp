@@ -67,11 +67,13 @@ WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const Ou
     } // no default case, so the compiler can warn about missing cases
     assert(!desc_prefix.empty());
 
-    // Mainnet derives at 0', testnet and regtest derive at 1'
+    // BIP44 coin_type. B3Chain uses 9333 on mainnet (proposed; pending
+    // SLIP-0044 registration — see doc/b3chain-bip44.md). Testnet/regtest
+    // continue to use 1, the BIP44-reserved testnet coin_type.
     if (Params().IsTestChain()) {
         desc_prefix += "/1h";
     } else {
-        desc_prefix += "/0h";
+        desc_prefix += "/9333h";
     }
 
     std::string internal_path = internal ? "/1" : "/0";

@@ -15,7 +15,7 @@
 | Phase 8 | Deployment and Launch | Pending |
 | Phase 9 | Wallets, CLI, and API | Inherited from Bitcoin Core |
 | Phase 10 | Maintenance and Upgrades | Ongoing |
-| Phase 11 | Security | Pre-launch audit pending |
+| Phase 11 | Security | Self-audit pass 1: **COMPLETE** (external audit pending) |
 
 ---
 
@@ -217,6 +217,58 @@ Complete audit and update of all remaining Bitcoin references across the codebas
 - `netaddress.h` `sha256("bitcoin")` kept for protocol compatibility
 - `clientversion.cpp` Bitcoin Core copyright check kept for attribution
 - Key IO tests correctly verify Bitcoin addresses are rejected
+
+---
+
+## Phase 11: Security (self-audit pass 1) — COMPLETE
+
+The structured Phase 11 self-audit was added before any mainnet launch
+work. Every B3Chain-specific code path now has a script that verifies
+its consensus invariants, plus a website detail page with tutorials and
+expected output. **All 11 audit items PASSED on the first end-to-end run
+(after fixing the regressions the audit itself caught).**
+
+**Master checklist:** [`doc/SECURITY-AUDIT.md`](SECURITY-AUDIT.md)
+
+| ID | Audit | Script | Result |
+|----|-------|--------|--------|
+| C-1..C-4 | Supply cap, halving, retarget bounds | `audit-supply-cap.py` | PASS (9/9) |
+| H-1 | PoW / Block-ID hash isolation (BLAKE3 vs SHA-256) | `audit-pow-isolation.py` | PASS (7/7) |
+| N-1 | Network isolation (magic bytes, DNS seeds) | `audit-network-isolation.py` | PASS (15/15) |
+| W-1 | Bitcoin address rejection (36 samples) | `audit-address-rejection.py` | PASS (8/8) |
+| W-2 | HD wallet BIP44 coin_type 9333 | `audit-hd-coin-type.py` | PASS (9/9) |
+| B-1 | SIMD vs portable C BLAKE3 differential | `audit-simd-blake3.py` | PASS (4/4, 1037 inputs) |
+| B-2 | Rebranding regression scan | `audit-rebranding.sh` | PASS (6/6, after fixes) |
+| A-1 | 51% double-spend live demo | `audit-51-attack-sim.py` | PASS (4/4, full reorg) |
+
+**Findings caught and fixed by the first audit run:**
+- 5 leftover Qt `tr()` strings still said "Bitcoin" (intro, guiutil,
+  sendcoinsdialog, addressbookpage)
+- `src/rpc/rawtransaction_util.cpp` raised "Invalid Bitcoin address"
+- `doc/Doxyfile.in` set `PROJECT_NAME = "Bitcoin Core"`
+- ~30 `bitcoind` / `bitcoin-cli` references in `contrib/*/README.md`
+  bulk-renamed to `b3chain*`
+
+**HD wallet coin_type decision:**
+- Mainnet: **`coin_type 9333`** (proposed; SLIP-0044 registration to
+  follow). See [`doc/b3chain-bip44.md`](b3chain-bip44.md).
+- Testnet/regtest: `1` (per BIP44 standard).
+- Implemented in
+  [`src/wallet/walletutil.cpp::GenerateWalletDescriptor`](../src/wallet/walletutil.cpp).
+
+**C++ counterpart tests:** `src/test/audit/consensus_invariants_tests.cpp`
+runs the supply-cap, PoW-isolation, and magic-bytes checks inside CTest
+on every build.
+
+**Public test pages:**
+- Hub: [b3chain.org/testing.html](https://b3chain.org/testing.html)
+- Phase 11 master: [b3chain.org/testing/security-audit.html](https://b3chain.org/testing/security-audit.html)
+- 51% attack explainer + live demo: [b3chain.org/testing/51-attack.html](https://b3chain.org/testing/51-attack.html)
+
+**Out of scope for Phase 11.1 (deferred):**
+- External professional audit (to be commissioned before mainnet)
+- SLIP-0044 PR for coin_type 9333 (will be filed as a follow-up)
+- CI matrix to test SIMD BLAKE3 on every CPU feature combination
 
 ---
 

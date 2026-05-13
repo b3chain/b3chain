@@ -142,7 +142,7 @@ This table describes the files installed by B3Chain Core across different platfo
 | bin/b3chain                                                | Command-line tool for interacting with B3Chain. Calls other binaries below. |
 | bin/b3chain-cli                                            | Tool for making node and wallet RPC calls.                                  |
 | bin/b3chain-qt                                             | B3Chain node and wallet GUI                                                 |
-| bin/bitcoin-tx                                             | Tool for creating and modifying transactions                                |
+| bin/b3chain-tx                                             | Tool for creating and modifying transactions                                |
 | bin/b3chain-util                                           | Miscellaneous utilities                                                     |
 | bin/b3chain-wallet                                         | B3Chain wallet tool                                                         |
 | bin/b3chaind                                               | B3Chain node and wallet daemon                                              |
