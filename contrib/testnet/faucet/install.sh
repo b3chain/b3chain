@@ -84,3 +84,39 @@ systemctl restart b3chain-faucet.service
 
 systemctl is-active b3chain-faucet.service
 echo "==> Faucet up on 127.0.0.1:5000. Add nginx vhost for faucet.b3chain.org."
+
+# 9. Auto-topup cron: every 15 min, send miner -> faucet when faucet
+# balance falls below threshold. The miner wallet (where coinbases land)
+# and the faucet wallet are both on this same b3chaind instance, so the
+# topup script just talks to local RPC.
+install -m 755 "$SCRIPT_DIR/topup.sh" /usr/local/bin/b3chain-faucet-topup.sh
+
+if [ ! -f "$CFG_DIR/topup.env" ]; then
+    cat > "$CFG_DIR/topup.env" <<EOF
+RPC_HOST=127.0.0.1
+RPC_PORT=18534
+RPC_USER=b3chain
+RPC_PASSWORD_FILE=/etc/b3chain/rpcpassword
+FAUCET_WALLET=faucet
+MINER_WALLET=miner
+# Top up when faucet balance drops below MIN B3C
+MIN=2.0
+# Send TOPUP B3C per refill
+TOPUP=10.0
+# Don't send if miner has less than this (leaves a small buffer)
+MIN_MATURE_BALANCE=11.0
+LOG=$LOG_DIR/topup.log
+EOF
+    chmod 640 "$CFG_DIR/topup.env"
+fi
+
+cat > /etc/cron.d/b3chain-faucet-topup <<'EOF'
+# B3Chain faucet auto-topup: refills the faucet wallet from the miner
+# wallet when balance drops below threshold.
+*/15 * * * * root /usr/local/bin/b3chain-faucet-topup.sh
+EOF
+chmod 644 /etc/cron.d/b3chain-faucet-topup
+
+echo "==> Auto-topup cron installed (runs every 15 min)."
+echo "    config: $CFG_DIR/topup.env"
+echo "    log   : $LOG_DIR/topup.log"

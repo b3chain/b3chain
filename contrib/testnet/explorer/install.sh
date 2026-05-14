@@ -111,6 +111,68 @@ if [ -f "$PUG" ] && grep -q 'Object.keys(txInputs).length' "$PUG"; then
     sed -i 's/Object.keys(txInputs).length/(txInputs ? Object.keys(txInputs).length : 0)/g' "$PUG"
 fi
 
+# 5b. B3C rebrand. We don't register a new coin in app/coins/ (would
+# require touching coins.js and a dozen template references); we just
+# rewrite the user-visible strings inside the bundled btc.js. The
+# explorer keeps coinConfig key "BTC" internally but renders B3Chain /
+# B3C everywhere a user can see.
+COIN=$EXP_DIR/node_modules/btc-rpc-explorer/app/coins/btc.js
+APPJS=$EXP_DIR/node_modules/btc-rpc-explorer/app.js
+BTCFUN=$EXP_DIR/node_modules/btc-rpc-explorer/app/coins/btcFun.js
+
+if [ -f "$COIN" ]; then
+    # Brand name + ticker
+    sed -i 's|name:"Bitcoin"|name:"B3Chain"|'                                "$COIN"
+    sed -i 's|ticker:"BTC"|ticker:"B3C"|'                                    "$COIN"
+    # Currency unit display names (BTC -> B3C, mBTC -> mB3C)
+    sed -i 's|name:"BTC"|name:"B3C"|'                                        "$COIN"
+    sed -i 's|name:"mBTC"|name:"mB3C"|'                                      "$COIN"
+    sed -i 's|values:\["", "btc", "BTC"\]|values:["", "b3c", "B3C"]|'        "$COIN"
+    sed -i 's|values:\["mbtc"\]|values:["mb3c"]|'                            "$COIN"
+    # currencyUnitsByName lookup keys
+    sed -i 's|"BTC":currencyUnits\[0\]|"B3C":currencyUnits[0]|'              "$COIN"
+    sed -i 's|"mBTC":currencyUnits\[1\]|"mB3C":currencyUnits[1]|'            "$COIN"
+    # Site titles
+    sed -i 's|"main":"Bitcoin Explorer"|"main":"B3Chain Explorer"|'          "$COIN"
+    sed -i 's|"test":"Testnet Explorer"|"test":"B3Chain Testnet Explorer"|'  "$COIN"
+    sed -i 's|"regtest":"Regtest Explorer"|"regtest":"B3Chain Regtest Explorer"|' "$COIN"
+    sed -i 's|"signet":"Signet Explorer"|"signet":"B3Chain Signet Explorer"|'  "$COIN"
+    # Demo-site cross-links (don't point users at bitcoinexplorer.org)
+    sed -i 's|https://bitcoinexplorer.org|https://explorer.b3chain.org|g'    "$COIN"
+    sed -i 's|https://testnet.bitcoinexplorer.org|https://explorer.b3chain.org|g' "$COIN"
+    sed -i 's|https://signet.bitcoinexplorer.org|https://explorer.b3chain.org|g'  "$COIN"
+    # Mainnet brand color: Bitcoin orange -> B3Chain blue
+    sed -i 's|"main": "#F7931A"|"main": "#2563eb"|'                          "$COIN"
+    # Genesis hashes -> B3Chain values. Upstream uses a mix of TAB and
+    # SPACE separators after the colon, so match any whitespace.
+    sed -i -E 's|("main":[[:space:]]+)"000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"|\1"b32521b577317c19b5a1eb895b94c1d9b2f771cc9d174d7a4f11cab40833f603"|' "$COIN"
+    sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"|' "$COIN"
+    sed -i -E 's|("regtest":[[:space:]]+)"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"|\1"8c19b11553c449cfe6f8b00c830b8e34249529fd9521cb4825541df9b0372de4"|' "$COIN"
+    # Strip Bitcoin-specific mining-pool registry URLs (avoids 30s
+    # startup hangs trying to reach raw.githubusercontent.com just to
+    # learn pool names that don't apply to B3Chain).
+    sed -i '/raw.githubusercontent.com.*[Mm]iners/d;/raw.githubusercontent.com.*[Pp]ools/d' "$COIN"
+fi
+
+# Version regex: btc-rpc-explorer parses the daemon's subversion as
+# /Satoshi:X.Y.Z/ but b3chaind reports /B3Chain:X.Y.Z/. Widen the
+# regex so RPC-version-gated features detect Core 30 correctly.
+if [ -f "$APPJS" ] && grep -q '/Satoshi\\:' "$APPJS"; then
+    sed -i 's#/Satoshi\\:#/(?:Satoshi|B3Chain)\\:#' "$APPJS"
+fi
+
+# Neutralize the bundled Bitcoin "fun" historical events (irrelevant
+# for B3Chain; they otherwise render Bitcoin-specific timeline cards
+# on the home page).
+if [ -f "$BTCFUN" ]; then
+    cat > "$BTCFUN" <<'EOF'
+"use strict";
+// Replaced by B3Chain installer - upstream's Bitcoin-specific
+// historical events are not relevant for our chain.
+module.exports = { items: [] };
+EOF
+fi
+
 # 4. environment file (RPC creds, port, network selection)
 RPC_PASS="$(cat /etc/b3chain/rpcpassword)"
 cat > "$EXP_DIR/.config/btc-rpc-explorer.env" <<EOF
@@ -130,7 +192,11 @@ BTCEXP_UI_HIDE_INFO_NOTES=true
 # Keep slow-device mode OFF: it makes the block detail page render
 # without txInputs which crashes the upstream pug template.
 BTCEXP_SLOW_DEVICE_MODE=false
+# coinConfig key stays "BTC" internally; our btc.js was patched to
+# render B3Chain / B3C strings.
 BTCEXP_COIN=BTC
+# Site title shown in browser tab + masthead
+BTCEXP_SITE_TITLE=B3Chain Testnet Explorer
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
 chmod 640 "$EXP_DIR/.config/btc-rpc-explorer.env"

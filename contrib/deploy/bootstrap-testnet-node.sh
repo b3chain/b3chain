@@ -9,11 +9,17 @@
 #
 #   wget https://raw.githubusercontent.com/b3chain/b3chain/b3chain-main/contrib/deploy/bootstrap-testnet-node.sh
 #   chmod +x bootstrap-testnet-node.sh
-#   ./bootstrap-testnet-node.sh [--ref=v0.1.0-testnet] [--addnode=IP1] [--addnode=IP2]
+#   ./bootstrap-testnet-node.sh [--ref=v0.1.0-testnet] \
+#       [--addnode=IP1] [--addnode=IP2] \
+#       [--ignore-ip=A.B.C.D] [--ignore-ip=E.F.G.H/24]
 #
 # The --addnode flag may be repeated. Each IP is added to the b3chain.conf
 # `addnode=` list so the node makes a direct outbound connection to its
 # peer seed at startup (in addition to DNS-seed discovery).
+#
+# The --ignore-ip flag may also be repeated. Each value is added to
+# fail2ban's sshd jail `ignoreip` list so legit operator IPs are never
+# banned, no matter how many bad-username attempts come from them.
 #
 # Exit codes:
 #   0  success, b3chaind is running and answering RPC
@@ -24,13 +30,15 @@ set -euo pipefail
 
 REF="b3chain-main"
 ADDNODES=()
+IGNORE_IPS=()
 RPC_PORT=18534    # localhost-only
 P2P_PORT=18533    # public
 
 for arg in "$@"; do
     case "$arg" in
-        --ref=*)      REF="${arg#--ref=}" ;;
-        --addnode=*)  ADDNODES+=("${arg#--addnode=}") ;;
+        --ref=*)        REF="${arg#--ref=}" ;;
+        --addnode=*)    ADDNODES+=("${arg#--addnode=}") ;;
+        --ignore-ip=*)  IGNORE_IPS+=("${arg#--ignore-ip=}") ;;
         -h|--help)
             sed -n '/^# /,/^$/p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
@@ -57,7 +65,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
     build-essential cmake pkg-config python3 python3-pip git curl \
     libboost-all-dev libssl-dev libsqlite3-dev libevent-dev \
-    libminiupnpc-dev libnatpmp-dev libzmq3-dev systemd ufw
+    libminiupnpc-dev libnatpmp-dev libzmq3-dev systemd ufw fail2ban
 
 # -----------------------------------------------------------------------
 log "2. Create unprivileged user and data directory"
@@ -246,7 +254,56 @@ if command -v ufw >/dev/null; then
 fi
 
 # -----------------------------------------------------------------------
-log "7. Wait for RPC and report status"
+log "7. Configure fail2ban (sshd jail)"
+# -----------------------------------------------------------------------
+# We have to be careful here: fail2ban's default sshd jail will ban a
+# source IP after just 5 failed attempts within 10 minutes (which
+# includes "Invalid user" failures from a typoed username). The agent
+# that bootstrapped this box previously locked itself out by trying
+# `lobby@` instead of `deploy@` 5+ times in a row. Tune the jail so:
+#   * legitimate operator typos cost a short ban (5 min, not 10)
+#   * known operator IPs are NEVER banned (--ignore-ip flag, repeatable)
+#   * the loopback and the host's own private IPs are always whitelisted
+#   * threshold is 10 attempts (not 5) - real attackers hit it instantly,
+#     legitimate ops with a fat finger don't.
+if command -v fail2ban-client >/dev/null; then
+    # Build the ignoreip list. Always include loopback + this host's
+    # own RFC1918 IPs so on-host scripts can never trip the jail.
+    HOST_IPS="$(hostname -I 2>/dev/null | tr -d '\n' | xargs -n1 2>/dev/null \
+                | grep -E '^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|127\.)' \
+                | tr '\n' ' ')"
+    IGNORE_LIST="127.0.0.1/8 ::1 ${HOST_IPS}"
+    if [ "${#IGNORE_IPS[@]}" -gt 0 ]; then
+        for ip in "${IGNORE_IPS[@]}"; do
+            [ -n "$ip" ] && IGNORE_LIST+=" $ip"
+        done
+    fi
+
+    install -d -m 755 /etc/fail2ban/jail.d
+    cat > /etc/fail2ban/jail.d/00-b3chain-sshd.conf <<EOF
+# Managed by contrib/deploy/bootstrap-testnet-node.sh.
+# Hand edits will be overwritten on next bootstrap run.
+[DEFAULT]
+ignoreip = ${IGNORE_LIST}
+bantime  = 5m
+findtime = 10m
+maxretry = 10
+
+[sshd]
+enabled = true
+mode    = normal
+backend = systemd
+EOF
+    chmod 644 /etc/fail2ban/jail.d/00-b3chain-sshd.conf
+
+    systemctl enable fail2ban >/dev/null 2>&1 || true
+    systemctl restart fail2ban >/dev/null 2>&1 || true
+    # Best-effort sanity check; non-fatal if fail2ban-client isn't ready
+    fail2ban-client status sshd 2>/dev/null | sed 's/^/    /' || true
+fi
+
+# -----------------------------------------------------------------------
+log "8. Wait for RPC and report status"
 # -----------------------------------------------------------------------
 for _ in $(seq 1 30); do
     if /usr/local/bin/b3chain-cli -chain=test \
