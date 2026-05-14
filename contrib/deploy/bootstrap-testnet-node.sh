@@ -92,7 +92,13 @@ if [ -x "$SRC/build/bin/b3chaind" ] \
 fi
 if [ "$NEEDS_BUILD" = "1" ]; then
     if [ ! -d build ]; then
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF
+        # ENABLE_IPC=OFF avoids the libcapnp dependency, which is
+        # only needed for upstream's multiprocess work and not for
+        # a plain testnet seed.
+        cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=OFF \
+            -DENABLE_IPC=OFF
     fi
     # CMake target names are inherited from upstream Bitcoin Core
     # (bitcoind, bitcoin-cli). The OUTPUT_NAME property renames the
