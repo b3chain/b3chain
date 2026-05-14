@@ -232,11 +232,17 @@ systemctl enable b3chaind-testnet.service
 systemctl restart b3chaind-testnet.service
 
 # -----------------------------------------------------------------------
-log "6. Open firewall port $P2P_PORT/tcp"
+log "6. Open firewall ports (ssh + b3chain p2p)"
 # -----------------------------------------------------------------------
+# CRITICAL: open SSH (22/tcp) BEFORE enabling ufw, otherwise enabling
+# the default-deny firewall locks the operator out of the box. Then
+# open the b3chain p2p port. RPC stays bound to 127.0.0.1 so we do not
+# expose it.
 if command -v ufw >/dev/null; then
-    ufw --force enable >/dev/null 2>&1 || true
+    ufw allow OpenSSH || ufw allow 22/tcp || true
     ufw allow "$P2P_PORT/tcp" || true
+    ufw --force enable >/dev/null 2>&1 || true
+    ufw status verbose | head -20 || true
 fi
 
 # -----------------------------------------------------------------------
