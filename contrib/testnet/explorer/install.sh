@@ -98,6 +98,19 @@ if [ ! -x "$EXP_BIN" ]; then
     exit 1
 fi
 
+# 5. Defensive patch for an upstream null-check bug.
+# In v3.5.1, views/includes/shared-mixins.pug:227 reads
+#     if (!coinbaseTx && Object.keys(txInputs).length < tx.vin.length)
+# but on chains whose blocks contain only coinbase transactions
+# (which is exactly the state the b3chain testnet starts in)
+# `txInputs` is undefined and Object.keys() crashes BEFORE the
+# !coinbaseTx short-circuit. Guard the call so the template can
+# render block detail pages from genesis onward.
+PUG=$EXP_DIR/node_modules/btc-rpc-explorer/views/includes/shared-mixins.pug
+if [ -f "$PUG" ] && grep -q 'Object.keys(txInputs).length' "$PUG"; then
+    sed -i 's/Object.keys(txInputs).length/(txInputs ? Object.keys(txInputs).length : 0)/g' "$PUG"
+fi
+
 # 4. environment file (RPC creds, port, network selection)
 RPC_PASS="$(cat /etc/b3chain/rpcpassword)"
 cat > "$EXP_DIR/.config/btc-rpc-explorer.env" <<EOF
