@@ -64,16 +64,32 @@ fi
 install -d -o "$EXP_USER" -g "$EXP_USER" -m 750 "$EXP_DIR" "$EXP_DIR/.config"
 
 # 4. install / update btc-rpc-explorer into that home (no -g, keeps
-#    everything contained under /var/lib/b3chain-explorer)
-#    Pin to >=3.5.1 — earlier versions assume `getblockchaininfo.warnings`
-#    is a string, but Bitcoin Core 28+ (and B3Chain Core 30) returns it
-#    as an array, which crashes the node-details page.
+#    everything contained under /var/lib/b3chain-explorer).
+#
+#    npm only carries up to 3.4.0; the upstream tagged 3.5.1 on GitHub
+#    but never republished. We install directly from the GitHub tag so
+#    we get the post-Bitcoin-Core-28 fixes (in particular,
+#    `getblockchaininfo.warnings` was changed from a string to an array,
+#    which crashes the node-details page in 3.4.0).
+#
+#    Pin to a specific tag rather than #master so a re-run of this
+#    installer is reproducible.
+EXPLORER_REF=v3.5.1
 sudo -u "$EXP_USER" -H bash -c "
 set -e
 cd '$EXP_DIR'
-export npm_config_prefix='$EXP_DIR/.npm-global'
-mkdir -p \"\$npm_config_prefix\"
-npm install --prefix '$EXP_DIR' 'btc-rpc-explorer@>=3.5.1'
+# Wipe any prior install to avoid mixing 3.4.0 leftovers with 3.5.x.
+rm -rf node_modules package.json package-lock.json
+cat > package.json <<JSON
+{
+  \"name\": \"b3chain-explorer-host\",
+  \"private\": true,
+  \"dependencies\": {
+    \"btc-rpc-explorer\": \"github:janoside/btc-rpc-explorer#${EXPLORER_REF}\"
+  }
+}
+JSON
+npm install --prefix '$EXP_DIR' --no-audit --no-fund
 "
 
 EXP_BIN="$EXP_DIR/node_modules/.bin/btc-rpc-explorer"
