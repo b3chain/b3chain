@@ -63,14 +63,17 @@ if ! id -u "$EXP_USER" >/dev/null 2>&1; then
 fi
 install -d -o "$EXP_USER" -g "$EXP_USER" -m 750 "$EXP_DIR" "$EXP_DIR/.config"
 
-# 3. install / update btc-rpc-explorer into that home (no -g, keeps
+# 4. install / update btc-rpc-explorer into that home (no -g, keeps
 #    everything contained under /var/lib/b3chain-explorer)
+#    Pin to >=3.5.1 — earlier versions assume `getblockchaininfo.warnings`
+#    is a string, but Bitcoin Core 28+ (and B3Chain Core 30) returns it
+#    as an array, which crashes the node-details page.
 sudo -u "$EXP_USER" -H bash -c "
 set -e
 cd '$EXP_DIR'
 export npm_config_prefix='$EXP_DIR/.npm-global'
 mkdir -p \"\$npm_config_prefix\"
-npm install --prefix '$EXP_DIR' --silent btc-rpc-explorer
+npm install --prefix '$EXP_DIR' 'btc-rpc-explorer@>=3.5.1'
 "
 
 EXP_BIN="$EXP_DIR/node_modules/.bin/btc-rpc-explorer"
@@ -88,12 +91,14 @@ BTCEXP_BITCOIND_HOST=127.0.0.1
 BTCEXP_BITCOIND_PORT=18534
 BTCEXP_BITCOIND_USER=b3chain
 BTCEXP_BITCOIND_PASS=$RPC_PASS
-BTCEXP_DEMO=true
 BTCEXP_PRIVACY_MODE=true
 BTCEXP_NO_RATES=true
 BTCEXP_BASIC_AUTH_PASSWORD=
 BTCEXP_UI_HOME_PAGE_LATEST_BLOCKS_COUNT=10
 BTCEXP_UI_SHOW_TOOLS_SUBHEADER=false
+BTCEXP_DEMO=false
+BTCEXP_UI_HIDE_INFO_NOTES=true
+BTCEXP_SLOW_DEVICE_MODE=true
 BTCEXP_COIN=BTC
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
