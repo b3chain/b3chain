@@ -103,7 +103,18 @@ if [ "$NEEDS_BUILD" = "1" ]; then
     # CMake target names are inherited from upstream Bitcoin Core
     # (bitcoind, bitcoin-cli). The OUTPUT_NAME property renames the
     # produced binaries to b3chaind / b3chain-cli at link time.
-    cmake --build build -j"$(nproc)" --target bitcoind bitcoin-cli
+    #
+    # Pick a -j level that won't OOM on small VPS. Each cc1plus while
+    # compiling the big files (chainparams.cpp etc.) wants 800 MiB-1
+    # GiB of RAM. Use -j1 when there's less than ~2.5 GiB of RAM.
+    MEM_KB="$(awk '/^MemTotal:/{print $2}' /proc/meminfo)"
+    if [ "${MEM_KB:-0}" -lt 2621440 ]; then  # < 2.5 GiB
+        JOBS=1
+    else
+        JOBS="$(nproc)"
+    fi
+    echo "    building with -j$JOBS (RAM ${MEM_KB} kB)"
+    cmake --build build -j"$JOBS" --target bitcoind bitcoin-cli
     echo "$CURRENT_REV" > "$BUILD_REV_FILE"
 fi
 
