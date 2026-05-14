@@ -16,15 +16,12 @@ if ! systemctl is-active b3chaind-testnet >/dev/null; then
     exit 1
 fi
 
-# 1. Install dependencies
-apt-get update -y
-apt-get install -y --no-install-recommends python3-pip
-pip3 install --break-system-packages blake3 >/dev/null 2>&1 \
-    || pip3 install blake3
-
-# 2. Copy the miner script (from cloned source tree)
+# 1. Copy the miner loop script (from cloned source tree). It uses
+#    `b3chain-cli generatetoaddress` so no extra Python dependencies are
+#    required on the seed host.
 SRC=/usr/local/src/b3chain
-install -m 755 "$SRC/contrib/miner/b3chain-cpuminer.py" /usr/local/bin/b3chain-cpuminer.py
+install -m 755 "$SRC/contrib/testnet/miner/b3chain-testnet-miner.sh" \
+    /usr/local/bin/b3chain-testnet-miner.sh
 
 # 3. Create or load the miner wallet and a coinbase address
 RPC_PASS=$(cat /etc/b3chain/rpcpassword)

@@ -129,16 +129,25 @@ systemctl daemon-reload
 systemctl enable b3chain-explorer.service
 systemctl restart b3chain-explorer.service
 
-echo "==> waiting for explorer to be ready on 127.0.0.1:$EXP_PORT"
+echo "==> waiting for explorer HTTP to respond on 127.0.0.1:$EXP_PORT"
+# Accept any HTTP status code (including 5xx). On a brand-new chain
+# with zero blocks the home page renderer can throw because the
+# Bitcoin-flavoured templates assume some chain history; that's
+# cosmetic and goes away once the miner produces blocks. What we
+# care about is that the daemon is up and listening.
 for i in $(seq 1 30); do
-    if curl -sSf "http://127.0.0.1:$EXP_PORT/" -o /dev/null 2>/dev/null; then
-        echo "    explorer responding"
+    code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$EXP_PORT/" || echo "000")
+    if [ "$code" != "000" ] && [ "$code" != "" ]; then
+        echo "    explorer responding (HTTP $code)"
+        if [ "${code:0:1}" = "5" ]; then
+            echo "    note: HTTP 5xx is expected on an empty chain; will recover after first block."
+        fi
         echo "    add nginx vhost for explorer.b3chain.org reverse-proxying to 127.0.0.1:$EXP_PORT"
         exit 0
     fi
     sleep 2
 done
 
-echo "explorer did not start within 60s; last logs:" >&2
+echo "explorer did not respond within 60s; last logs:" >&2
 journalctl -u b3chain-explorer --no-pager -n 30 >&2
 exit 1
