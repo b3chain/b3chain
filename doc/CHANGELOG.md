@@ -12,7 +12,7 @@
 | Phase 5 | Branding and Binary Renaming | **COMPLETE** |
 | Phase 6 | Reference CPU Miner | **COMPLETE** |
 | Phase 7 | Testing and QA | **COMPLETE** |
-| Phase 8 | Deployment and Launch | Pending |
+| Phase 8 | Deployment and Launch | 8a (testnet bootstrap) **COMPLETE**; 8b (4-8 week soak) in progress; 8c (mainnet) pending |
 | Phase 9 | Wallets, CLI, and API | Inherited from Bitcoin Core |
 | Phase 10 | Maintenance and Upgrades | Ongoing |
 | Phase 11 | Security | Self-audit pass 1: **COMPLETE**; verification + inheritance + comparison + roadmap (pass 2): **COMPLETE**; external audit pending |
@@ -335,6 +335,66 @@ phase only adds evidence and tooling.
   this commit.
 - `python3 contrib/testing/audit/inject-tutorial.py` → idempotent on a
   second run (0 changed, 8 unchanged).
+
+---
+
+## Phase 8a: Testnet Bootstrap — COMPLETE
+
+The B3Chain public testnet is **live**. Anyone can join with
+`b3chaind -chain=test`; peer discovery is automatic via the operator-run
+seed cluster.
+
+### Code change
+
+- `src/kernel/chainparams.cpp::CTestNetParams` now wires
+  `vSeeds.emplace_back("testnet-seed.b3chain.org.")` and points
+  `vFixedSeeds` at the BIP155-encoded fallback list compiled in from
+  `contrib/seeds/nodes_test.txt`.
+- `contrib/seeds/nodes_test.txt` lists the three operator-run seeds:
+  `166.88.4.250:18533`, `151.158.1.22:18533`, `151.158.1.60:18533`.
+- `src/chainparamsseeds.h` regenerated.
+
+### Operations
+
+- `contrib/deploy/bootstrap-testnet-node.sh` — idempotent installer
+  that takes a fresh Ubuntu 22.04/24.04 host to a hardened
+  systemd-managed `b3chaind -chain=test`, with public P2P on `:18533`
+  and RPC bound to `127.0.0.1:18534`. Auto-scales `-j` by available
+  RAM and skips `cap'n proto` via `-DENABLE_IPC=OFF`.
+- `contrib/testnet/faucet/`   — Flask faucet (24 h cooldown per IP +
+  per address) + systemd unit + installer.
+- `contrib/testnet/miner/`    — always-on `b3chain-cpuminer.py`
+  systemd unit + installer; coinbase paid into the local `miner`
+  wallet.
+- `contrib/testnet/explorer/` — `btc-rpc-explorer` Docker installer
+  pointed at the local RPC.
+- `contrib/testnet/monitor/`  — cron-driven seed status snapshot
+  exported as `/testnet-status.txt`.
+
+### Live results
+
+- Three seed nodes running B3Chain Core 30.2.0 in two different
+  geographic regions, all peering with each other.
+- Genesis hash served by every seed:
+  `8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64`
+- DNS seed `testnet-seed.b3chain.org` (round-robin A record) lets new
+  nodes discover the cluster without any code change.
+- Tagged as `v0.1.0-testnet`.
+
+### Public docs
+
+- Connection guide: <https://b3chain.org/testnet.html>
+- Faucet (when DNS lands): <https://faucet.b3chain.org>
+- Block explorer (when DNS lands): <https://explorer.b3chain.org>
+
+### Phase 8b — soak period
+
+The chain now enters a 4-8 week soak. Things being watched:
+difficulty retarget cycles (every 2016 blocks), orphan rate, reorg
+events, wallet sync time from genesis on a fresh node, memory and
+disk growth on each seed. If a critical bug is found during soak the
+chain is reset; otherwise it continues into Phase 8c (mainnet
+launch).
 
 ---
 

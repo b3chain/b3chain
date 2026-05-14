@@ -9,6 +9,7 @@
 # src/kernel/chainparams.cpp::CTestNetParams; the entries here are the
 # fallback fixed-seed list used when DNS is unreachable.
 #
-# Phase 8a bootstrap (one operator-run seed; vps2/vps3 to be added when
-# provisioned).
-166.88.4.250:18533  # b3chain seed-1 (existing host, also runs nginx + miner + faucet + explorer)
+# Phase 8a bootstrap: three operator-run seeds.
+166.88.4.250:18533   # b3chain seed-1 (also runs nginx + miner + faucet + explorer)
+151.158.1.22:18533   # b3chain seed-2
+151.158.1.60:18533   # b3chain seed-3
