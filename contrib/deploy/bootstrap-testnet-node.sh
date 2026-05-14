@@ -85,7 +85,10 @@ git reset --hard "$REF" || true   # for branches we want HEAD; tags are detached
 if [ ! -x "$SRC/build/bin/b3chaind" ] || [ "$SRC/.git/HEAD" -nt "$SRC/build/bin/b3chaind" ]; then
     rm -rf build
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF
-    cmake --build build -j"$(nproc)" --target b3chaind b3chain-cli
+    # CMake target names are inherited from upstream Bitcoin Core
+    # (bitcoind, bitcoin-cli). The OUTPUT_NAME property renames the
+    # produced binaries to b3chaind / b3chain-cli at link time.
+    cmake --build build -j"$(nproc)" --target bitcoind bitcoin-cli
 fi
 
 install -m 755 "$SRC/build/bin/b3chaind"   /usr/local/bin/b3chaind
