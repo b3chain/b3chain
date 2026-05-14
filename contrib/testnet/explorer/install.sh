@@ -22,43 +22,41 @@ EXP_USER=b3chain-explorer
 EXP_DIR=/var/lib/b3chain-explorer
 EXP_PORT=3002
 
-# 1. Install Node.js (>=18). On Ubuntu 24.04+ the distro ships Node 20+
-#    which is fine; on older releases (22.04/Jammy etc.) we install the
-#    NodeSource 22 build, after purging any older Ubuntu nodejs/npm
-#    packages that would conflict on /usr/include/node/* with NodeSource.
-have_modern_node=0
+# 1. Install Node.js 20 LTS. We pin to 20 (not 22) because
+#    btc-rpc-explorer's optional zeromq native module fails to build
+#    against Node 22's V8 headers. Node 20 is the current LTS and is
+#    fully supported by btc-rpc-explorer.
+NODE_MAJOR=20
+need_install=1
 if command -v node >/dev/null; then
     nv="$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')"
-    if [[ "$nv" =~ ^[0-9]+$ && "$nv" -ge 18 ]]; then
-        have_modern_node=1
+    if [[ "$nv" =~ ^[0-9]+$ && "$nv" -ge 18 && "$nv" -le 20 ]]; then
+        need_install=0
     fi
 fi
 
-if [ "$have_modern_node" -eq 0 ]; then
-    if grep -q '^VERSION_ID="2[4-9]\.' /etc/os-release; then
-        # Ubuntu 24.04+ ships Node 20+: distro is fine.
-        apt-get update -y
-        apt-get install -y --no-install-recommends nodejs npm
-    else
-        # Older Ubuntu (jammy etc.): use NodeSource 22.x and clear any
-        # old nodejs to avoid /usr/include/node/* file conflicts.
-        apt-get update -y
-        apt-get install -y --no-install-recommends ca-certificates curl gnupg
-        # purge old nodejs/npm/libnode if present (jammy ships nodejs 12)
-        apt-get purge -y nodejs npm libnode-dev libnode72 'node-*' 2>/dev/null || true
-        apt-get autoremove -y || true
-        mkdir -p /etc/apt/keyrings
-        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-            | gpg --dearmor --batch --yes -o /etc/apt/keyrings/nodesource.gpg
-        echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
-            > /etc/apt/sources.list.d/nodesource.list
-        apt-get update -y
-        apt-get install -y --no-install-recommends nodejs
-    fi
+if [ "$need_install" -eq 1 ]; then
+    apt-get update -y
+    apt-get install -y --no-install-recommends ca-certificates curl gnupg
+    # purge any prior nodejs (Ubuntu's old nodejs OR NodeSource Node22)
+    # to avoid /usr/include/node/* file conflicts and V8 header skew.
+    apt-get purge -y nodejs npm libnode-dev libnode72 'node-*' 2>/dev/null || true
+    apt-get autoremove -y || true
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor --batch --yes -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list
+    apt-get update -y
+    apt-get install -y --no-install-recommends nodejs
 fi
 node -v
 
-# 2. dedicated user + home for the npm prefix and the .env file
+# 2. Build tools needed by node-gyp for any native modules (zeromq etc.)
+apt-get install -y --no-install-recommends \
+    build-essential python3 python3-dev make g++
+
+# 3. dedicated user + home for the npm prefix and the .env file
 if ! id -u "$EXP_USER" >/dev/null 2>&1; then
     useradd --system --create-home --home "$EXP_DIR" \
             --shell /usr/sbin/nologin "$EXP_USER"
