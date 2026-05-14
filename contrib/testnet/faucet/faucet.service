@@ -1,0 +1,30 @@
+[Unit]
+Description=B3Chain testnet faucet
+After=b3chaind-testnet.service network-online.target
+Wants=b3chaind-testnet.service
+
+[Service]
+Type=simple
+User=b3chain-faucet
+Group=b3chain-faucet
+WorkingDirectory=/usr/local/lib/b3chain-faucet
+EnvironmentFile=/etc/b3chain-faucet/faucet.env
+ExecStart=/usr/local/lib/b3chain-faucet/venv/bin/gunicorn \
+          --bind 127.0.0.1:5000 \
+          --workers 2 \
+          --timeout 30 \
+          --access-logfile /var/log/b3chain-faucet/access.log \
+          --error-logfile /var/log/b3chain-faucet/error.log \
+          app:app
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/b3chain-faucet /var/log/b3chain-faucet
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

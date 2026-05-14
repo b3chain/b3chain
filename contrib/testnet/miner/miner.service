@@ -1,0 +1,30 @@
+[Unit]
+Description=B3Chain testnet CPU miner
+After=b3chaind-testnet.service
+Wants=b3chaind-testnet.service
+
+[Service]
+Type=simple
+User=b3chain
+Group=b3chain
+WorkingDirectory=/var/lib/b3chain
+EnvironmentFile=/etc/b3chain/miner.env
+ExecStart=/usr/bin/python3 /usr/local/bin/b3chain-cpuminer.py \
+          --rpcconnect=127.0.0.1 \
+          --rpcport=18534 \
+          --rpcuser=${RPC_USER} \
+          --rpcpassword=${RPC_PASSWORD} \
+          --coinbaseaddr=${COINBASE_ADDR} \
+          --threads=1
+Restart=on-failure
+RestartSec=10
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/b3chain
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
