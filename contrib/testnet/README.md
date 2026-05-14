@@ -7,7 +7,7 @@ Operator-side scripts for running B3Chain testnet infrastructure.
 | `faucet/` | Flask service handing out test B3C, with rate limits |
 | `miner/` | Systemd unit + installer for the always-on CPU miner |
 | `monitor/` | Cron-based seed-status snapshot ⇒ b3chain.org/testnet-status.txt |
-| `explorer/` | Docker compose for btc-rpc-explorer at explorer.b3chain.org |
+| `explorer/` | Installs btc-rpc-explorer (Node.js, systemd) at explorer.b3chain.org |
 
 ## Install order on the seed-1 host
 

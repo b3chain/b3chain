@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Deploy btc-rpc-explorer (https://github.com/janoside/btc-rpc-explorer)
-# in a Docker container against the local b3chaind testnet RPC.
+# Install btc-rpc-explorer (https://github.com/janoside/btc-rpc-explorer)
+# from npm and run it under systemd, pointed at the local b3chaind
+# testnet RPC.
 #
 # Run as root on the seed-1 host AFTER b3chaind-testnet is bootstrapped
 # and answering RPC at 127.0.0.1:18534.
@@ -12,48 +13,123 @@ if [ "$EUID" -ne 0 ]; then
     exit 2
 fi
 
-# 1. Install Docker if missing
-if ! command -v docker >/dev/null; then
-    apt-get update -y
-    apt-get install -y --no-install-recommends docker.io
-    systemctl enable --now docker
+if ! systemctl is-active b3chaind-testnet >/dev/null; then
+    echo "b3chaind-testnet is not active; bootstrap the node first" >&2
+    exit 1
 fi
 
-# 2. RPC credentials from the b3chaind config
-RPC_PASS=$(cat /etc/b3chain/rpcpassword)
-RPC_USER=b3chain
+EXP_USER=b3chain-explorer
+EXP_DIR=/var/lib/b3chain-explorer
+EXP_PORT=3002
 
-# 3. Start (or replace) the explorer container
-docker rm -f b3chain-explorer 2>/dev/null || true
+# 1. Install Node.js (>=18) and npm. Use the distro package on Ubuntu
+#    24.04 (ships Node.js 20+); fall back to the NodeSource 22 repo on
+#    older distros.
+if ! command -v node >/dev/null \
+   || [[ "$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')" -lt 18 ]]; then
+    if grep -q '^VERSION_ID="2[24]\.' /etc/os-release; then
+        apt-get update -y
+        apt-get install -y --no-install-recommends nodejs npm
+    fi
+    if ! command -v node >/dev/null \
+       || [[ "$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')" -lt 18 ]]; then
+        # NodeSource 22.x (covers Jammy and older)
+        apt-get update -y
+        apt-get install -y --no-install-recommends ca-certificates curl gnupg
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+            | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+            > /etc/apt/sources.list.d/nodesource.list
+        apt-get update -y
+        apt-get install -y --no-install-recommends nodejs
+    fi
+fi
+node -v
 
-docker run -d \
-    --name b3chain-explorer \
-    --restart unless-stopped \
-    --network host \
-    -e BTCEXP_HOST=127.0.0.1 \
-    -e BTCEXP_PORT=3002 \
-    -e BTCEXP_BITCOIND_HOST=127.0.0.1 \
-    -e BTCEXP_BITCOIND_PORT=18534 \
-    -e BTCEXP_BITCOIND_USER="$RPC_USER" \
-    -e BTCEXP_BITCOIND_PASS="$RPC_PASS" \
-    -e BTCEXP_COIN=BTC \
-    -e BTCEXP_DEMO=true \
-    -e BTCEXP_PRIVACY_MODE=false \
-    -e BTCEXP_NO_RATES=true \
-    -e BTCEXP_BASIC_AUTH_PASSWORD="" \
-    -e BTCEXP_UI_HOME_PAGE_LATEST_BLOCKS_COUNT=10 \
-    janoside/btc-rpc-explorer:latest
+# 2. dedicated user + home for the npm prefix and the .env file
+if ! id -u "$EXP_USER" >/dev/null 2>&1; then
+    useradd --system --create-home --home "$EXP_DIR" \
+            --shell /usr/sbin/nologin "$EXP_USER"
+fi
+install -d -o "$EXP_USER" -g "$EXP_USER" -m 750 "$EXP_DIR" "$EXP_DIR/.config"
 
-echo "==> waiting for explorer to be ready"
+# 3. install / update btc-rpc-explorer into that home (no -g, keeps
+#    everything contained under /var/lib/b3chain-explorer)
+sudo -u "$EXP_USER" -H bash -c "
+set -e
+cd '$EXP_DIR'
+export npm_config_prefix='$EXP_DIR/.npm-global'
+mkdir -p \"\$npm_config_prefix\"
+npm install --prefix '$EXP_DIR' --silent btc-rpc-explorer
+"
+
+EXP_BIN="$EXP_DIR/node_modules/.bin/btc-rpc-explorer"
+if [ ! -x "$EXP_BIN" ]; then
+    echo "btc-rpc-explorer binary not found at $EXP_BIN" >&2
+    exit 1
+fi
+
+# 4. environment file (RPC creds, port, network selection)
+RPC_PASS="$(cat /etc/b3chain/rpcpassword)"
+cat > "$EXP_DIR/.config/btc-rpc-explorer.env" <<EOF
+BTCEXP_HOST=127.0.0.1
+BTCEXP_PORT=$EXP_PORT
+BTCEXP_BITCOIND_HOST=127.0.0.1
+BTCEXP_BITCOIND_PORT=18534
+BTCEXP_BITCOIND_USER=b3chain
+BTCEXP_BITCOIND_PASS=$RPC_PASS
+BTCEXP_DEMO=true
+BTCEXP_PRIVACY_MODE=true
+BTCEXP_NO_RATES=true
+BTCEXP_BASIC_AUTH_PASSWORD=
+BTCEXP_UI_HOME_PAGE_LATEST_BLOCKS_COUNT=10
+BTCEXP_UI_SHOW_TOOLS_SUBHEADER=false
+BTCEXP_COIN=BTC
+EOF
+chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
+chmod 640 "$EXP_DIR/.config/btc-rpc-explorer.env"
+
+# 5. systemd unit
+cat > /etc/systemd/system/b3chain-explorer.service <<EOF
+[Unit]
+Description=B3Chain testnet block explorer (btc-rpc-explorer)
+After=network-online.target b3chaind-testnet.service
+Wants=network-online.target
+Requires=b3chaind-testnet.service
+
+[Service]
+Type=simple
+User=$EXP_USER
+Group=$EXP_USER
+WorkingDirectory=$EXP_DIR
+ExecStart=$EXP_BIN
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=$EXP_DIR
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable b3chain-explorer.service
+systemctl restart b3chain-explorer.service
+
+echo "==> waiting for explorer to be ready on 127.0.0.1:$EXP_PORT"
 for i in $(seq 1 30); do
-    if curl -sSf http://127.0.0.1:3002/api/blockchain/coins -o /dev/null 2>/dev/null \
-       || curl -sSf http://127.0.0.1:3002/ -o /dev/null 2>/dev/null; then
-        echo "    explorer responding on 127.0.0.1:3002"
-        echo "    add nginx vhost for explorer.b3chain.org reverse-proxying to 127.0.0.1:3002"
+    if curl -sSf "http://127.0.0.1:$EXP_PORT/" -o /dev/null 2>/dev/null; then
+        echo "    explorer responding"
+        echo "    add nginx vhost for explorer.b3chain.org reverse-proxying to 127.0.0.1:$EXP_PORT"
         exit 0
     fi
     sleep 2
 done
 
-echo "explorer did not start within 60s — check 'docker logs b3chain-explorer'" >&2
+echo "explorer did not start within 60s; last logs:" >&2
+journalctl -u b3chain-explorer --no-pager -n 30 >&2
 exit 1
