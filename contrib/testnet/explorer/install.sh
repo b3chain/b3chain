@@ -22,23 +22,34 @@ EXP_USER=b3chain-explorer
 EXP_DIR=/var/lib/b3chain-explorer
 EXP_PORT=3002
 
-# 1. Install Node.js (>=18) and npm. Use the distro package on Ubuntu
-#    24.04 (ships Node.js 20+); fall back to the NodeSource 22 repo on
-#    older distros.
-if ! command -v node >/dev/null \
-   || [[ "$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')" -lt 18 ]]; then
-    if grep -q '^VERSION_ID="2[24]\.' /etc/os-release; then
+# 1. Install Node.js (>=18). On Ubuntu 24.04+ the distro ships Node 20+
+#    which is fine; on older releases (22.04/Jammy etc.) we install the
+#    NodeSource 22 build, after purging any older Ubuntu nodejs/npm
+#    packages that would conflict on /usr/include/node/* with NodeSource.
+have_modern_node=0
+if command -v node >/dev/null; then
+    nv="$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')"
+    if [[ "$nv" =~ ^[0-9]+$ && "$nv" -ge 18 ]]; then
+        have_modern_node=1
+    fi
+fi
+
+if [ "$have_modern_node" -eq 0 ]; then
+    if grep -q '^VERSION_ID="2[4-9]\.' /etc/os-release; then
+        # Ubuntu 24.04+ ships Node 20+: distro is fine.
         apt-get update -y
         apt-get install -y --no-install-recommends nodejs npm
-    fi
-    if ! command -v node >/dev/null \
-       || [[ "$(node -v 2>/dev/null | awk -F. '{print substr($1,2)}')" -lt 18 ]]; then
-        # NodeSource 22.x (covers Jammy and older)
+    else
+        # Older Ubuntu (jammy etc.): use NodeSource 22.x and clear any
+        # old nodejs to avoid /usr/include/node/* file conflicts.
         apt-get update -y
         apt-get install -y --no-install-recommends ca-certificates curl gnupg
+        # purge old nodejs/npm/libnode if present (jammy ships nodejs 12)
+        apt-get purge -y nodejs npm libnode-dev libnode72 'node-*' 2>/dev/null || true
+        apt-get autoremove -y || true
         mkdir -p /etc/apt/keyrings
         curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-            | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+            | gpg --dearmor --batch --yes -o /etc/apt/keyrings/nodesource.gpg
         echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
             > /etc/apt/sources.list.d/nodesource.list
         apt-get update -y
