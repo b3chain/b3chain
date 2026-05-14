@@ -82,13 +82,23 @@ git fetch --tags --prune origin
 git checkout "$REF"
 git reset --hard "$REF" || true   # for branches we want HEAD; tags are detached and reset is a no-op
 
-if [ ! -x "$SRC/build/bin/b3chaind" ] || [ "$SRC/.git/HEAD" -nt "$SRC/build/bin/b3chaind" ]; then
-    rm -rf build
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF
+CURRENT_REV="$(git rev-parse HEAD)"
+BUILD_REV_FILE="$SRC/build/.built-rev"
+NEEDS_BUILD=1
+if [ -x "$SRC/build/bin/b3chaind" ] \
+   && [ -f "$BUILD_REV_FILE" ] \
+   && [ "$(cat "$BUILD_REV_FILE")" = "$CURRENT_REV" ]; then
+    NEEDS_BUILD=0
+fi
+if [ "$NEEDS_BUILD" = "1" ]; then
+    if [ ! -d build ]; then
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF
+    fi
     # CMake target names are inherited from upstream Bitcoin Core
     # (bitcoind, bitcoin-cli). The OUTPUT_NAME property renames the
     # produced binaries to b3chaind / b3chain-cli at link time.
     cmake --build build -j"$(nproc)" --target bitcoind bitcoin-cli
+    echo "$CURRENT_REV" > "$BUILD_REV_FILE"
 fi
 
 install -m 755 "$SRC/build/bin/b3chaind"   /usr/local/bin/b3chaind
