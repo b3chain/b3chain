@@ -32,9 +32,12 @@ RPC_USER=b3chain
 RPC_URL=http://127.0.0.1:18534
 
 rpc() {
+    local method="$1"
+    local params="${2:-[]}"
+    local path="${3:-/}"
     curl -s --user "$RPC_USER:$RPC_PASS" \
-         --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"miner\",\"method\":\"$1\",\"params\":${2:-[]}}" \
-         -H 'content-type: application/json' "$RPC_URL$3"
+         --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"miner\",\"method\":\"$method\",\"params\":$params}" \
+         -H 'content-type: application/json' "$RPC_URL$path"
 }
 
 wallets=$(rpc listwallets | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["result"]))')
