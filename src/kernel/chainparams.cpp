@@ -222,8 +222,13 @@ public:
         assert(consensus.hashGenesisBlock == uint256{"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"});
         assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
 
-        vFixedSeeds.clear();
+        // Phase 8a testnet bootstrap: DNS seed (round-robin A record
+        // returning the operator-run seed nodes) plus the BIP155-encoded
+        // fixed seed list compiled in from contrib/seeds/nodes_test.txt
+        // for clients that cannot reach DNS.
         vSeeds.clear();
+        vSeeds.emplace_back("testnet-seed.b3chain.org.");
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
