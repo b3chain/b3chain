@@ -114,7 +114,9 @@ BTCEXP_UI_HOME_PAGE_LATEST_BLOCKS_COUNT=10
 BTCEXP_UI_SHOW_TOOLS_SUBHEADER=false
 BTCEXP_DEMO=false
 BTCEXP_UI_HIDE_INFO_NOTES=true
-BTCEXP_SLOW_DEVICE_MODE=true
+# Keep slow-device mode OFF: it makes the block detail page render
+# without txInputs which crashes the upstream pug template.
+BTCEXP_SLOW_DEVICE_MODE=false
 BTCEXP_COIN=BTC
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
