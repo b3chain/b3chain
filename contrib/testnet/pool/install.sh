@@ -275,10 +275,24 @@ fi
 #      expires (or when the underlying static key was rotated by the
 #      operator). Cert is published into WEBROOT so miners can fetch
 #      ${POOL_DOMAIN}/sv2/cert with no TLS bootstrapping required.
-SV2_KEYS_OUT=$(sudo -u "$POOL_USER" bash -lc \
-    "cd $APP_DIR && env $NPM_ENV bash -c 'set -a && . $CFG_DIR/pool.env && set +a && npm run --silent sv2-keys'")
+#
+#      Runs as root (not $POOL_USER) because $CFG_DIR is 750
+#      root:$POOL_USER -- the pool user can READ keys at runtime but
+#      only root can write/rotate them. After generation we chown +
+#      chmod the files to 640 root:$POOL_USER so the runtime services
+#      can still load them.
+SV2_KEYS_OUT=$(env $NPM_ENV bash -c \
+    "cd $APP_DIR && set -a && . $CFG_DIR/pool.env && set +a && npm run --silent sv2-keys")
 SV2_CERT_FILE=$(echo "$SV2_KEYS_OUT" | jq -r '.certFile')
 SV2_AUTHORITY_HEX=$(echo "$SV2_KEYS_OUT" | jq -r '.authorityPub')
+SV2_AUTHORITY_KEY_FILE=$(echo "$SV2_KEYS_OUT" | jq -r '.authorityKeyFile')
+SV2_STATIC_KEY_FILE=$(echo "$SV2_KEYS_OUT" | jq -r '.staticKeyFile')
+for f in "$SV2_AUTHORITY_KEY_FILE" "$SV2_STATIC_KEY_FILE" "$SV2_CERT_FILE"; do
+    if [ -n "$f" ] && [ "$f" != "null" ] && [ -e "$f" ]; then
+        chown root:"$POOL_USER" "$f"
+        chmod 640 "$f"
+    fi
+done
 if [ -f "$SV2_CERT_FILE" ]; then
     install -d -m 755 "$WEBROOT/sv2"
     install -m 644 "$SV2_CERT_FILE" "$WEBROOT/sv2/cert"

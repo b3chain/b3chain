@@ -52,6 +52,8 @@ function main(): void {
         validFrom: cert.validFrom,
         notValidAfter: cert.notValidAfter,
         certFile: cfg.certFile,
+        authorityKeyFile: cfg.authorityKeyFile,
+        staticKeyFile: cfg.staticKeyFile,
     }, null, 2));
     process.stdout.write("\n");
 }
