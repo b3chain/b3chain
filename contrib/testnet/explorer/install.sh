@@ -161,6 +161,67 @@ if [ -f "$APPJS" ] && grep -q '/Satoshi\\:' "$APPJS"; then
     sed -i 's#/Satoshi\\:#/(?:Satoshi|B3Chain)\\:#' "$APPJS"
 fi
 
+# 5c. Pug-template rebrand. The B3C coin-config patches above only
+# affect strings that the explorer reads from coinConfig at request
+# time. A second wave is needed for strings that are hardcoded in the
+# pug templates: the masthead, og/twitter meta tags, the currency
+# picker, the footer, the donate/twitter buttons, the "Bitcoin Core"
+# / "Bitcoiners" copy, and the BTC unit string in shared mixins.
+LAYOUT=$EXP_DIR/node_modules/btc-rpc-explorer/views/layout.pug
+IFRAME=$EXP_DIR/node_modules/btc-rpc-explorer/views/layout-iframe.pug
+HOMEPAGE=$EXP_DIR/node_modules/btc-rpc-explorer/views/index.pug
+SHARED=$EXP_DIR/node_modules/btc-rpc-explorer/views/includes/shared-mixins.pug
+ERRORPG=$EXP_DIR/node_modules/btc-rpc-explorer/views/error.pug
+BLKSTAT=$EXP_DIR/node_modules/btc-rpc-explorer/views/block-stats.pug
+MINSUM=$EXP_DIR/node_modules/btc-rpc-explorer/views/mining-summary.pug
+
+for L in "$LAYOUT" "$IFRAME"; do
+    [ -f "$L" ] || continue
+    # Footer link MUST be replaced BEFORE the generic href sed below,
+    # otherwise the generic sed strips the "https://bitcoinexplorer.org"
+    # substring out of the href= attribute and the more-specific pattern
+    # below no longer matches.
+    sed -i 's|"https://bitcoinexplorer\.org") https://bitcoinexplorer\.org|"https://github.com/b3chain/b3chain") github.com/b3chain/b3chain|g' "$L"
+    # Masthead / brand strings
+    sed -i 's|span\.fw-light Bitcoin Explorer|span.fw-light B3Chain Explorer|g' "$L"
+    sed -i 's|"Open-source, easy-to-use, educational Bitcoin explorer whose only dependency is your Bitcoin Core node\."|"Open-source B3Chain block explorer."|g' "$L"
+    sed -i 's|"BitcoinExplorer\.org - Open-Source Bitcoin Explorer"|"B3Chain Explorer"|g' "$L"
+    sed -i 's|"BitcoinExplorer\.org"|"B3Chain Explorer"|g' "$L"
+    sed -i 's|"https://bitcoinexplorer\.org"|"https://explorer.b3chain.org"|g' "$L"
+    sed -i 's|"https://bitcoinexplorer\.org/img/preview\.png"|"https://b3chain.org/img/preview.png"|g' "$L"
+    sed -i 's|"bitcoinexplorer\.org"|"explorer.b3chain.org"|g' "$L"
+    sed -i 's|"@BitcoinExplorer"|"@b3chain"|g' "$L"
+    sed -i 's|"BTC Explorer"|"B3C Explorer"|g' "$L"
+    sed -i 's|all Bitcoiners|all B3Chain users|g' "$L"
+done
+
+# layout.pug-only: currency picker BTC -> B3C
+[ -f "$LAYOUT" ] && sed -i 's|var items = \["BTC", "sat"\]|var items = ["B3C", "sat"]|g' "$LAYOUT"
+
+# Strip the bitcoinexplorer-specific donate / twitter buttons from
+# layout.pug footer (each is "a.text-* (...)" line + 1 indented icon).
+[ -f "$LAYOUT" ] && sed -i '/donate\.bitcoinexplorer\.org/,+1d' "$LAYOUT"
+[ -f "$LAYOUT" ] && sed -i '/twitter\.com\/BitcoinExplorer/,+1d' "$LAYOUT"
+
+# index.pug (home-page welcome banner)
+if [ -f "$HOMEPAGE" ]; then
+    sed -i 's|title Bitcoin Explorer|title B3Chain Explorer|g' "$HOMEPAGE"
+    sed -i 's|h5 Bitcoin Explorer|h5 B3Chain Explorer|g' "$HOMEPAGE"
+    sed -i 's|Made for Bitcoiners by Bitcoiners\. Enjoy!|Made for B3Chain. Enjoy!|g' "$HOMEPAGE"
+    # Each of the donate/twitter button blocks is "a.btn..." line + 2
+    # indented sub-lines (icon + text).
+    sed -i '/donate\.bitcoinexplorer\.org/,+2d' "$HOMEPAGE"
+    sed -i '/twitter\.com\/BitcoinExplorer/,+2d' "$HOMEPAGE"
+fi
+
+# shared-mixins.pug: BTC -> B3C in the formatted-currency tooltip strings
+[ -f "$SHARED" ] && sed -i 's|simpleVal} BTC|simpleVal} B3C|g' "$SHARED"
+
+# Other pages that reference the upstream daemon name
+for F in "$ERRORPG" "$BLKSTAT" "$MINSUM"; do
+    [ -f "$F" ] && sed -i 's|Bitcoin Core|B3Chain Core|g' "$F"
+done
+
 # Difficulty-Δ window cap. On a fresh chain the era-start header (the
 # block at the start of the current difficulty epoch) is genesis,
 # which can be months earlier than the first mined block. The
