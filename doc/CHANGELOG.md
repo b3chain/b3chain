@@ -91,14 +91,47 @@ merkle tree structure, and transaction ID format.
   - Multi-threaded mining support
   - Hash rate benchmarking mode (~1.4 MH/s single-thread)
 - **Mining documentation**: `doc/mining.md`
-  - BLAKE3 test vectors
-  - `getblocktemplate` workflow
-  - Stratum protocol notes for pool implementers
-  - Network port reference
+  - PoW algorithm overview and 80-byte header layout
+  - `getblocktemplate` workflow + Python pseudocode
+  - Reference CPU miner usage
+  - Performance considerations and difficulty adjustment
+- **Stratum / pool implementer guide**: `doc/stratum.md`
+  - Authoritative pool-side PoW computation contract
+  - BLAKE3 single-hash, double-hash, and 80-byte block-header test vectors
+  - Stratum protocol differences from Bitcoin (share validation, block
+    submission, extranonce, default ports)
+  - Reference to the official BLAKE3 specification
 - **PoW design document**: `doc/b3chain-pow-design.md`
   - Dual-hash architecture rationale
   - SIMD acceleration details
   - Security considerations
+
+### Phase 6.1 verification (added 2026-05-15)
+
+Tier-3 verification artifacts for the internal miner (`generatetoaddress`,
+`generatetodescriptor`, `generateblock`) prove that `GenerateBlock()`'s
+nonce loop in `src/rpc/mining.cpp:142` calls
+`CheckProofOfWork(block.GetPoWHash(), ...)` rather than
+`CheckProofOfWork(block.GetHash(), ...)`:
+
+- **Master checklist**: [`doc/PHASE-6-VERIFICATION.md`](PHASE-6-VERIFICATION.md)
+  with one row per check (comment-to-code mapping, loop location, bypass-path
+  enumeration, end-to-end live-regtest re-derivation).
+- **Verifier**: [`contrib/testing/audit/audit-internal-miner.sh`](../contrib/testing/audit/audit-internal-miner.sh)
+  runs all four checks and rewrites the status column of the master
+  checklist in place. Supports `--static`, `--e2e-only`, and `--dry-run`.
+- **End-to-end helper**: [`contrib/testing/audit/audit-internal-miner-e2e.py`](../contrib/testing/audit/audit-internal-miner-e2e.py)
+  spawns an isolated regtest `b3chaind`, mines 5 blocks via each of the
+  three internal-miner RPCs, then independently re-derives BLAKE3d and
+  SHA-256d for every produced header in Python and asserts the dual-hash
+  invariants block by block.
+- **Audit index**: row `M-1` added to [`doc/SECURITY-AUDIT.md`](SECURITY-AUDIT.md);
+  the new script is also invoked from
+  [`contrib/testing/audit/verify-phase11.sh`](../contrib/testing/audit/verify-phase11.sh)
+  so a single command continues to validate the full audit suite.
+
+The verification artifacts add no consensus or production code; Phase 6
+remains COMPLETE.
 
 ## Phase 7: Testing and QA
 
@@ -367,15 +400,58 @@ seed cluster.
   systemd unit + installer; coinbase paid into the local `miner`
   wallet.
 - `contrib/testnet/explorer/` — `btc-rpc-explorer` v3.5.1 from upstream
-  GitHub, run as a Node.js systemd unit. The installer applies in-place
-  rebrand patches so the UI reads "B3Chain" / "B3C" instead of
-  "Bitcoin" / "BTC", widens the version regex to accept both
-  `/Satoshi:.../` and `/B3Chain:.../` subversion strings, swaps the
-  three genesis hashes (mainnet/test/regtest) to B3Chain values,
-  strips upstream Bitcoin mining-pool registry URLs, and neutralizes
-  the bundled Bitcoin "fun" timeline. Includes a defensive `pug`
-  template guard for coinbase-only blocks (avoids
-  `Object.keys(undefined)` crash on a fresh chain).
+  GitHub, run as a Node.js systemd unit. The installer applies a
+  layered set of in-place patches so the UI reads "B3Chain" / "B3C"
+  instead of "Bitcoin" / "BTC":
+  - `app/coins/btc.js`: brand name, ticker, currency-unit *display*
+    names (`name:` field only — internal lookup keys are left as
+    "btc"/"BTC" so upstream code paths that round-trip the value
+    keep working), per-network site titles, demo-site cross-links,
+    mainnet color, genesis hashes; mining-pool registry URLs are
+    deleted to avoid 30 s startup hangs against
+    `raw.githubusercontent.com`.
+  - `app/currencies.js`: rename `name:"BTC"` → `"B3C"` on the "btc"
+    entry of `global.currencyTypes`, and install a `b3c → btc` alias
+    so templates that re-look-up the unit (e.g.
+    `views/includes/index-network-summary.pug:307`) keep working.
+  - `app.js`: widen the daemon-subversion regex to accept both
+    `/Satoshi:.../` and `/B3Chain:.../`.
+  - `views/layout.pug` + `views/layout-iframe.pug`: rebrand
+    masthead, og/twitter meta, canonical URL, currency picker
+    (label-only), apple-mobile-web-app-title, footer link to
+    `github.com/b3chain/b3chain`; strip the upstream donate +
+    twitter footer buttons; rename the "Bitcoin Quote of the Day"
+    iframe title.
+  - `views/index.pug`, `views/error.pug`, `views/block-stats.pug`,
+    `views/mining-summary.pug`: rebrand "Bitcoin Core" daemon refs
+    to "B3Chain Core" and the welcome banner to "Made for
+    B3Chain".
+  - `views/includes/shared-mixins.pug`: defensive guard for
+    coinbase-only blocks (avoids `Object.keys(undefined)` crash on a
+    fresh chain) + tooltip BTC → B3C rebrand.
+  - `routes/baseRouter.js`: cap the difficulty-Δ averaging window
+    to the last 100 blocks so the home-page prediction reflects
+    recent mining velocity instead of the months-long
+    genesis-to-first-block gap.
+  - `app/coins/btcFun.js`: replace upstream Bitcoin-history events
+    with `module.exports = { items: [] }`.
+- `contrib/testnet/faucet/topup.sh` (new) + cron entry — the faucet
+  wallet auto-tops-up from the `miner` wallet when its balance falls
+  below threshold. The send call pins `fee_rate=1 sat/vB` as a
+  defensive fallback so it succeeds even when `estimatesmartfee` has
+  no data on a young chain.
+- `contrib/deploy/bootstrap-testnet-node.sh` now writes
+  `fallbackfee=0.00001` into the auto-generated `b3chain.conf`
+  `[test]` section. Without it, every wallet `sendtoaddress` on a
+  fresh chain fails with `Fee estimation failed. Fallbackfee is
+  disabled.`
+- `contrib/deploy/bootstrap-testnet-node.sh` and
+  `contrib/deploy/fail2ban-tune.sh` (new) install + harden
+  `fail2ban`: `maxretry=10`, `bantime=5m`, automatic allow-list of
+  `127.0.0.1/8` + the host's RFC1918 addresses + any
+  `--ignore-ip` operator IPs. The longer ban window of the upstream
+  default had locked the operator out of seed1 during initial
+  deployment.
 - `contrib/testnet/monitor/`  — cron-driven seed status snapshot
   exported as `/testnet-status.txt`. Polls all three seeds: seed1 via
   loopback RPC, seed2 + seed3 over a dedicated SSH key
@@ -428,7 +504,8 @@ contrib/
 
 doc/
   b3chain-pow-design.md       # PoW design document
-  mining.md                   # Mining and stratum documentation
+  mining.md                   # Mining workflow + reference CPU miner
+  stratum.md                  # Pool implementer contract (PoW + test vectors + BLAKE3 spec)
   CHANGELOG.md                # This file
 
 src/crypto/blake3/            # Vendored BLAKE3 library (C + x86-64 ASM)
