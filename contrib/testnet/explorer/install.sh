@@ -164,6 +164,36 @@ if [ -f "$APPJS" ] && grep -q '/Satoshi\\:' "$APPJS"; then
     sed -i 's#/Satoshi\\:#/(?:Satoshi|B3Chain)\\:#' "$APPJS"
 fi
 
+# Rate-limiter skip list: upstream excludes "/api/" and "/snippet/" from
+# the per-IP rate limit but NOT "/internal-api/" (the substring "/api/"
+# does not appear inside "/internal-api/" because of the missing leading
+# slash). The mempool-summary page polls /internal-api/mempool-summary-status
+# every 125ms; that's ~8 req/s, which trips the default 200-req/15-min
+# limit in ~25s and causes /internal-api/build-mempool-summary itself
+# to be 429'd, leaving the page stuck on "Failed loading mempool: error".
+# Whitelist /internal-api/ the same way /api/ already is.
+if [ -f "$APPJS" ] && ! grep -q 'req.originalUrl.includes("/internal-api/")' "$APPJS"; then
+    sed -i 's#req\.originalUrl\.includes("/api/")#req.originalUrl.includes("/api/") || req.originalUrl.includes("/internal-api/")#' "$APPJS"
+fi
+
+# Defensive patch for an upstream empty-mempool crash in
+# coreApi.js#buildMempoolSummary. On a chain with zero mempool entries
+# `summary.totalWeight` ends at 0, so the normalization loop's
+# `totWeight / summary.totalWeight * 100 > topTargetPercent` evaluates
+# to `NaN > 0.25` (false) for every iteration, and `topIndex` stays at
+# its initial -1. The next statement does
+#     satoshiPerByteBuckets[topIndex].buckets = 0;
+# which throws `TypeError: Cannot set properties of undefined (setting
+# 'buckets')`. The /internal-api/build-mempool-summary route catches
+# the error but never sends a response, leaving the AJAX call hanging
+# until the client gives up with "Failed loading mempool: error".
+# Add the missing `topIndex >= 0` guard so an empty mempool just
+# returns count=0 and the page renders the empty-state view.
+COREAPI=$EXP_DIR/node_modules/btc-rpc-explorer/app/api/coreApi.js
+if [ -f "$COREAPI" ] && grep -qF 'if (topIndex < satoshiPerByteBuckets.length) {' "$COREAPI"; then
+    sed -i 's|if (topIndex < satoshiPerByteBuckets.length) {|if (topIndex >= 0 \&\& topIndex < satoshiPerByteBuckets.length) {|' "$COREAPI"
+fi
+
 # global.currencyTypes lives in app/currencies.js (NOT btc.js).
 # `formatCurrencyAmount` does `global.currencyTypes[formatType.toLowerCase()]`
 # and uses `.name` for the displayed unit. Patch the "btc" entry's
@@ -353,10 +383,14 @@ if [ -d "$OVERLAY_SRC" ]; then
     cp -f "$OVERLAY_SRC/app/services/b3-daily-aggregator.js"  "$OVERLAY_DST/app/services/b3-daily-aggregator.js"
     cp -f "$OVERLAY_SRC/views/b3-charts/index.pug"            "$OVERLAY_DST/views/b3-charts/index.pug"
     cp -f "$OVERLAY_SRC/views/b3-charts/chart-detail.pug"     "$OVERLAY_DST/views/b3-charts/chart-detail.pug"
+    cp -f "$OVERLAY_SRC/views/transaction.pug"                "$OVERLAY_DST/views/transaction.pug"
+    cp -f "$OVERLAY_SRC/views/address.pug"                    "$OVERLAY_DST/views/address.pug"
     cp -f "$OVERLAY_SRC/public/css/b3-theme.css"              "$OVERLAY_DST/public/css/b3-theme.css"
     cp -f "$OVERLAY_SRC/public/js/b3-charts.js"               "$OVERLAY_DST/public/js/b3-charts.js"
     chown -R "$EXP_USER:$EXP_USER" \
         "$OVERLAY_DST/views/b3-charts" \
+        "$OVERLAY_DST/views/transaction.pug" \
+        "$OVERLAY_DST/views/address.pug" \
         "$OVERLAY_DST/app/services/b3-chart-defs.js" \
         "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
@@ -373,10 +407,12 @@ if [ -d "$OVERLAY_SRC" ]; then
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
         "$OVERLAY_DST/views/b3-charts/index.pug" \
         "$OVERLAY_DST/views/b3-charts/chart-detail.pug" \
+        "$OVERLAY_DST/views/transaction.pug" \
+        "$OVERLAY_DST/views/address.pug" \
         "$OVERLAY_DST/public/css/b3-theme.css" \
         "$OVERLAY_DST/public/js/b3-charts.js"
 else
-    echo "WARNING: overlay source $OVERLAY_SRC not found; charts will be unavailable" >&2
+    echo "WARNING: overlay source $OVERLAY_SRC not found; charts/tx/address overlay will be unavailable" >&2
 fi
 
 # 5e. wire the overlay into app.js (idempotent)
@@ -408,7 +444,10 @@ BTCEXP_BITCOIND_HOST=127.0.0.1
 BTCEXP_BITCOIND_PORT=18534
 BTCEXP_BITCOIND_USER=b3chain
 BTCEXP_BITCOIND_PASS=$RPC_PASS
-BTCEXP_PRIVACY_MODE=true
+# Privacy mode must be OFF for the Electrum addressApi to be hit on the
+# /address pages. Both electrs and the explorer run on this same host,
+# so there is no third-party data leak.
+BTCEXP_PRIVACY_MODE=false
 BTCEXP_NO_RATES=true
 BTCEXP_BASIC_AUTH_PASSWORD=
 BTCEXP_UI_HOME_PAGE_LATEST_BLOCKS_COUNT=10
@@ -423,6 +462,14 @@ BTCEXP_SLOW_DEVICE_MODE=false
 BTCEXP_COIN=BTC
 # Site title shown in browser tab + masthead
 BTCEXP_SITE_TITLE=B3Chain Testnet Explorer
+# Address API: talk to local electrs (Electrum Rust Server) for the
+# per-address balance and tx-history shown on /address/<addr>. electrs
+# is installed by contrib/testnet/electrs/install.sh and listens on
+# 127.0.0.1:50001. When electrs is not yet installed/synced, the explorer
+# gracefully falls back to "Tx history unavailable" on the address page;
+# all other pages are unaffected.
+BTCEXP_ADDRESS_API=electrum
+BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
 chmod 640 "$EXP_DIR/.config/btc-rpc-explorer.env"

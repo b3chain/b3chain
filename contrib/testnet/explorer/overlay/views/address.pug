@@ -1,0 +1,157 @@
+extends layout
+
+include includes/shared-mixins
+include includes/tx-mixins
+
+block headContent
+	title Address #{address}
+
+mixin b3MetaRow(label, value, copyable=false)
+	.b3-tx-meta__label= label
+	.b3-tx-meta__value
+		span= value
+		if (copyable && value)
+			+copyTextButton(value)
+
+mixin b3AddrStat(label, sats, tone)
+	.b3-addr-stat
+		.b3-addr-stat__label= label
+		.b3-addr-stat__value(class=("b3-addr-stat__value--" + (tone || "ink")))
+			if (sats == null || sats === undefined)
+				span.text-muted ?
+			else
+				- var s = (typeof sats === "string") ? parseInt(sats) : sats;
+				- var currencyValue = new Decimal(Math.abs(s)).dividedBy(coinConfig.baseCurrencyUnit.multiplier);
+				+valueDisplay(currencyValue)
+
+mixin b3AddrCountStat(label, count)
+	.b3-addr-stat
+		.b3-addr-stat__label= label
+		.b3-addr-stat__value.b3-addr-stat__value--ink
+			if (count == null || count === undefined)
+				span.text-muted ?
+			else
+				- var n = (typeof count === "string") ? parseInt(count) : count;
+				span= n.toLocaleString()
+
+block content
+	- var hasValid = result && result.validateaddress && result.validateaddress.isvalid;
+
+	if (!hasValid)
+		.b3-addr-page
+			.b3-addr-hero
+				.b3-addr-hero__main
+					.b3-addr-hero__label ADDRESS
+					.b3-addr-hero__row
+						span.b3-addr-hero__text= address
+						+copyTextButton(address)
+			.b3-addr-error
+				h1.h6.fw-bold Invalid Address
+				span.font-monospace= address
+
+	else
+		.b3-addr-page
+			//- Fun / miner-payout alert (preserves upstream behavior).
+			if (payoutAddressForMiner)
+				+funAlert
+					span This looks like a miner payout address for 
+					span.fw-bold #{payoutAddressForMiner.name}
+			else if (global.specialAddresses && global.specialAddresses[address] && global.specialAddresses[address].type == "fun")
+				- var saInfo = global.specialAddresses[address].addressInfo;
+				+funAlert(saInfo.alertBodyHtml, saInfo.summary, saInfo.referenceUrl)
+
+			//- HERO: label + full address + copy + tags + QR
+			.b3-addr-hero
+				.b3-addr-hero__main
+					.b3-addr-hero__label ADDRESS
+					.b3-addr-hero__row
+						span.b3-addr-hero__text= address
+						+copyTextButton(address)
+					.b3-addr-hero__tags
+						if (addressEncoding && addressEncoding != "unknown")
+							span.b3-tag= addressEncoding
+						if (payoutAddressForMiner)
+							span.b3-tag.b3-tag--accent Miner: #{payoutAddressForMiner.name}
+						if (result.validateaddress.ismine)
+							span.b3-tag.b3-tag--accent Mine
+						if (result.validateaddress.iswatchonly)
+							span.b3-tag Watch-Only
+				if (addressQrCodeUrl)
+					.b3-addr-hero__qr
+						img(src=addressQrCodeUrl, alt=address, width=120, height=120)
+
+			//- STATS: 4 cards
+			.b3-addr-stats
+				+b3AddrStat("Total Received", addressDetails ? addressDetails.totalReceivedSat : null, "success")
+				+b3AddrStat("Total Sent", addressDetails ? addressDetails.totalSentSat : null, "danger")
+				+b3AddrStat("Final Balance", addressDetails ? addressDetails.balanceSat : null, "ink")
+				+b3AddrCountStat("Transactions", addressDetails ? addressDetails.txCount : null)
+
+			//- Unconfirmed-balance callout (only when present)
+			if (addressDetails && addressDetails.unconfirmedBalanceSat)
+				- var unconfSign = addressDetails.unconfirmedBalanceSat > 0 ? "+" : "-";
+				- var unconfTone = addressDetails.unconfirmedBalanceSat > 0 ? "success" : "danger";
+				- var unconfValue = new Decimal(Math.abs(addressDetails.unconfirmedBalanceSat)).dividedBy(coinConfig.baseCurrencyUnit.multiplier);
+				.b3-callout.b3-callout--info
+					strong Unconfirmed Balance:
+					span.ms-2(class=("text-" + unconfTone))= unconfSign
+					+valueDisplay(unconfValue)
+
+			//- TECHNICAL DETAILS (collapsible)
+			details.b3-tx-accordion
+				summary.b3-tx-accordion__head
+					span Technical Details
+					i.bi-chevron-down.b3-tx-accordion__icon
+				.b3-tx-accordion__body
+					.b3-tx-meta
+						+b3MetaRow("Script Pub Key", result.validateaddress.scriptPubKey, true)
+						if (addressObj && addressObj.hash)
+							+b3MetaRow("Hash 160", addressObj.hash, true)
+						if (addressObj && utils.objHasProperty(addressObj, "version"))
+							+b3MetaRow("Version", addressObj.version)
+						if (utils.objHasProperty(result.validateaddress, "witness_version"))
+							+b3MetaRow("Witness Version", result.validateaddress.witness_version)
+						if (result.validateaddress.witness_program)
+							+b3MetaRow("Witness Program", result.validateaddress.witness_program, true)
+						if (electrumScripthash)
+							+b3MetaRow("Script Hash", electrumScripthash, true)
+
+			//- TX LIST HEADER (count + sort)
+			.b3-addr-list-head
+				.b3-addr-list-head__title
+					- var tc = (addressDetails && addressDetails.txCount != null) ? (typeof addressDetails.txCount === "string" ? parseInt(addressDetails.txCount) : addressDetails.txCount) : 0;
+					| #{tc.toLocaleString()} Transaction#{tc == 1 ? "" : "s"}
+				if (txids && txids.length > 1 && addressApiSupport && addressApiSupport.sortDesc && addressApiSupport.sortAsc)
+					.b3-addr-sort
+						a(href=`./address/${address}`, class=(sort == "desc" ? "is-active" : null)) Newest First
+						a(href=`./address/${address}?sort=asc`, class=(sort != "desc" ? "is-active" : null)) Oldest First
+
+			//- TX LIST (paginated, reuses upstream +txList)
+			.b3-addr-list
+				if (addressApiError && addressApiError.userText)
+					.b3-callout.b3-callout--warn
+						strong Tx history unavailable:&nbsp;
+						span= addressApiError.userText
+
+				else if (addressDetailsErrors && addressDetailsErrors.length > 0)
+					.b3-callout.b3-callout--warn
+						strong Tx history unavailable.
+						.text-muted.mt-1 The address indexer (electrs) may still be syncing, or this address has more entries than the indexer is configured to return. Try again in a few minutes.
+
+				else if (!global.txindexAvailable && (!transactions || transactions.length == 0) && txids && txids.length > 0)
+					table.table.table-striped
+						each txid, txidIndex in txids
+							tr
+								td.text-end
+									small.text-muted= (txidIndex + offset + 1).toLocaleString()
+								td
+									- var bh = (addressDetails.blockHeightsByTxid && addressDetails.blockHeightsByTxid[txid]) ? addressDetails.blockHeightsByTxid[txid] : null;
+									- var bhParam = bh ? `@${bh}` : "";
+									a.font-monospace(href=`./tx/${txid}${bhParam}`)= utils.ellipsizeMiddle(txid, 48)
+
+				else if (!transactions || transactions.length == 0)
+					.b3-callout.b3-callout--info No transactions found for this address.
+
+				else
+					- var txListOptions = {currentBlockHeight: (getblockchaininfo ? getblockchaininfo.blocks : -1), blockHeightsByTxid: blockHeightsByTxid, showDates: true, showConfirmations: true, highlightAddress: address, addrGainsByTxid: addrGainsByTx, addrLossesByTxid: addrLossesByTx, hidePagination: crawlerBot};
+					+txList(transactions, (typeof addressDetails.txCount === "string" ? parseInt(addressDetails.txCount) : addressDetails.txCount), limit, offset, txInputsByTransaction || {}, txListOptions)

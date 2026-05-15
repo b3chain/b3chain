@@ -1,0 +1,376 @@
+extends layout
+
+include includes/shared-mixins
+include includes/tx-mixins
+
+block headContent
+	title Transaction #{txid}
+
+mixin b3MetaRow(label, value, copyable=false)
+	.b3-tx-meta__label= label
+	.b3-tx-meta__value
+		span= value
+		if (copyable && value)
+			+copyTextButton(value)
+
+mixin b3IoAddrLink(addr, isHighlight=false)
+	if (addr)
+		a.b3-tx-io__addr(href=`./address/${addr}`, class=(isHighlight ? "is-highlight" : null))
+			span.d-none.d-md-inline= utils.ellipsizeMiddle(addr, 44)
+			span.d-inline.d-md-none= utils.ellipsizeMiddle(addr, 24)
+	else
+		span.b3-tx-io__addr.text-muted (no address)
+
+block content
+	- var hasTx = result && result.getrawtransaction;
+
+	if (!hasTx)
+		.b3-tx-page
+			.b3-tx-hero
+				.b3-tx-hero__label TRANSACTION
+				.b3-tx-hero__row
+					span.b3-tx-hero__hash-text= txid
+					+copyTextButton(txid)
+			.b3-callout.b3-callout--warn
+				h6.fw-bold.mb-2 Transaction Details Unavailable
+				if (blockHeight && global.prunedBlockchain && blockHeight < global.pruneHeight)
+					p.mb-0 Blockchain pruning is enabled on this node. The block containing this transaction has been pruned and its details are unavailable.
+				else if (!global.txindexAvailable)
+					if (noTxIndexMsg)
+						div !{markdown(noTxIndexMsg)}
+					else
+						p.mb-0 Transaction index is not available on this node.
+				else
+					p.mb-0 Transaction not found.
+
+	else
+		- var tx = result.getrawtransaction;
+		- var txInputs = result.txInputs || {};
+		- var blockHeight = (result.getblock ? result.getblock.height : -1);
+		- var isTxConfirmed = (tx.confirmations != null && tx.confirmations > 0);
+		- var DecimalRounded = Decimal.clone({ precision: 4, rounding: 2 });
+
+		- var totalInputValue = new Decimal(0);
+		if (isCoinbaseTx)
+			- totalInputValue = totalInputValue.plus(new Decimal(coinConfig.blockRewardFunction(blockHeight, activeBlockchain)));
+		each txInput, txInputIndex in txInputs
+			if (txInput && txInput.value)
+				- totalInputValue = totalInputValue.plus(new Decimal(txInput.value));
+
+		- var totalOutputValue = new Decimal(0);
+		- var nonZeroVoutValueCount = 0;
+		each vout, voutIndex in tx.vout
+			- totalOutputValue = totalOutputValue.plus(new Decimal(vout.value));
+			if (vout.value > 0)
+				- nonZeroVoutValueCount++;
+
+		- var feePaid = null;
+		- var feeRate = null;
+		if (isCoinbaseTx)
+			- feePaid = new Decimal(totalOutputValue).minus(totalInputValue);
+		else if (mempoolDetails)
+			- feePaid = new Decimal(mempoolDetails.entry.fees.base);
+		else if (global.txindexAvailable && (txInputs ? Object.keys(txInputs).length : 0) >= tx.vin.length)
+			- feePaid = new Decimal(totalInputValue).minus(totalOutputValue);
+
+		if (feePaid !== null && tx.vsize > 0)
+			- feeRate = parseInt(new Decimal(feePaid).times(100000000).dividedBy(tx.vsize));
+
+		- var txTime = (tx.time || tx.blocktime || (result.getblock ? result.getblock.time : null) || (mempoolDetails ? mempoolDetails.entry.time : null));
+
+		.b3-tx-page
+			//- Special-tx alert
+			if (global.specialTransactions && global.specialTransactions[txid])
+				- var stInfo = global.specialTransactions[txid];
+				+funAlert(stInfo.alertBodyHtml, stInfo.summary, stInfo.referenceUrl)
+
+			//- Mempool / next-block predicted inclusion (JS-populated)
+			#alert-included-next-block.b3-callout.b3-callout--info(style="display: none;")
+				strong Confirmation: Predicted in Next Block
+				div.mt-1 This transaction is currently unconfirmed but is predicted for inclusion in the next block.
+				div.text-muted.mt-1
+					span Position: #
+					span#next-block-index
+					span  of 
+					span#next-block-count
+
+			//- HERO: label + full txid + copy + status badge
+			.b3-tx-hero
+				.b3-tx-hero__label TRANSACTION
+				.b3-tx-hero__row
+					span.b3-tx-hero__hash-text= txid
+					+copyTextButton(txid)
+				.b3-tx-hero__tags
+					if (isCoinbaseTx)
+						span.b3-tag.b3-tag--accent Coinbase
+					if (isTxConfirmed)
+						span.b3-tx-badge.b3-tx-badge--ok
+							i.bi-check-circle.me-1
+							span Confirmed
+					else
+						span.b3-tx-badge.b3-tx-badge--pending
+							i.bi-clock.me-1
+							span Unconfirmed
+					if (isCoinbaseTx && isTxConfirmed)
+						- var minerInfo = utils.identifyMiner(tx, blockHeight);
+						if (minerInfo)
+							span.b3-tag.b3-tag--accent Miner: #{minerInfo.name}
+
+			//- STATS: 4 cards
+			.b3-tx-stats
+				.b3-tx-stat
+					.b3-tx-stat__label
+						if (isCoinbaseTx)
+							| Block Reward
+						else
+							| Total Output
+					.b3-tx-stat__value
+						+valueDisplay(totalOutputValue)
+
+				.b3-tx-stat
+					if (isCoinbaseTx)
+						.b3-tx-stat__label Fees Collected
+						.b3-tx-stat__value
+							+valueDisplay(feePaid !== null ? feePaid : new Decimal(0))
+					else
+						.b3-tx-stat__label Fee
+						.b3-tx-stat__value
+							if (feePaid !== null)
+								+valueDisplay(feePaid)
+							else
+								span.text-muted ?
+						if (feeRate !== null)
+							.b3-tx-stat__sub #{feeRate.toLocaleString()} sat/vB
+
+				.b3-tx-stat
+					.b3-tx-stat__label
+						if (isTxConfirmed)
+							| Confirmations
+						else
+							| Status
+					.b3-tx-stat__value
+						if (isTxConfirmed)
+							+confirmations(tx.confirmations)
+						else
+							span.text-warning Unconfirmed
+					if (isTxConfirmed && result.getblock)
+						.b3-tx-stat__sub
+							| Block&nbsp;
+							a(href=`./block-height/${blockHeight}`)= blockHeight.toLocaleString()
+
+				.b3-tx-stat
+					.b3-tx-stat__label
+						if (isTxConfirmed)
+							| Date / Time
+						else if (mempoolDetails)
+							| First Seen
+						else
+							| Date / Time
+					.b3-tx-stat__value
+						if (txTime)
+							+timestamp(txTime, {agoOptions:{oneElement:true}})
+						else
+							span.text-muted ?
+
+			//- I/O GRID: side-by-side FROM / TO
+			.b3-tx-io
+				.b3-tx-io__col.b3-tx-io__col--in
+					.b3-tx-io__title FROM (#{tx.vin.length.toLocaleString()} Input#{tx.vin.length == 1 ? "" : "s"})
+
+					each txVin, vinIndex in tx.vin
+						- var vout = (txInputs && txInputs[vinIndex]) ? txInputs[vinIndex] : null;
+						.b3-tx-io__row
+							.b3-tx-io__cell-main
+								if (txVin.coinbase)
+									.b3-tx-io__addr
+										span.b3-tag.b3-tag--accent.me-2 Coinbase
+										span Newly Generated Coins
+									.b3-tx-io__sub.mt-1
+										span.text-muted.me-2 Script:
+										span.font-monospace.text-break= utils.ellipsizeMiddle(txVin.coinbase, 40)
+
+								else
+									- var voutAddresses = vout ? utils.getVoutAddresses(vout) : [];
+									- var hasAddr = voutAddresses.length > 0;
+
+									if (hasAddr)
+										+b3IoAddrLink(voutAddresses[0])
+									else if (vout)
+										span.b3-tx-io__addr.text-muted (non-standard input)
+									else
+										span.b3-tx-io__addr.text-muted (input data unavailable)
+
+									.b3-tx-io__sub.mt-1
+										span.text-muted.me-2 Output:
+										a.font-monospace(href=`./tx/${txVin.txid}#output-${txVin.vout}`)= utils.ellipsizeMiddle(txVin.txid, 16)
+										span.text-muted ##{txVin.vout}
+										if (vout && vout.scriptPubKey && vout.scriptPubKey.type)
+											span.b3-tx-io__tag(title=utils.outputTypeName(vout.scriptPubKey.type))= utils.outputTypeAbbreviation(vout.scriptPubKey.type)
+
+							.b3-tx-io__cell-value
+								+inputValueDisplay(tx, txVin, vout)
+
+				.b3-tx-io__arrow
+					i.bi-arrow-right
+
+				.b3-tx-io__col.b3-tx-io__col--out
+					.b3-tx-io__title TO (#{tx.vout.length.toLocaleString()} Output#{tx.vout.length == 1 ? "" : "s"})
+
+					each vout, voutIndex in tx.vout
+						- var voutAddresses = utils.getVoutAddresses(vout);
+						- var isOpReturn = vout.scriptPubKey && vout.scriptPubKey.asm && vout.scriptPubKey.asm.startsWith("OP_RETURN");
+						- var isUtxo = (utxos && utxos[voutIndex] === true);
+						- var isSpent = (utxos && utxos[voutIndex] === false);
+						.b3-tx-io__row(id=`output-${voutIndex}`)
+							.b3-tx-io__cell-main
+								if (isOpReturn)
+									.b3-tx-io__addr
+										span.b3-tag.me-2 OP_RETURN
+										span.text-muted Provably unspendable
+									- var dataHex = vout.scriptPubKey.asm.substring("OP_RETURN ".length);
+									.b3-tx-io__sub.mt-1.font-monospace.text-break= utils.ellipsizeMiddle(dataHex, 64)
+
+								else if (voutAddresses.length > 0)
+									+b3IoAddrLink(voutAddresses[0])
+									.b3-tx-io__sub.mt-1
+										if (vout.scriptPubKey && vout.scriptPubKey.type)
+											span.b3-tx-io__tag(title=utils.outputTypeName(vout.scriptPubKey.type))= utils.outputTypeAbbreviation(vout.scriptPubKey.type)
+										if (isUtxo)
+											span.b3-tx-io__unspent.ms-2
+												i.bi-check-circle.me-1
+												| UNSPENT
+										else if (isSpent)
+											span.b3-tx-io__spent.ms-2
+												i.bi-x-circle.me-1
+												| SPENT
+
+								else
+									span.b3-tx-io__addr.text-muted (non-standard output)
+
+							.b3-tx-io__cell-value
+								+outputValueDisplay(tx, vout, voutIndex, nonZeroVoutValueCount)
+
+			//- ADVANCED DETAILS (collapsible)
+			details.b3-tx-accordion
+				summary.b3-tx-accordion__head
+					span Advanced Details
+					i.bi-chevron-down.b3-tx-accordion__icon
+				.b3-tx-accordion__body
+					.b3-tx-meta
+						+b3MetaRow("Hash", txid, true)
+						if (isTxConfirmed && result.getblock)
+							.b3-tx-meta__label Block
+							.b3-tx-meta__value
+								a(href=`./block/${result.getblock.hash || tx.blockhash}`)= blockHeight.toLocaleString()
+								if (result.getblock.hash || tx.blockhash)
+									span.text-muted.ms-2.font-monospace= utils.ellipsizeMiddle(result.getblock.hash || tx.blockhash, 24)
+						+b3MetaRow("Size", tx.size != null ? `${tx.size.toLocaleString()} B` : "?")
+						+b3MetaRow("Virtual Size", tx.vsize != null ? `${tx.vsize.toLocaleString()} vB` : "?")
+						if (tx.weight)
+							+b3MetaRow("Weight", `${tx.weight.toLocaleString()} WU`)
+						+b3MetaRow("Version", tx.version)
+						+b3MetaRow("Locktime", tx.locktime)
+						.b3-tx-meta__label Raw Transaction
+						.b3-tx-meta__value
+							span= utils.ellipsizeMiddle(tx.hex, 32)
+							+copyTextButton(tx.hex)
+
+			//- SCRIPTS (collapsible)
+			details.b3-tx-accordion
+				summary.b3-tx-accordion__head
+					span Scripts
+					i.bi-chevron-down.b3-tx-accordion__icon
+				.b3-tx-accordion__body
+					h6.fw-bold.mb-2.mt-2 Input Scripts
+					table.table.table-sm.b3-tx-scripts
+						tbody
+							each vin, vinIndex in tx.vin
+								tr
+									th.b3-tx-scripts__idx
+										span.font-monospace ##{vinIndex}
+									td.word-wrap.text-break
+										if (vin.coinbase)
+											div
+												span.b3-tag.b3-tag--accent.me-2 coinbase
+												+hexDataDisplay(vin.coinbase)
+										if (vin.scriptSig && vin.scriptSig.asm)
+											div.mt-2
+												span.b3-tag.me-2 scriptSig
+												span.font-monospace.text-break= vin.scriptSig.asm
+										if (vin.txinwitness && vin.txinwitness.length > 0)
+											div.mt-2
+												span.b3-tag.me-2 witness
+												each witnessItem, witnessIndex in vin.txinwitness
+													if (witnessIndex < 100)
+														div.mt-1.ms-2
+															span.text-muted.me-2 ##{witnessIndex}
+															if (witnessItem.length == 0)
+																span.text-muted (empty)
+															else
+																+hexDataDisplay(witnessItem)
+												if (vin.txinwitness.length > 100)
+													div.text-muted.mt-1 (#{(vin.txinwitness.length - 100).toLocaleString()} more witness items)
+
+					h6.fw-bold.mb-2.mt-3 Output Scripts
+					table.table.table-sm.b3-tx-scripts
+						tbody
+							each vout, voutIndex in tx.vout
+								tr
+									th.b3-tx-scripts__idx
+										span.font-monospace ##{voutIndex}
+									td.word-wrap
+										if (vout.scriptPubKey && vout.scriptPubKey.asm)
+											- var chunks = vout.scriptPubKey.asm.split(" ");
+											if (chunks[0] == "OP_RETURN")
+												div
+													span.b3-tag.b3-tag--accent.me-2 OP_RETURN
+												- var asm = vout.scriptPubKey.asm.substring("OP_RETURN ".length);
+												+hexDataDisplay(asm)
+											else
+												each chunk, chunkIndex in chunks
+													div.mt-1
+														if (chunk.startsWith("OP_"))
+															span.b3-tag.b3-tag--accent.me-2= chunk
+														else
+															+hexDataDisplay(chunk, "hex,utf8,ascii")
+
+			//- JSON (collapsible)
+			details.b3-tx-accordion
+				summary.b3-tx-accordion__head
+					span JSON
+					i.bi-chevron-down.b3-tx-accordion__icon
+				.b3-tx-accordion__body
+					if (tx.hex && tx.hex.length <= 50000)
+						h6.fw-bold.mb-2.mt-2 Transaction
+						pre
+							code.text-json.json(data-lang="json")= JSON.stringify(tx, null, 4)
+						if (!mempoolDetails && result.getblock)
+							h6.fw-bold.mb-2.mt-3 Block Header
+							pre
+								code.text-json.json(data-lang="json")= JSON.stringify(result.getblock, null, 4)
+						h6.fw-bold.mb-2.mt-3 UTXOs
+						pre
+							code.text-json.json(data-lang="json")= JSON.stringify(utxos, null, 4)
+						if (mempoolDetails)
+							h6.fw-bold.mb-2.mt-3 Mempool Details
+							pre
+								code.json(data-lang="json")= JSON.stringify(mempoolDetails, null, 4)
+					else
+						p This transaction is very large. Displaying its data here may cause problems. Instead, see its raw data via the internal API:
+						a(href=`./api/tx/${txid}`)= txid
+
+
+block endOfBody
+	script.
+		var txid = "!{txid}";
+		$(document).ready(function() {
+			$.ajax({
+				url: `./api/mining/next-block/includes/${txid}`
+			}).done(function(res) {
+				if (res && res.included) {
+					$("#next-block-index").text((res.index + 1).toLocaleString());
+					$("#next-block-count").text(res.txCount.toLocaleString());
+					$("#alert-included-next-block").show();
+				}
+			});
+		});

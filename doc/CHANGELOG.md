@@ -691,6 +691,62 @@ tractable.
   self-heal step that re-indents any pre-existing depth-8 occurrence
   on every install, so older deploys repair themselves.
 
+### Explorer transaction + address pages (blockchain.com-style)
+
+Brings `/tx/<txid>` and `/address/<addr>` to blockchain.com visual + data
+parity while staying inside the overlay model (no upstream patches that
+would break on `btc-rpc-explorer` upgrades).
+
+- `contrib/testnet/explorer/overlay/views/transaction.pug` (new) replaces
+  the upstream tabbed transaction view with: a hero showing the full
+  txid with copy + Confirmed/Unconfirmed badge (and a Coinbase tag +
+  Miner badge when applicable); a 4-stat card row (Total Output /
+  Block Reward, Fee / Fees Collected, Confirmations / Status, Date /
+  First Seen); a side-by-side Inputs/Outputs grid with a directional
+  arrow (mirroring blockchain.com), each row carrying the address
+  link, output-type tag (P2WPKH / P2TR / P2SH / ...), and an
+  UNSPENT/SPENT marker from the `utxos` array; and three collapsible
+  `<details>` accordions for Advanced Details (hash, block, size,
+  vsize, weight, version, locktime, raw hex), Scripts, and JSON. All
+  upstream edge cases preserved: pruned-chain warnings, no-txindex
+  callout, special-transactions `+funAlert`, mempool-predicted
+  next-block inclusion notice.
+- `contrib/testnet/explorer/overlay/views/address.pug` (new) replaces
+  the upstream address view with: a hero showing the full address +
+  encoding tag (P2WPKH / Bech32 / ...) + Mine / Watch-Only / miner-
+  payout badges + a right-side QR code; a 4-stat card row (Total
+  Received / Total Sent / Final Balance / # Transactions); a
+  collapsible Technical Details accordion (Script Pub Key, Hash 160,
+  Witness Version/Program, Electrum Script Hash); and a paginated
+  transaction list that reuses the upstream `+txList` mixin so each
+  row keeps the gain/loss delta semantics for the highlighted address.
+  Graceful fallbacks for invalid-address, electrs-not-ready
+  (`addressDetailsErrors`), zero-tx, and no-txindex paths.
+- `contrib/testnet/electrs/install.sh` (new) installs
+  [romanz/electrs](https://github.com/romanz/electrs) v0.10.6 as a
+  sibling systemd service on seed1 pointed at the b3chaind testnet
+  RPC. The service runs as a dedicated `electrs` system user (member
+  of the `b3chain` group for read-only block access), listens on
+  `127.0.0.1:50001` (Electrum protocol, loopback only — no TLS
+  needed), and persists its index to `/var/lib/electrs/db`. A
+  `tmpfiles.d` snippet keeps `blk*.dat` files group-readable across
+  b3chaind restarts so the indexer doesn't lose access to newly-
+  created block files.
+- `contrib/testnet/explorer/install.sh`: copies the two new overlay
+  pug files into upstream's `views/`, and wires the explorer to
+  electrs by setting `BTCEXP_ADDRESS_API=electrum` +
+  `BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001` in the env file.
+  `BTCEXP_PRIVACY_MODE` is flipped from `true` to `false` so the
+  Electrum address API code path is actually reached (both services
+  run on the same host so there is no third-party data leak).
+- `contrib/testnet/explorer/overlay/public/css/b3-theme.css`: appends
+  `b3-tx-*`, `b3-addr-*`, plus shared `b3-tag` and `b3-callout`
+  building blocks. New layout primitives: stat-card grid (4 columns,
+  collapses to 2 on `≤900px`), io grid (`1fr 48px 1fr` with arrow
+  rotated to vertical on mobile), hero with right-aligned QR (drops
+  below address on mobile), accordion built on native `<details>` so
+  no JavaScript needed.
+
 ### Live results
 
 - Three seed nodes running B3Chain Core 30.2.0 in two different
