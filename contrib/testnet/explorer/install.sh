@@ -168,9 +168,25 @@ fi
 # `formatCurrencyAmount` does `global.currencyTypes[formatType.toLowerCase()]`
 # and uses `.name` for the displayed unit. Patch the "btc" entry's
 # name so /blocks, /tx, /address etc render "B3C" next to amounts.
+#
+# CAVEAT: views/includes/index-network-summary.pug:307 round-trips
+# the value back through `currencyTypes[parts.currencyUnit.toLowerCase()]`,
+# so once we rename name to "B3C" that lookup fails on key "b3c".
+# Mitigate by also installing a "b3c" alias pointing at the same
+# object as "btc" (so both keys work in any roundtrip).
 CURRENCIES=$EXP_DIR/node_modules/btc-rpc-explorer/app/currencies.js
 if [ -f "$CURRENCIES" ]; then
     sed -i 's|name:"BTC"|name:"B3C"|' "$CURRENCIES"
+    if ! grep -q 'b3c.*currencyTypes\["btc"\]' "$CURRENCIES"; then
+        cat >> "$CURRENCIES" <<'CURR_EOF'
+
+// B3Chain installer: alias "b3c" -> "btc" so that template
+// roundtrips like `currencyTypes[parts.currencyUnit.toLowerCase()]`
+// keep working after we renamed `name:"BTC"` to `name:"B3C"` above.
+global.currencyTypes["b3c"] = global.currencyTypes["btc"];
+global.currencySymbols["b3c"] = global.currencySymbols["btc"];
+CURR_EOF
+    fi
 fi
 
 # 5c. Pug-template rebrand. The B3C coin-config patches above only
