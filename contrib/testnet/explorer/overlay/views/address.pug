@@ -136,7 +136,12 @@ block content
 				else if (addressDetailsErrors && addressDetailsErrors.length > 0)
 					.b3-callout.b3-callout--warn
 						strong Tx history unavailable.
-						.text-muted.mt-1 The address indexer (electrs) may still be syncing, or this address has more entries than the indexer is configured to return. Try again in a few minutes.
+						.text-muted.mt-1 The address indexer may still be syncing, or this address has more entries than the indexer is configured to return. Try again in a few minutes.
+
+				else if (!addressDetails && (!addressApiSupport || Object.keys(addressApiSupport || {}).length == 0))
+					.b3-callout.b3-callout--info
+						strong Address indexer not configured.
+						.text-muted.mt-1 Per-address balance and transaction history require an external indexer (e.g. electrs). This explorer is currently running without one, so the stats above show #[code ?] and the list below is empty. The transaction page (#[a(href='./') home] &raquo; click any tx) is unaffected.
 
 				else if (!global.txindexAvailable && (!transactions || transactions.length == 0) && txids && txids.length > 0)
 					table.table.table-striped

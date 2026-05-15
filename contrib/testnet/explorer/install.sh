@@ -469,9 +469,11 @@ BTCEXP_BITCOIND_HOST=127.0.0.1
 BTCEXP_BITCOIND_PORT=18534
 BTCEXP_BITCOIND_USER=b3chain
 BTCEXP_BITCOIND_PASS=$RPC_PASS
-# Privacy mode must be OFF for the Electrum addressApi to be hit on the
-# /address pages. Both electrs and the explorer run on this same host,
-# so there is no third-party data leak.
+# Privacy mode OFF so the address page renders the encoding badge + QR
+# section (those are gated on !privacyMode in the upstream view). With no
+# external address indexer wired up, /address/<addr> still shows hero,
+# encoding tag, technical-details, and "Tx history unavailable" callout
+# instead of fake numbers -- the address.pug overlay handles this path.
 BTCEXP_PRIVACY_MODE=false
 BTCEXP_NO_RATES=true
 BTCEXP_BASIC_AUTH_PASSWORD=
@@ -487,14 +489,18 @@ BTCEXP_SLOW_DEVICE_MODE=false
 BTCEXP_COIN=BTC
 # Site title shown in browser tab + masthead
 BTCEXP_SITE_TITLE=B3Chain Testnet Explorer
-# Address API: talk to local electrs (Electrum Rust Server) for the
-# per-address balance and tx-history shown on /address/<addr>. electrs
-# is installed by contrib/testnet/electrs/install.sh and listens on
-# 127.0.0.1:50001. When electrs is not yet installed/synced, the explorer
-# gracefully falls back to "Tx history unavailable" on the address page;
-# all other pages are unaffected.
-BTCEXP_ADDRESS_API=electrum
-BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
+# NOTE on address indexer:
+#   Upstream supports BTCEXP_ADDRESS_API=electrum / blockchain.com / blockchair
+#   etc., but none of them work on b3chain testnet today:
+#     - electrum (romanz/electrs) hardcodes the signet genesis hash and
+#       cannot index a custom-genesis Bitcoin Core fork (see
+#       contrib/testnet/electrs/install.sh header for details).
+#     - blockchain.com / blockchair don't index b3chain.
+#   Result: address.pug renders hero + encoding tag + QR + technical
+#   details, but the stat cards show "?" and tx history shows
+#   "Tx history unavailable". The plumbing is in place; a future
+#   commit will add an in-process indexer (or a patched electrs) to
+#   populate those cards.
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
 chmod 640 "$EXP_DIR/.config/btc-rpc-explorer.env"

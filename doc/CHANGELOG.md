@@ -898,23 +898,21 @@ would break on `btc-rpc-explorer` upgrades).
   row keeps the gain/loss delta semantics for the highlighted address.
   Graceful fallbacks for invalid-address, electrs-not-ready
   (`addressDetailsErrors`), zero-tx, and no-txindex paths.
-- `contrib/testnet/electrs/install.sh` (new) installs
-  [romanz/electrs](https://github.com/romanz/electrs) v0.10.6 as a
-  sibling systemd service on seed1 pointed at the b3chaind testnet
-  RPC. The service runs as a dedicated `electrs` system user (member
-  of the `b3chain` group for read-only block access), listens on
-  `127.0.0.1:50001` (Electrum protocol, loopback only — no TLS
-  needed), and persists its index to `/var/lib/electrs/db`. A
-  `tmpfiles.d` snippet keeps `blk*.dat` files group-readable across
-  b3chaind restarts so the indexer doesn't lose access to newly-
-  created block files.
+- `contrib/testnet/electrs/install.sh` (new) stages
+  [romanz/electrs](https://github.com/romanz/electrs) v0.10.6 (Rust
+  toolchain + librocksdb-sys build deps + dedicated `electrs` system
+  user in the `b3chain` group + systemd unit `electrs-testnet.service`
+  on `127.0.0.1:50001`). The service is installed STOPPED+DISABLED
+  pending an upstream fix or a local patch — see "electrs
+  incompatibility" below — and is re-enabled by re-running the
+  installer with `--enable`. A `tmpfiles.d` snippet keeps `blk*.dat`
+  files group-readable across b3chaind restarts so a future indexer
+  doesn't lose access to newly-created block files.
 - `contrib/testnet/explorer/install.sh`: copies the two new overlay
-  pug files into upstream's `views/`, and wires the explorer to
-  electrs by setting `BTCEXP_ADDRESS_API=electrum` +
-  `BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001` in the env file.
-  `BTCEXP_PRIVACY_MODE` is flipped from `true` to `false` so the
-  Electrum address API code path is actually reached (both services
-  run on the same host so there is no third-party data leak).
+  pug files into upstream's `views/`. `BTCEXP_PRIVACY_MODE` is
+  flipped from `true` to `false` so the upstream address view renders
+  the encoding-badge + QR section (both are gated on `!privacyMode`).
+  `BTCEXP_ADDRESS_API` is deliberately left unset (see below).
 - `contrib/testnet/explorer/overlay/public/css/b3-theme.css`: appends
   `b3-tx-*`, `b3-addr-*`, plus shared `b3-tag` and `b3-callout`
   building blocks. New layout primitives: stat-card grid (4 columns,
@@ -922,6 +920,39 @@ would break on `btc-rpc-explorer` upgrades).
   rotated to vertical on mobile), hero with right-aligned QR (drops
   below address on mobile), accordion built on native `<details>` so
   no JavaScript needed.
+
+#### electrs incompatibility — root cause + path forward
+
+While wiring up `romanz/electrs` v0.10.6 as the address indexer, two
+escape hatches were enough to clear the network handshake (`network =
+"signet"` + `signet_magic = "b3c1020e"` overrides the hardcoded
+testnet magic, and `daemon_p2p_addr = "127.0.0.1:18533"` overrides
+the testnet default p2p port). But the *third* hardcoded assumption
+— the signet genesis block hash, pinned in `bitcoin-rs` and consumed
+by electrs's chain-sync walk — cannot be overridden by config; it
+fails with `missing prev_blockhash <b3chain-genesis>` the moment
+electrs reaches the bottom of the chain.
+
+Three viable next steps, in order of cost:
+
+1. Patch electrs to accept `genesis_hash` from the toml config and
+   plumb it through `Daemon::new()` + the index-walk validator.
+   ~20 lines of Rust against `v0.10.6`. Maintained as a small fork
+   under `b3chain/electrs` and pinned in the installer.
+2. Replace electrs with an in-process address indexer in the
+   explorer overlay (extend `b3-daily-aggregator.js`'s tip-poll loop
+   to walk all `vin`/`vout` scriptPubKeys and persist an
+   address→txid map). No external dependency, no fork to maintain,
+   but ~300 LoC of new code.
+3. Wait until a `bitcoin-rs` release exposes per-network genesis
+   overrides upstream and electrs picks it up.
+
+Path #1 is the most likely short-term resolution; the existing
+electrs installer + systemd unit + tmpfiles glue all stay valid
+under it. Until then, `/address/<addr>` shows the address, encoding
+tag, QR, technical details, and an "indexer not yet available"
+callout instead of fake balance/tx-count numbers. `/tx/<txid>`,
+`/charts`, and every other page are unaffected.
 
 ### Live results
 

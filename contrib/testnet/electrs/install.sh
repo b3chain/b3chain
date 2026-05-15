@@ -1,12 +1,40 @@
 #!/usr/bin/env bash
 #
-# Install romanz/electrs (Electrum Rust Server) and run it under systemd
-# pointed at the local b3chaind-testnet RPC + block files. The explorer
-# uses this for /address/<addr> per-address balance and tx history.
+# Install romanz/electrs (Electrum Rust Server) and stage it under
+# systemd, pointed at the local b3chaind-testnet RPC + block files.
+# The explorer would use this for /address/<addr> per-address balance
+# and tx history.
 #
-# Run as root on seed1 AFTER b3chaind-testnet is bootstrapped and answering
-# RPC at 127.0.0.1:18534. Idempotent (safe to re-run).
+# !! KNOWN-INCOMPATIBLE WITH B3CHAIN (2026-05-15) -- DISABLED BY DEFAULT !!
+# ---------------------------------------------------------------------------
+# electrs v0.10.6 has THREE hardcoded assumptions that break on a Bitcoin-
+# Core fork that changes any of them:
+#   1. Network magic bytes  -> solved here via `network=signet` + `signet_magic`
+#   2. Daemon P2P port      -> solved here via `daemon_p2p_addr`
+#   3. Genesis block hash   -> NOT SOLVED. electrs uses bitcoin-rs's
+#      hardcoded signet genesis when walking chain history and bails with
+#      "missing prev_blockhash <b3chain-genesis>" at sync time.
+#
+# Until either (a) electrs is patched to accept a `genesis_hash` config
+# override, or (b) we build an in-process indexer in the explorer overlay,
+# the service is installed (so the binary, user, and unit are ready) but
+# left DISABLED. The explorer overlay handles this gracefully: the
+# /address pages render their hero + QR + technical-details, and the
+# stat cards show "?" + "Tx history unavailable" callout instead of fake
+# numbers.
+#
+# Run as root on seed1 AFTER b3chaind-testnet is bootstrapped and
+# answering RPC at 127.0.0.1:18534. Idempotent (safe to re-run).
 set -euo pipefail
+
+# Opt-in: pass --enable to actually `systemctl enable --now` the service.
+# Without it we stop+disable so a broken indexer can't keep flapping.
+ENABLE_SERVICE=0
+for arg in "$@"; do
+    case "$arg" in
+        --enable) ENABLE_SERVICE=1 ;;
+    esac
+done
 
 if [ "$EUID" -ne 0 ]; then
     echo "must run as root" >&2
@@ -27,7 +55,15 @@ B3CHAIN_USER=b3chain
 B3CHAIN_DATADIR=/var/lib/b3chain/.b3chain # parent of testnet3/
 B3CHAIN_RPC_HOST=127.0.0.1
 B3CHAIN_RPC_PORT=18534
+B3CHAIN_P2P_PORT=18533
 B3CHAIN_RPC_USER=b3chain
+
+# B3Chain testnet uses custom P2P network magic bytes (`0xb3 0xc1 0x02 0x0e`)
+# to isolate from Bitcoin's testnet. electrs's "testnet" mode hardcodes
+# Bitcoin's magic, so we run it in "signet" mode and override the magic
+# bytes via `signet_magic` -- the canonical electrs escape hatch for
+# custom networks. See src/kernel/chainparams.cpp:212.
+B3CHAIN_TESTNET_MAGIC=b3c1020e
 
 if [ ! -f /etc/b3chain/rpcpassword ]; then
     echo "/etc/b3chain/rpcpassword missing; cannot configure electrs auth" >&2
@@ -63,6 +99,13 @@ chmod g+rx /var/lib/b3chain                       || true
 chmod g+rx "$B3CHAIN_DATADIR"                     || true
 chmod g+rx "$B3CHAIN_DATADIR/testnet3"            || true
 chmod g+rx "$B3CHAIN_DATADIR/testnet3/blocks"     || true
+
+# 2c. electrs in "signet" mode looks for blocks under `daemon_dir/signet/`
+#     but b3chaind writes them to `daemon_dir/testnet3/`. Bridge with a
+#     relative symlink so the index points at the real block files.
+if [ ! -e "$B3CHAIN_DATADIR/signet" ]; then
+    sudo -u "$B3CHAIN_USER" ln -sfn testnet3 "$B3CHAIN_DATADIR/signet"
+fi
 # Make existing blk*.dat / rev*.dat files group-readable. New files
 # created by b3chaind will inherit umask 0077 (i.e. owner-only) so we
 # also drop a tmpfiles.d rule that re-applies the read bit nightly.
@@ -104,9 +147,16 @@ fi
 install -d -o root -g "$ELECTRS_USER" -m 750 /etc/electrs
 cat > /etc/electrs/config.toml <<EOF
 # electrs config for b3chain testnet (managed by contrib/testnet/electrs/install.sh)
-network         = "testnet"
+#
+# We run in "signet" mode (rather than "testnet") purely to take advantage of
+# the signet_magic escape hatch -- b3chaind speaks Bitcoin-Core wire protocol
+# but with custom 4-byte network magic. Block headers, txids, and merkle math
+# are all stock Bitcoin Core, so electrs indexes the chain correctly.
+network         = "signet"
+signet_magic    = "$B3CHAIN_TESTNET_MAGIC"
 daemon_dir      = "$B3CHAIN_DATADIR"
 daemon_rpc_addr = "$B3CHAIN_RPC_HOST:$B3CHAIN_RPC_PORT"
+daemon_p2p_addr = "$B3CHAIN_RPC_HOST:$B3CHAIN_P2P_PORT"
 auth            = "$B3CHAIN_RPC_USER:$B3CHAIN_RPC_PASS"
 db_dir          = "$ELECTRS_DIR/db"
 electrum_rpc_addr   = "127.0.0.1:$ELECTRS_PORT"
@@ -146,23 +196,43 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable electrs-testnet.service
-systemctl restart electrs-testnet.service
 
-# 6. Sanity check: wait for the Electrum RPC port to bind. Initial index
-#    build happens AFTER the bind on a small testnet (sub-minute), so we
-#    only wait for the TCP listener here; the explorer falls back to
-#    "Tx history unavailable" gracefully while the index catches up.
-echo "==> waiting for electrs to bind 127.0.0.1:$ELECTRS_PORT"
-for i in $(seq 1 60); do
-    if (echo > /dev/tcp/127.0.0.1/$ELECTRS_PORT) 2>/dev/null; then
-        echo "    electrs accepting connections on tcp/$ELECTRS_PORT"
-        echo "    tail logs with: journalctl -u electrs-testnet -f"
-        exit 0
-    fi
-    sleep 2
-done
+if [ "$ENABLE_SERVICE" -eq 1 ]; then
+    systemctl enable electrs-testnet.service
+    systemctl restart electrs-testnet.service
 
-echo "electrs did not bind tcp/$ELECTRS_PORT within 120s; last logs:" >&2
-journalctl -u electrs-testnet --no-pager -n 50 >&2
-exit 1
+    # Sanity check: wait for the Electrum RPC port to bind. Initial index
+    # build happens AFTER the bind on a small testnet (sub-minute), so we
+    # only wait for the TCP listener here; the explorer falls back to
+    # "Tx history unavailable" gracefully while the index catches up.
+    echo "==> waiting for electrs to bind 127.0.0.1:$ELECTRS_PORT"
+    for i in $(seq 1 60); do
+        if (echo > /dev/tcp/127.0.0.1/$ELECTRS_PORT) 2>/dev/null; then
+            echo "    electrs accepting connections on tcp/$ELECTRS_PORT"
+            echo "    tail logs with: journalctl -u electrs-testnet -f"
+            exit 0
+        fi
+        sleep 2
+    done
+
+    echo "electrs did not bind tcp/$ELECTRS_PORT within 120s; last logs:" >&2
+    journalctl -u electrs-testnet --no-pager -n 50 >&2
+    exit 1
+else
+    systemctl stop electrs-testnet.service 2>/dev/null || true
+    systemctl disable electrs-testnet.service 2>/dev/null || true
+    cat <<EOF
+==> electrs binary, user, config, and systemd unit are in place but the
+    service is left STOPPED + DISABLED.
+
+    Reason: romanz/electrs v0.10.6 has a hardcoded Bitcoin-signet genesis
+    hash check that fails on b3chain's custom genesis. See the header of
+    this script for details.
+
+    To enable anyway (will crash-loop until electrs supports custom
+    genesis hashes or you patch the source), re-run with:
+
+        sudo $0 --enable
+
+EOF
+fi
