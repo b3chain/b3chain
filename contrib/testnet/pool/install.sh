@@ -23,9 +23,14 @@ ACME_EMAIL=${B3POOL_ACME_EMAIL:-admin@b3chain.org}
 WEBROOT=/var/www/b3chain
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# 1. user
+# 1. user (use $DATA_DIR as HOME so npm has somewhere to write .npm/)
 if ! id -u "$POOL_USER" >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$POOL_USER"
+    useradd --system --no-create-home --home-dir "$DATA_DIR" \
+        --shell /usr/sbin/nologin "$POOL_USER"
+else
+    # Existing user might have been created with a default /home/ path
+    # that doesn't exist. Re-anchor it on $DATA_DIR.
+    usermod --home "$DATA_DIR" "$POOL_USER" 2>/dev/null || true
 fi
 
 # 2. directories
@@ -67,10 +72,16 @@ chown -R "$POOL_USER:$POOL_USER" "$APP_DIR"
 # still work. Either way devDeps are needed at runtime for the CLI
 # tools (migrate / pay-now / recompute-pplns / seed-admin) which use
 # tsx to run TypeScript directly.
+#
+# Force npm's cache + log dirs onto $DATA_DIR (where the pool user
+# actually has write access) instead of trying to mkdir /home/<user>.
+NPM_ENV="HOME=$DATA_DIR npm_config_cache=$DATA_DIR/.npm"
 if [ -f "$APP_DIR/package-lock.json" ]; then
-    sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm ci --no-audit --no-fund && npm run build"
+    sudo -u "$POOL_USER" bash -lc \
+        "cd $APP_DIR && env $NPM_ENV npm ci --no-audit --no-fund && env $NPM_ENV npm run build"
 else
-    sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm install --no-audit --no-fund && npm run build"
+    sudo -u "$POOL_USER" bash -lc \
+        "cd $APP_DIR && env $NPM_ENV npm install --no-audit --no-fund && env $NPM_ENV npm run build"
 fi
 
 # 6. postgres role + db
@@ -155,8 +166,8 @@ chgrp b3chain /etc/b3chain/rpcpassword
 chmod 640 /etc/b3chain/rpcpassword
 
 # 9. apply migrations (load env file the same way systemd does)
-sudo -u "$POOL_USER" -H bash -lc \
-    "cd $APP_DIR && set -a && . $CFG_DIR/pool.env && set +a && npm run migrate"
+sudo -u "$POOL_USER" bash -lc \
+    "cd $APP_DIR && env $NPM_ENV bash -c 'set -a && . $CFG_DIR/pool.env && set +a && npm run migrate'"
 
 # 10. ensure the pool-payouts wallet exists (use jq, not python, for parsing)
 RPC_PASS=$(cat /etc/b3chain/rpcpassword)
