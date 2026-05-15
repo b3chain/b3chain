@@ -32,7 +32,7 @@ bash contrib/testing/audit/audit-stratum-v2.sh --static  # static-only (no Node.
 bash contrib/testing/audit/audit-stratum-v2.sh --dry-run # print what would run
 ```
 
-Last run: **2026-05-15 09:39**
+Last run: **2026-05-15 10:14**
 
 ---
 
@@ -83,16 +83,9 @@ The audit script appends to this section every time it runs. Phase 6.3
 is considered "verified" once this section is empty after a clean run.
 
 <!-- VERIFIER-FINDINGS-START -->
-*Last verifier run: 2026-05-15 09:39*
+*Last verifier run: 2026-05-15 10:14*
 
-**Skipped:**
-
-- Row S-1a: B3CHAIN_SKIP_NODE=1
-- Row S-1b: B3CHAIN_SKIP_NODE=1
-- Row S-2b: B3CHAIN_SKIP_NODE=1
-- Row S-3a: B3CHAIN_SKIP_NODE=1
-- Row S-4a: B3CHAIN_SKIP_NODE=1
-- Row S-5a: B3CHAIN_SKIP_NODE=1
+*(clean run — no failures, no skips)*
 <!-- VERIFIER-FINDINGS-END -->
 
 ## Why this document exists
