@@ -302,6 +302,75 @@ module.exports = { items: [] };
 EOF
 fi
 
+# 5d. b3chain charts overlay
+# Drops a self-contained overlay (router + daily aggregator + views +
+# theme CSS) into the running explorer install. Wiring is done with a
+# single sed-injected require() in app.js. This keeps the patch
+# surface small so future btc-rpc-explorer upgrades are tractable.
+OVERLAY_SRC="$(cd "$(dirname "$0")" && pwd)/overlay"
+OVERLAY_DST="$EXP_DIR/node_modules/btc-rpc-explorer"
+if [ -d "$OVERLAY_SRC" ]; then
+    echo "==> applying b3chain charts overlay from $OVERLAY_SRC"
+    install -d -o "$EXP_USER" -g "$EXP_USER" \
+        "$OVERLAY_DST/views/b3-charts" \
+        "$OVERLAY_DST/app/services" \
+        "$OVERLAY_DST/routes" \
+        "$OVERLAY_DST/public/css" \
+        "$OVERLAY_DST/public/js" \
+        "$EXP_DIR/data"
+    cp -f "$OVERLAY_SRC/b3-bootstrap.js"           "$OVERLAY_DST/b3-bootstrap.js"
+    cp -f "$OVERLAY_SRC/routes/b3-charts-router.js" "$OVERLAY_DST/routes/b3-charts-router.js"
+    cp -f "$OVERLAY_SRC/app/services/b3-chart-defs.js"        "$OVERLAY_DST/app/services/b3-chart-defs.js"
+    cp -f "$OVERLAY_SRC/app/services/b3-pool-identifier.js"   "$OVERLAY_DST/app/services/b3-pool-identifier.js"
+    cp -f "$OVERLAY_SRC/app/services/b3-daily-aggregator.js"  "$OVERLAY_DST/app/services/b3-daily-aggregator.js"
+    cp -f "$OVERLAY_SRC/views/b3-charts/index.pug"            "$OVERLAY_DST/views/b3-charts/index.pug"
+    cp -f "$OVERLAY_SRC/views/b3-charts/chart-detail.pug"     "$OVERLAY_DST/views/b3-charts/chart-detail.pug"
+    cp -f "$OVERLAY_SRC/public/css/b3-theme.css"              "$OVERLAY_DST/public/css/b3-theme.css"
+    cp -f "$OVERLAY_SRC/public/js/b3-charts.js"               "$OVERLAY_DST/public/js/b3-charts.js"
+    chown -R "$EXP_USER:$EXP_USER" \
+        "$OVERLAY_DST/views/b3-charts" \
+        "$OVERLAY_DST/app/services/b3-chart-defs.js" \
+        "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
+        "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
+        "$OVERLAY_DST/routes/b3-charts-router.js" \
+        "$OVERLAY_DST/b3-bootstrap.js" \
+        "$OVERLAY_DST/public/css/b3-theme.css" \
+        "$OVERLAY_DST/public/js/b3-charts.js" \
+        "$EXP_DIR/data"
+    chmod 0644 \
+        "$OVERLAY_DST/b3-bootstrap.js" \
+        "$OVERLAY_DST/routes/b3-charts-router.js" \
+        "$OVERLAY_DST/app/services/b3-chart-defs.js" \
+        "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
+        "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
+        "$OVERLAY_DST/views/b3-charts/index.pug" \
+        "$OVERLAY_DST/views/b3-charts/chart-detail.pug" \
+        "$OVERLAY_DST/public/css/b3-theme.css" \
+        "$OVERLAY_DST/public/js/b3-charts.js"
+else
+    echo "WARNING: overlay source $OVERLAY_SRC not found; charts will be unavailable" >&2
+fi
+
+# 5e. wire the overlay into app.js (idempotent)
+APPJS_FILE=$OVERLAY_DST/app.js
+if [ -f "$APPJS_FILE" ] && ! grep -q 'b3-bootstrap' "$APPJS_FILE"; then
+    # Insert require + invoke immediately BEFORE the line that mounts
+    # the base router, so /charts/* resolves before any catchalls.
+    sed -i '/expressApp\.use(config\.baseUrl, baseActionsRouter);/i\
+require("./b3-bootstrap.js")(expressApp, config); // b3chain overlay' "$APPJS_FILE"
+fi
+
+# 5f. inject our theme CSS link + Charts nav item into layout.pug
+# The +themeCss directive lives at depth 2 (two tabs) and the first
+# `ul.navbar-nav.me-auto` is at depth 6 (six tabs). GNU sed's `s` with
+# \n + \t builds the replacement at the right indentation.
+if [ -f "$LAYOUT" ] && ! grep -q 'b3-theme.css' "$LAYOUT"; then
+    sed -i 's|^\t\t+themeCss$|\t\t+themeCss\n\t\tlink(rel="stylesheet", href=assetUrl("./css/b3-theme.css"))|' "$LAYOUT"
+fi
+if [ -f "$LAYOUT" ] && ! grep -q 'href="./charts"' "$LAYOUT"; then
+    sed -i 's|^\t\t\t\t\t\tul\.navbar-nav\.me-auto$|\t\t\t\t\t\tul.navbar-nav.me-auto\n\t\t\t\t\t\t\tli.nav-item\n\t\t\t\t\t\t\t\ta.nav-link.fw-semibold(href="./charts") Charts|' "$LAYOUT"
+fi
+
 # 4. environment file (RPC creds, port, network selection)
 RPC_PASS="$(cat /etc/b3chain/rpcpassword)"
 cat > "$EXP_DIR/.config/btc-rpc-explorer.env" <<EOF
@@ -349,7 +418,8 @@ RestartSec=10
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=$EXP_DIR
+ReadWritePaths=$EXP_DIR $EXP_DIR/data
+Environment=B3CHAIN_CHARTS_DATA_DIR=$EXP_DIR/data
 PrivateTmp=true
 
 [Install]

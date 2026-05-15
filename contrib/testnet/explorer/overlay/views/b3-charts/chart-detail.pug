@@ -1,0 +1,86 @@
+extends ../layout
+
+block headContent
+	title #{def.title}
+	meta(name="description" content=def.description)
+
+block content
+	.b3-charts-page
+		.container.b3-detail
+			nav.b3-breadcrumb.small.mb-3
+				a(href="./charts") Charts
+				span.mx-2 /
+				span.text-muted #{def.title}
+
+			h1.b3-detail__title #{def.title}
+			p.b3-detail__desc #{def.description}
+
+			if (def.placeholder)
+				.b3-callout.b3-callout--warn
+					strong Awaiting exchange listing
+					|  This chart needs a B3C/USD market price feed which doesn't exist yet (b3chain has not been listed on any exchange). The page is published as a placeholder so that links from external docs continue to resolve.
+
+			if (def.sourceNote)
+				.b3-callout.b3-callout--info
+					small #{def.sourceNote}
+
+			.b3-detail__toolbar
+				.b3-range-buttons
+					each r in [['1W', 7], ['1M', 30], ['3M', 90], ['1Y', 365], ['ALL', 0]]
+						button.b3-range-btn(type="button", data-range=r[1], class=(r[1] === 0 ? 'is-active' : '')) #{r[0]}
+				if (!def.placeholder && def.chartType === 'line')
+					.b3-scale-buttons
+						button.b3-scale-btn.is-active(type="button", data-scale="linear") Linear
+						button.b3-scale-btn(type="button", data-scale="log") Log
+
+			.b3-detail__chart-wrap
+				canvas#b3-chart(width="800", height="360")
+				.b3-detail__loading(id="b3-chart-loading")
+					span Loading chart data...
+
+			.b3-detail__sidebar
+				h3.b3-detail__sidebar-title Other Charts
+				ul.b3-detail__sidebar-list
+					each cat in categories
+						li.b3-detail__sidebar-cat
+							strong #{cat.title}
+							ul
+								each c in allCharts.filter(x => x.category === cat.id)
+									li
+										a(href=`./charts/${c.id}`, class=(c.id === def.id ? 'is-current' : '')) #{c.shortLabel}
+
+block endOfBody
+	+graphPageScriptSetup(true)
+	script(src=assetUrl("./js/b3-charts.js"))
+	script.
+		(function() {
+			var def = !{JSON.stringify(def)};
+			var unit = def.unit || '';
+			var canvas = document.getElementById('b3-chart');
+			var loading = document.getElementById('b3-chart-loading');
+
+			B3Charts.fetchAndRender({
+				chartId: def.id,
+				chartType: def.chartType,
+				logY: !!def.logY,
+				unit: unit,
+				canvas: canvas,
+				loadingEl: loading,
+				placeholder: !!def.placeholder
+			});
+
+			document.querySelectorAll('.b3-range-btn').forEach(function(btn) {
+				btn.addEventListener('click', function() {
+					document.querySelectorAll('.b3-range-btn').forEach(function(b){ b.classList.remove('is-active'); });
+					btn.classList.add('is-active');
+					B3Charts.setRange(parseInt(btn.getAttribute('data-range'), 10));
+				});
+			});
+			document.querySelectorAll('.b3-scale-btn').forEach(function(btn) {
+				btn.addEventListener('click', function() {
+					document.querySelectorAll('.b3-scale-btn').forEach(function(b){ b.classList.remove('is-active'); });
+					btn.classList.add('is-active');
+					B3Charts.setScale(btn.getAttribute('data-scale'));
+				});
+			});
+		})();

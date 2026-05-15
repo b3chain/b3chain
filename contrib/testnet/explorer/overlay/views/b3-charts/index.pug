@@ -1,0 +1,62 @@
+extends ../layout
+
+block headContent
+	title B3Chain Charts
+	meta(name="description" content="The most trusted source for data on the b3chain blockchain.")
+
+block content
+	.b3-charts-page
+		.b3-hero
+			.container
+				h1.b3-hero__title B3Chain Charts
+				p.b3-hero__subtitle The most trusted source for data on the b3chain blockchain
+				.b3-hero__nav
+					each cat in categories
+						a.b3-hero__nav-link(href=`#cat-${cat.id}`) #{cat.title}
+
+		.container.mt-4
+			//- Popular Stats row -- mirrors blockchain.com
+			section.b3-section
+				h2.b3-section__title Popular Stats
+				.b3-grid
+					.b3-card
+						.b3-card__label Latest Block Height
+						.b3-card__value #{tip ? tip.toLocaleString() : '-'}
+						.b3-card__unit blocks
+						.b3-card__desc The current tip of the b3chain blockchain.
+					.b3-card
+						.b3-card__label Network Difficulty
+						.b3-card__value #{tipDifficulty ? Number(tipDifficulty).toLocaleString(undefined, {maximumFractionDigits: 4}) : '-'}
+						.b3-card__unit
+						.b3-card__desc A relative measure of how difficult it is to mine a new block.
+					.b3-card
+						.b3-card__label Mempool Size
+						.b3-card__value #{mempool && mempool.bytes != null ? mempool.bytes.toLocaleString() : '-'}
+						.b3-card__unit bytes
+						.b3-card__desc Aggregate size of unconfirmed transactions waiting to be confirmed.
+					.b3-card
+						.b3-card__label Mempool Count
+						.b3-card__value #{mempool && mempool.size != null ? mempool.size.toLocaleString() : '-'}
+						.b3-card__unit txs
+						.b3-card__desc Total number of unconfirmed transactions.
+
+			each cat in categories
+				section.b3-section(id=`cat-${cat.id}`)
+					h2.b3-section__title #{cat.title}
+					.b3-grid
+						each c in byCategory[cat.id]
+							a.b3-card.b3-card--link(href=`./charts/${c.id}`)
+								.b3-card__label #{c.shortLabel}
+								if (c.placeholder)
+									.b3-card__value.b3-card__value--muted N/A
+									.b3-card__unit awaiting exchange listing
+								else
+									.b3-card__value.b3-card__value--muted view chart
+									.b3-card__unit
+								.b3-card__desc #{c.description}
+
+			.b3-aggregator-status.text-muted.small.mt-5
+				if (aggregatorStatus.dayCount > 0)
+					span Aggregator: #{aggregatorStatus.dayCount} day(s) cached, last block #{aggregatorStatus.lastBlockHeight.toLocaleString()}, #{aggregatorStatus.minerCount} miner(s) seen.
+				else
+					span Aggregator is warming up - daily series will appear within a few minutes after the first block is processed.
