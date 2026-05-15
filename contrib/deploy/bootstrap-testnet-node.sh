@@ -191,6 +191,11 @@ rpcallowip=127.0.0.1
 rpcport=$RPC_PORT
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASS
+# Without fallbackfee, sendtoaddress fails on a young chain whose
+# mempool history is too short for estimatesmartfee to produce a
+# rate. 0.00001 B3C/kB is plenty for testnet and matches the
+# upstream Bitcoin Core testnet default.
+fallbackfee=0.00001
 ${ADDNODE_BLOCK}
 EOF
 chmod 640 /etc/b3chain/b3chain.conf

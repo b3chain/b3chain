@@ -24,6 +24,12 @@ CFG=/etc/b3chain-faucet/topup.env
 : "${TOPUP:=10.0}"   # B3C - amount to send miner -> faucet
 : "${LOG:=/var/log/b3chain-faucet/topup.log}"
 : "${MIN_MATURE_BALANCE:=11.0}"  # don't try to send if miner has less
+# Explicit fee rate (sat/vB) used for the topup tx. On a young chain
+# `estimatesmartfee` returns nothing and the wallet refuses to send
+# unless either `-fallbackfee` is configured OR the caller passes an
+# explicit `fee_rate`. We pass the explicit rate as a defensive
+# fallback even when fallbackfee is set in b3chain.conf.
+: "${FEE_RATE:=1}"   # sat/vB
 
 PASS=$(cat "$RPC_PASSWORD_FILE" 2>/dev/null || echo "")
 mkdir -p "$(dirname "$LOG")"
@@ -75,7 +81,12 @@ if [ -z "$addr" ]; then
     exit 1
 fi
 
-# send from miner wallet
-res=$(rpc "$MINER_WALLET" sendtoaddress "[\"$addr\", $TOPUP]")
+# send from miner wallet. sendtoaddress positional args
+# (Bitcoin Core 22+ / B3Chain Core 30):
+#   [address, amount, comment, comment_to, subtractfeefromamount,
+#    replaceable, conf_target, estimate_mode, avoid_reuse, fee_rate]
+# We pin fee_rate=1 sat/vB so the call always succeeds even if
+# `estimatesmartfee` has no data and `fallbackfee` is unset.
+res=$(rpc "$MINER_WALLET" sendtoaddress "[\"$addr\", $TOPUP, \"\", \"\", false, false, null, \"unset\", false, $FEE_RATE]")
 txid=$(echo "$res" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result") or "ERR:"+str(d.get("error")))')
 log "SENT $TOPUP B3C: $MINER_WALLET -> $FAUCET_WALLET ($addr) tx=$txid (faucet was $faucet_bal, miner $miner_bal)"
