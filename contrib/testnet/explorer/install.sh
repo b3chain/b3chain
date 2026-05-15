@@ -227,12 +227,40 @@ done
 # We can't rename the items array itself (the value= URL parameter
 # and the `displayCurrency == "btc"` comparison both depend on
 # "btc"). Inject a labels map and use it for the visible text only.
+#
+# CRITICAL: pug requires consistent indentation. The injected line
+# MUST be at depth 9 (9 tabs) to be a sibling of `- var items` inside
+# `.dropdown-menu`. An earlier version of this installer used 8 tabs,
+# which closed the `.dropdown-menu` block early and leaked the
+# Display Currency / Theme / Display Timezone / More settings...
+# buttons into the navbar as visible siblings. The block below
+# (a) injects at the correct depth for fresh installs, and
+# (b) self-heals any pre-existing layout.pug that was injected at
+# depth 8.
 if [ -f "$LAYOUT" ] && ! grep -q 'b3chainCurrencyLabels' "$LAYOUT"; then
-    sed -i 's|- var items = \["BTC", "sat"\];|- var items = ["BTC", "sat"];\n\t\t\t\t\t\t\t\t- var b3chainCurrencyLabels = {"BTC":"B3C", "sat":"sat", "local":"local"};|' "$LAYOUT"
+    sed -i 's|- var items = \["BTC", "sat"\];|- var items = ["BTC", "sat"];\n\t\t\t\t\t\t\t\t\t- var b3chainCurrencyLabels = {"BTC":"B3C", "sat":"sat", "local":"local"};|' "$LAYOUT"
     # Replace the two `#{item}` references inside the picker block
     # with the looked-up label. Done by line address (inside the only
     # `each item in items` block where the items list is BTC/sat).
     sed -i '/var items = \["BTC", "sat"\]/,/var items = \["USD"/{s@#{item}@#{b3chainCurrencyLabels[item] || item}@g;}' "$LAYOUT"
+fi
+# Self-heal: re-indent any pre-existing depth-8 occurrence to depth 9.
+if [ -f "$LAYOUT" ] && grep -q 'b3chainCurrencyLabels' "$LAYOUT"; then
+    awk '
+    {
+        if (match($0, /- var b3chainCurrencyLabels/)) {
+            n = 0
+            while (n < length($0) && substr($0, n + 1, 1) == "\t") n++
+            if (n != 9) {
+                body = substr($0, n + 1)
+                pad = ""
+                for (i = 0; i < 9; i++) pad = pad "\t"
+                print pad body
+                next
+            }
+        }
+        print
+    }' "$LAYOUT" > "$LAYOUT.b3fix" && mv "$LAYOUT.b3fix" "$LAYOUT"
 fi
 
 # Replace the upstream "A Bitcoin Quote of the Day" iframe with a

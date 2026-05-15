@@ -591,6 +591,16 @@ tractable.
   `$EXP_DIR/data` to `ReadWritePaths` and export
   `B3CHAIN_CHARTS_DATA_DIR` so the systemd-confined service can write
   the daily cache.
+- Bug fix: the `b3chainCurrencyLabels` injection in `install.sh` was
+  using 8 tabs of indentation, which closed the `.dropdown-menu` block
+  one level early in pug and leaked the entire settings dropdown
+  content (Display Currency / Theme / Display Timezone / More
+  settings... / Admin Dashboard) into the navbar as visible siblings.
+  This was masked by the dark theme — the leaked text matched the dark
+  navbar background — but the new light theme exposed it. Fixed by
+  using 9 tabs (matching `- var items` depth) and added an awk-based
+  self-heal step that re-indents any pre-existing depth-8 occurrence
+  on every install, so older deploys repair themselves.
 
 ### Live results
 
