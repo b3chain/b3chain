@@ -24,41 +24,11 @@ use double SHA-256, same as Bitcoin. Only the PoW validation uses BLAKE3.
 
 ## BLAKE3 Test Vectors
 
-These vectors can be used to verify your BLAKE3 implementation is correct.
-
-### Single BLAKE3
-
-```
-BLAKE3("") = af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
-BLAKE3("b3chain") = 492530272073ef2fb434ca4d9492bcea09502b24642b7e04021892bdda2aa806
-```
-
-### Double BLAKE3
-
-```
-BLAKE3(BLAKE3("")) = 82878ed8a480ee41775636820e05a934ca5c747223ca64306658ee5982e6c227
-BLAKE3(BLAKE3("b3chain")) = f09be63a21ff0bc5646b5ddcadef1c43f8e0e47815793cff909cab0a345396d3
-```
-
-### Block Header Vectors
-
-**80 zero bytes:**
-```
-Header:    00000000...00000000 (80 bytes of 0x00)
-PoW hash:  fb6d63b21d8c9f215de0e4fd9f4d0e7ed53ff023c7243e76f5a7367b2a4507b6
-ID hash:   14508459b221041eab257d2baaa7459775ba748246c8403609eb708f0e57e74b
-```
-
-**Version=1, rest zeros:**
-```
-Header:    01000000 00...00 (version=1, 76 zero bytes)
-PoW hash:  a8b60a455b3576a701ed73ad8ebf838839917a0331bfb6dfa99b77641c858c61
-ID hash:   4ddd9f0855d58a375be5a763e5f51ece853d30525fcd9a3e477c2194fedb549f
-```
-
-Note: "PoW hash" and "ID hash" are shown in big-endian display format
-(most significant byte first), which is how block hashes are displayed.
-The actual byte order in memory is little-endian.
+Test vectors for verifying a BLAKE3 implementation byte-for-byte
+(single hash, double hash, and full 80-byte block-header vectors) are
+maintained in [`doc/stratum.md`](stratum.md#2-test-vectors), the
+authoritative pool-implementer reference. Any change to this hashing
+must be reflected there first.
 
 ## Mining with getblocktemplate (BIP 22/23)
 
@@ -121,31 +91,10 @@ python3 contrib/miner/b3chain-cpuminer.py --benchmark
 
 ## Stratum Protocol Notes
 
-For mining pool implementers, the following differences from Bitcoin apply:
-
-1. **Hash algorithm:** Replace SHA256d with double BLAKE3-256 for PoW
-   validation. All other hashes (merkle root, txid, etc.) remain SHA256d.
-
-2. **Work validation:** The pool validates shares by checking:
-   ```
-   BLAKE3(BLAKE3(header)) <= share_target
-   ```
-
-3. **Block submission:** Submitted blocks are validated by the node using
-   `BLAKE3(BLAKE3(header)) <= block_target` in `CheckProofOfWork()`.
-
-4. **Extranonce:** Standard extranonce handling in the coinbase transaction
-   works identically to Bitcoin. Only the final PoW hash computation differs.
-
-5. **Target encoding:** nBits compact encoding is identical to Bitcoin.
-
-6. **Default ports:**
-
-   | Network | P2P Port | RPC Port |
-   |---------|----------|----------|
-   | Mainnet | 8533     | 8534     |
-   | Testnet | 18533    | 18534    |
-   | Regtest | 18544    | 18545    |
+Stratum / pool implementer guidance has moved to its own document:
+[`doc/stratum.md`](stratum.md). It covers share validation, block
+submission, extranonce handling, default ports, and the BLAKE3
+specification reference.
 
 ## Performance Considerations
 

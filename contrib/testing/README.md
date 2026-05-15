@@ -85,6 +85,7 @@ python3 contrib/testing/verify-blake3-pow.py --rpc-port=18545
 | Genesis block miners | `contrib/genesis/` |
 | PoW design document | `doc/b3chain-pow-design.md` |
 | Mining documentation | `doc/mining.md` |
+| Stratum / pool implementer guide | `doc/stratum.md` |
 | C++ unit tests | `src/test/` (run via `ctest`) |
 | Python functional tests | `test/functional/` (run via `test_runner.py`) |
 

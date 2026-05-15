@@ -40,6 +40,7 @@ interface, which can be optionally built.
 Further information is available in the [doc folder](/doc), including:
 - [PoW design document](doc/b3chain-pow-design.md)
 - [Mining documentation](doc/mining.md)
+- [Stratum / pool implementer guide](doc/stratum.md)
 - [Project changelog](doc/CHANGELOG.md)
 
 Building
@@ -113,8 +114,10 @@ pip3 install blake3
 python3 contrib/miner/b3chain-cpuminer.py --regtest --coinbaseaddr b3rt1q...
 ```
 
-See [doc/mining.md](doc/mining.md) for the full mining specification, test
-vectors, and stratum protocol notes.
+See [doc/mining.md](doc/mining.md) for the full mining specification and
+the bundled reference CPU miner; see [doc/stratum.md](doc/stratum.md) for
+the pool-implementer contract (PoW computation, test vectors, and the
+BLAKE3 specification reference).
 
 Based on Bitcoin Core
 ---------------------
