@@ -152,7 +152,7 @@ B3POOL_SESSION_HOURS=168
 
 B3POOL_SMTP_HOST=127.0.0.1
 B3POOL_SMTP_PORT=25
-B3POOL_SMTP_FROM=B3Chain Pool <noreply@b3chain.org>
+B3POOL_SMTP_FROM="B3Chain Pool <noreply@b3chain.org>"
 
 B3POOL_LOG_LEVEL=info
 EOF
@@ -161,6 +161,12 @@ EOF
 else
     # On reruns, refresh the DB password line in case it was rotated above.
     sed -i "s|^B3POOL_DB_URL=.*|B3POOL_DB_URL=postgres://${POOL_DB}:${DB_PASSWORD_ENC}@127.0.0.1:5432/${POOL_DB}|" \
+        "$CFG_DIR/pool.env"
+    # Quote SMTP_FROM if an older install.sh wrote it unquoted (the
+    # bare `<` would otherwise be interpreted as a redirect when the
+    # CLI tools `. /etc/b3chain-pool/pool.env`). Only match lines that
+    # do not already start with a quote.
+    sed -i 's|^B3POOL_SMTP_FROM=\([^"].*<.*>.*\)$|B3POOL_SMTP_FROM="\1"|' \
         "$CFG_DIR/pool.env"
 fi
 
