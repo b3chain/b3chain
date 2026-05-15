@@ -18,6 +18,9 @@ RUN_DIR=/run/b3chain-pool
 CFG_DIR=/etc/b3chain-pool
 POOL_USER=b3chain-pool
 POOL_DB=b3chain_pool
+POOL_DOMAIN=${B3POOL_DOMAIN:-pool.b3chain.org}
+ACME_EMAIL=${B3POOL_ACME_EMAIL:-admin@b3chain.org}
+WEBROOT=/var/www/b3chain
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 1. user
@@ -29,11 +32,22 @@ fi
 install -d -o "$POOL_USER" -g "$POOL_USER" -m 750 "$APP_DIR" "$DATA_DIR" "$LOG_DIR"
 install -d -o "$POOL_USER" -g "$POOL_USER" -m 750 "$RUN_DIR"
 install -d -m 750 "$CFG_DIR"
+install -d -m 755 "$WEBROOT"
 
-# 3. node + postgres + postfix
+# 3. system packages
+# Pre-seed postfix so the apt install does not pop a TUI dialog. We
+# only need local delivery for outbound mail from the web service.
+DEBIAN_FRONTEND=noninteractive
+export DEBIAN_FRONTEND
+debconf-set-selections <<EOF
+postfix postfix/main_mailer_type string Internet Site
+postfix postfix/mailname        string ${POOL_DOMAIN}
+EOF
 apt-get update -y
 apt-get install -y --no-install-recommends \
-    curl ca-certificates gnupg postgresql postfix nginx
+    curl ca-certificates gnupg jq python3 rsync openssl \
+    build-essential python3-dev \
+    postgresql postfix nginx certbot
 if ! command -v node >/dev/null 2>&1; then
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y --no-install-recommends nodejs
@@ -48,9 +62,43 @@ rsync -a --delete \
 chown -R "$POOL_USER:$POOL_USER" "$APP_DIR"
 
 # 5. node deps + build
-sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm ci && npm run build"
+# Use `npm ci` if a lockfile is checked in, otherwise fall back to
+# `npm install` so first-time installs without a committed lockfile
+# still work. Either way devDeps are needed at runtime for the CLI
+# tools (migrate / pay-now / recompute-pplns / seed-admin) which use
+# tsx to run TypeScript directly.
+if [ -f "$APP_DIR/package-lock.json" ]; then
+    sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm ci --no-audit --no-fund && npm run build"
+else
+    sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm install --no-audit --no-fund && npm run build"
+fi
 
-# 6. environment file
+# 6. postgres role + db
+# Generate a per-host password the first time we install. Persist it
+# under $CFG_DIR so reruns of install.sh keep using the same value
+# instead of locking the running services out.
+PGPASS_FILE="$CFG_DIR/dbpassword"
+if [ -s "$PGPASS_FILE" ]; then
+    DB_PASSWORD=$(cat "$PGPASS_FILE")
+else
+    DB_PASSWORD=$(openssl rand -hex 24)
+    umask 077
+    printf '%s' "$DB_PASSWORD" > "$PGPASS_FILE"
+    chown root:"$POOL_USER" "$PGPASS_FILE"
+    chmod 640 "$PGPASS_FILE"
+fi
+
+if sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='${POOL_DB}'" | grep -q 1; then
+    sudo -u postgres psql -c "ALTER ROLE ${POOL_DB} WITH LOGIN PASSWORD '${DB_PASSWORD}'"
+else
+    sudo -u postgres psql -c "CREATE ROLE ${POOL_DB} LOGIN PASSWORD '${DB_PASSWORD}'"
+fi
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='${POOL_DB}'" \
+    | grep -q 1 || sudo -u postgres createdb -O "${POOL_DB}" "${POOL_DB}"
+
+DB_PASSWORD_ENC=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASSWORD")
+
+# 7. environment file
 if [ ! -f "$CFG_DIR/pool.env" ]; then
     if [ ! -r /etc/b3chain/rpcpassword ]; then
         echo "missing /etc/b3chain/rpcpassword (b3chaind-testnet not bootstrapped?)" >&2
@@ -65,7 +113,7 @@ B3POOL_RPC_PASSWORD_FILE=/etc/b3chain/rpcpassword
 B3POOL_PAYOUT_WALLET=pool-payouts
 B3POOL_NETWORK=testnet
 
-B3POOL_DB_URL=postgres://${POOL_DB}@127.0.0.1:5432/${POOL_DB}
+B3POOL_DB_URL=postgres://${POOL_DB}:${DB_PASSWORD_ENC}@127.0.0.1:5432/${POOL_DB}
 
 B3POOL_STRATUM_BIND=0.0.0.0
 B3POOL_STRATUM_PORT=3333
@@ -82,7 +130,7 @@ B3POOL_SHARE_SOCKET=${RUN_DIR}/share.sock
 
 B3POOL_WEB_BIND=127.0.0.1
 B3POOL_WEB_PORT=5100
-B3POOL_BASE_URL=https://pool.b3chain.org
+B3POOL_BASE_URL=https://${POOL_DOMAIN}
 B3POOL_COOKIE_SECRET=${COOKIE_SECRET}
 B3POOL_SESSION_HOURS=168
 
@@ -94,31 +142,29 @@ B3POOL_LOG_LEVEL=info
 EOF
     chmod 640 "$CFG_DIR/pool.env"
     chown root:"$POOL_USER" "$CFG_DIR/pool.env"
+else
+    # On reruns, refresh the DB password line in case it was rotated above.
+    sed -i "s|^B3POOL_DB_URL=.*|B3POOL_DB_URL=postgres://${POOL_DB}:${DB_PASSWORD_ENC}@127.0.0.1:5432/${POOL_DB}|" \
+        "$CFG_DIR/pool.env"
 fi
 
-# 7. ensure pool user can read RPC password
+# 8. ensure pool user can read RPC password
 groupadd -f b3chain
 usermod -aG b3chain "$POOL_USER"
 chgrp b3chain /etc/b3chain/rpcpassword
 chmod 640 /etc/b3chain/rpcpassword
 
-# 8. postgres role + db
-sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='${POOL_DB}'" \
-    | grep -q 1 || sudo -u postgres createuser --no-superuser --no-createdb --no-createrole "${POOL_DB}"
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='${POOL_DB}'" \
-    | grep -q 1 || sudo -u postgres createdb -O "${POOL_DB}" "${POOL_DB}"
+# 9. apply migrations (load env file the same way systemd does)
+sudo -u "$POOL_USER" -H bash -lc \
+    "cd $APP_DIR && set -a && . $CFG_DIR/pool.env && set +a && npm run migrate"
 
-# 9. apply migrations
-sudo -u "$POOL_USER" -H bash -lc "cd $APP_DIR && npm run migrate"
-
-# 10. ensure the pool-payouts wallet exists
+# 10. ensure the pool-payouts wallet exists (use jq, not python, for parsing)
 RPC_PASS=$(cat /etc/b3chain/rpcpassword)
-have_wallet=$(curl -s --user "b3chain:$RPC_PASS" \
+WALLETS_JSON=$(curl -fsS --user "b3chain:$RPC_PASS" \
     --data-binary '{"jsonrpc":"1.0","id":"pool","method":"listwallets","params":[]}' \
-    -H 'content-type: application/json' http://127.0.0.1:18534/ \
-    | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; print("yes" if "pool-payouts" in r else "no")')
-if [ "$have_wallet" = "no" ]; then
-    curl -s --user "b3chain:$RPC_PASS" \
+    -H 'content-type: application/json' http://127.0.0.1:18534/)
+if ! echo "$WALLETS_JSON" | jq -er '.result[]' 2>/dev/null | grep -qx 'pool-payouts'; then
+    curl -fsS --user "b3chain:$RPC_PASS" \
         --data-binary '{"jsonrpc":"1.0","id":"pool","method":"createwallet","params":["pool-payouts"]}' \
         -H 'content-type: application/json' http://127.0.0.1:18534/ >/dev/null
     echo "    created wallet 'pool-payouts'"
@@ -136,15 +182,32 @@ systemctl restart b3chain-pool-daemon.service
 systemctl restart b3chain-pool-stratum.service
 systemctl restart b3chain-pool-web.service
 
-# 12. nginx vhost (operator must set up TLS via certbot first)
-if [ ! -e /etc/nginx/sites-enabled/pool.b3chain.org.conf ]; then
-    install -m 644 "$SCRIPT_DIR/nginx/pool.b3chain.org.conf" \
-        /etc/nginx/sites-available/pool.b3chain.org.conf
-    ln -sf /etc/nginx/sites-available/pool.b3chain.org.conf \
-        /etc/nginx/sites-enabled/pool.b3chain.org.conf
-    echo "==> Installed nginx vhost. Run certbot for pool.b3chain.org, then:"
-    echo "    nginx -t && systemctl reload nginx"
+# 12. nginx vhost: install bootstrap (HTTP-only) first, then certbot,
+#     then swap in the full HTTPS vhost. Idempotent: if a TLS cert
+#     for ${POOL_DOMAIN} already exists, skip straight to the HTTPS
+#     vhost.
+NGX_AVAILABLE=/etc/nginx/sites-available
+NGX_ENABLED=/etc/nginx/sites-enabled
+
+install -m 644 "$SCRIPT_DIR/nginx/pool.b3chain.org-bootstrap.conf" \
+    "$NGX_AVAILABLE/pool.b3chain.org.conf"
+ln -sf "$NGX_AVAILABLE/pool.b3chain.org.conf" \
+    "$NGX_ENABLED/pool.b3chain.org.conf"
+nginx -t
+systemctl reload nginx
+
+if [ ! -e "/etc/letsencrypt/live/${POOL_DOMAIN}/fullchain.pem" ]; then
+    echo "==> requesting Let's Encrypt cert for ${POOL_DOMAIN}"
+    certbot certonly --webroot -w "$WEBROOT" -d "$POOL_DOMAIN" \
+        --non-interactive --agree-tos --email "$ACME_EMAIL" \
+        --keep-until-expiring
 fi
+
+# Now install the full HTTPS vhost (overwrites the bootstrap file).
+install -m 644 "$SCRIPT_DIR/nginx/pool.b3chain.org.conf" \
+    "$NGX_AVAILABLE/pool.b3chain.org.conf"
+nginx -t
+systemctl reload nginx
 
 # 13. logrotate
 cat > /etc/logrotate.d/b3chain-pool <<EOF
@@ -169,5 +232,5 @@ systemctl is-active b3chain-pool-daemon.service
 systemctl is-active b3chain-pool-web.service
 echo "==> Pool services up."
 echo "    Stratum: 0.0.0.0:3333"
-echo "    Web    : 127.0.0.1:5100 (front with nginx)"
+echo "    Web    : https://${POOL_DOMAIN}"
 echo "    Logs   : ${LOG_DIR}/"
