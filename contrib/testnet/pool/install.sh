@@ -36,7 +36,12 @@ fi
 # 2. directories
 install -d -o "$POOL_USER" -g "$POOL_USER" -m 750 "$APP_DIR" "$DATA_DIR" "$LOG_DIR"
 install -d -o "$POOL_USER" -g "$POOL_USER" -m 750 "$RUN_DIR"
-install -d -m 750 "$CFG_DIR"
+# CFG_DIR is owned root:pool-user so the pool user can traverse it to
+# read its own root-owned env file (mode 640 root:pool-user).
+install -d -o root -g "$POOL_USER" -m 750 "$CFG_DIR"
+# Apply on reruns too -- `install -d` does not chown an existing dir.
+chown root:"$POOL_USER" "$CFG_DIR"
+chmod 750 "$CFG_DIR"
 install -d -m 755 "$WEBROOT"
 
 # 3. system packages
