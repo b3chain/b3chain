@@ -191,6 +191,40 @@ else
     # do not already start with a quote.
     sed -i 's|^B3POOL_SMTP_FROM=\([^"].*<.*>.*\)$|B3POOL_SMTP_FROM="\1"|' \
         "$CFG_DIR/pool.env"
+    # Backfill any SV2 env vars that newer install.sh runs introduced.
+    # We only ADD missing keys; existing operator overrides are preserved.
+    declare -A SV2_DEFAULTS=(
+        [B3POOL_SV2_ENABLE]=false
+        [B3POOL_SV2_BIND]=0.0.0.0
+        [B3POOL_SV2_PORT]=3336
+        [B3POOL_SV2_AUTHORITY_KEY_FILE]="${CFG_DIR}/sv2-authority.key"
+        [B3POOL_SV2_STATIC_KEY_FILE]="${CFG_DIR}/sv2-static.key"
+        [B3POOL_SV2_CERT_FILE]="${CFG_DIR}/sv2-cert.bin"
+        [B3POOL_SV2_CERT_VALIDITY_DAYS]=90
+        [B3POOL_TP_BIND]=127.0.0.1
+        [B3POOL_TP_PORT]=8442
+        [B3POOL_TP_POLL_MS]=2000
+        [B3POOL_JD_ENABLE]=false
+        [B3POOL_JD_BIND]=0.0.0.0
+        [B3POOL_JD_PORT]=34264
+        [B3POOL_JD_TOKEN_TTL_MS]=300000
+        [B3POOL_TRANSLATOR_ENABLE]=false
+        [B3POOL_TRANSLATOR_BIND]=0.0.0.0
+        [B3POOL_TRANSLATOR_PORT]=3337
+        [B3POOL_TRANSLATOR_UPSTREAM]=127.0.0.1:3336
+    )
+    appended=0
+    for k in "${!SV2_DEFAULTS[@]}"; do
+        if ! grep -q "^${k}=" "$CFG_DIR/pool.env"; then
+            if [ "$appended" = 0 ]; then
+                echo "" >> "$CFG_DIR/pool.env"
+                echo "# ---- Stratum V2 (backfilled by install.sh rerun) ----" \
+                    >> "$CFG_DIR/pool.env"
+                appended=1
+            fi
+            echo "${k}=${SV2_DEFAULTS[$k]}" >> "$CFG_DIR/pool.env"
+        fi
+    done
 fi
 
 # 8. ensure pool user can read RPC password
