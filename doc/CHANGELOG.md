@@ -390,6 +390,105 @@ Live verification (after deploy):
 JSON, and the page renders the empty-state view instead of the error
 banner.
 
+### Explorer: live mempool page (added 2026-05-15)
+
+[`https://explorer.b3chain.org/live-mempool`](https://explorer.b3chain.org/live-mempool)
+is a new page that replicates the layout of
+`https://www.blockchain.com/explorer/mempool/btc`: a 5-up row of
+metric cards plus an "Unconfirmed B3C Transactions" feed that updates
+in real time without a page refresh. Rows match the upstream format
+exactly (`Hash {first4}-{last4}` · `M/D/YYYY, HH:MM:SS` · `0.X B3C`)
+and link to the existing `/tx/<txid>` page; the USD fiat column is
+omitted because B3C has no market-price feed.
+
+Architecture (overlay-only, no upstream `btc-rpc-explorer` changes):
+
+- [`overlay/app/services/b3-mempool-feed.js`](../contrib/testnet/explorer/overlay/app/services/b3-mempool-feed.js):
+  the single source of truth. `init()` starts a `setInterval(pollOnce,
+  B3CHAIN_MEMPOOL_POLL_MS||3000)` loop that calls
+  `getrawmempool true` (one RPC), diffs the keyed map against the
+  previous snapshot, enriches new txids with output sum via
+  `coreApi.getRawTransaction` (15-minute `txCache`, bounded
+  concurrency of 4), keeps a newest-first 200-entry ring, broadcasts
+  `event: tx-added`, `event: tx-removed`, and `event: info` over
+  Server-Sent Events to every subscriber, and writes `:hb` every 30s
+  to keep nginx from idling the stream closed.
+- [`overlay/routes/b3-mempool-router.js`](../contrib/testnet/explorer/overlay/routes/b3-mempool-router.js):
+  three routes mounted under `/live-mempool`: `GET /` renders the
+  Pug page with a server-side snapshot, `GET /api/snapshot` is the
+  REST initial-load + polling-fallback endpoint, `GET /api/stream` is
+  the long-lived SSE response handled by `feed.subscribe(req, res)`.
+  All `/api/*` paths sit under the existing rate-limit skip for
+  `/api/`.
+- [`overlay/views/b3-mempool/live.pug`](../contrib/testnet/explorer/overlay/views/b3-mempool/live.pug)
+  + [`overlay/public/js/b3-mempool-live.js`](../contrib/testnet/explorer/overlay/public/js/b3-mempool-live.js)
+  + [`overlay/public/css/b3-mempool.css`](../contrib/testnet/explorer/overlay/public/css/b3-mempool.css):
+  the presentation layer. The client opens an `EventSource`, prepends
+  rows with a 400ms fade-in, removes confirmed rows, and re-draws the
+  fee-level histogram with Chart.js. If SSE never opens (or never
+  delivers an event within ~8s) the page transparently falls back to
+  polling `/api/snapshot` every 4s.
+- [`overlay/b3-bootstrap.js`](../contrib/testnet/explorer/overlay/b3-bootstrap.js):
+  mounts the router beside the existing `/charts` router and calls
+  `mempoolFeed.init(coreApi, rpcApi)` so the loop starts at app boot.
+- [`contrib/testnet/explorer/install.sh`](../contrib/testnet/explorer/install.sh):
+  copies the five new overlay files into `node_modules/btc-rpc-explorer`,
+  adds a `<link rel="stylesheet" href="./css/b3-mempool.css">` to
+  `layout.pug`, and injects a "Live Mempool" navbar item beside the
+  existing "Charts" item. All four `layout.pug` sed blocks are
+  independently idempotent via `grep -q` gates.
+
+Tier-3 verification trace (per `.cursor/rules/deep-reasoning-firmware.mdc`):
+
+- TRIGGER: browser `GET /live-mempool` → Pug pre-renders the page with
+  the current `feed.getSnapshot()` → inline script calls
+  `B3LiveMempool.init({...})` → the client opens `EventSource(./live-mempool/api/stream)`.
+- PROCESS (the LOOP): `b3-mempool-feed.js#pollOnce()` is driven by
+  `setInterval` started in `init()`. Each cycle executes (file line
+  refs):
+  1. `await rpcApi.getRpcDataWithParams({method:"getrawmempool", parameters:[true]})`
+  2. compute `newTxids` and `removedTxids`
+  3. `await _enrichBatch(newTxids)` (concurrency 4, per-tx `coreApi.getRawTransaction`)
+  4. prepend new entries to `recent` and cap at 200
+  5. `_broadcast("tx-added", entry)` per new tx, then one
+     `_broadcast("tx-removed", removedTxids)`, then one
+     `_broadcast("info", {info, feeHistogram})`
+  6. recompute `bytesPerFeeBucket` snapshot and `aggregateInfo`
+  7. `prev = nextMap`
+  Every step in the comment maps 1:1 to an executable line.
+- COMPLETION: a new mempool tx reaches every connected SSE client
+  within `pollMs + RPC latency` (≤ 4s on testnet).
+- BYPASS: `pollOnce` is wrapped in a single `try/catch` that records
+  `lastError`; one failed cycle does not stop the interval. If
+  b3chaind is unreachable, `recent` and `prev` stay unchanged and the
+  page renders whatever the buffer holds. If a client connection
+  drops, `EventSource` auto-reconnects (~3s default) and the next
+  `hello` re-syncs state. There is exactly one code path that
+  produces broadcasts (`pollOnce → clients.forEach(write)`) and
+  exactly one code path that produces snapshots
+  (`/api/snapshot → feed.getSnapshot()`); no third path silently
+  skips updating clients.
+
+Risk summary:
+
+- Daemon load: 1 `getrawmempool true` every 3s plus one
+  `getrawtransaction` per *new* txid (cached for 15 min upstream);
+  bounded by `rpcConcurrency: 10` in explorer config.
+- Concurrent SSE clients: each holds an HTTP/1.1 connection. Capped at
+  200; oldest is dropped past the cap.
+- nginx buffering: `X-Accel-Buffering: no` header is set on the SSE
+  response.
+- Rate-limit: `/live-mempool/api/*` matches the existing `/api/` skip
+  rule that was added in the previous section.
+
+Live verification (after deploy):
+`GET /live-mempool` renders the page with the hero and the 5-card
+grid. `GET /live-mempool/api/snapshot` returns the current ring +
+aggregates as JSON. `GET /live-mempool/api/stream` stays open, emits
+`event: hello\ndata: {...}` immediately, then `:hb` every 30s; a
+faucet-sent tx triggers a `tx-added` SSE within ~3s and a
+`tx-removed` once the next block confirms it.
+
 ## Phase 7: Testing and QA
 
 ### 7.1 Unit Tests (C++)

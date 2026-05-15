@@ -12,13 +12,17 @@
 module.exports = function bootstrap(expressApp, config) {
 	try {
 		const b3ChartsRouter = require("./routes/b3-charts-router.js");
+		const b3MempoolRouter = require("./routes/b3-mempool-router.js");
 		const baseUrl = config.baseUrl || "/";
-		const mount =
-			(baseUrl.endsWith("/") ? baseUrl : baseUrl + "/") + "charts";
+		const prefix = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+		const chartsMount = prefix + "charts";
+		const liveMempoolMount = prefix + "live-mempool";
 
-		// Mount the charts router BEFORE the base router (we are called
-		// from app.js right before baseActionsRouter is registered).
-		expressApp.use(mount, b3ChartsRouter);
+		// Mount the overlay routers BEFORE the base router (we are
+		// called from app.js right before baseActionsRouter is
+		// registered).
+		expressApp.use(chartsMount, b3ChartsRouter);
+		expressApp.use(liveMempoolMount, b3MempoolRouter);
 
 		// Kick off the daily aggregator. It self-schedules a backfill +
 		// 30s tip-poll loop and persists to ${dataDir}/daily.json.
@@ -30,12 +34,18 @@ module.exports = function bootstrap(expressApp, config) {
 			"/var/lib/b3chain-explorer/data";
 		aggregator.init(coreApi, rpcApi, { dataDir });
 
+		// Kick off the live mempool feed. Polls `getrawmempool true`
+		// every B3CHAIN_MEMPOOL_POLL_MS (default 3000) and broadcasts
+		// diffs to /live-mempool/api/stream SSE subscribers.
+		const mempoolFeed = require("./app/services/b3-mempool-feed.js");
+		mempoolFeed.init(coreApi, rpcApi);
+
 		console.log(
-			`[b3-bootstrap] /charts mounted at "${mount}", aggregator dataDir=${dataDir}`,
+			`[b3-bootstrap] /charts at "${chartsMount}", /live-mempool at "${liveMempoolMount}", aggregator dataDir=${dataDir}`,
 		);
 	} catch (err) {
 		console.error(
-			`[b3-bootstrap] failed to wire up b3chain charts overlay: ${err.message}`,
+			`[b3-bootstrap] failed to wire up b3chain overlay: ${err.message}`,
 		);
 		console.error(err.stack);
 	}

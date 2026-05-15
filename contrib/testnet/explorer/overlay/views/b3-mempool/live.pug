@@ -1,0 +1,72 @@
+extends ../layout
+
+block headContent
+	title B3Chain Live Mempool
+	meta(name="description" content="Real-time view of unconfirmed transactions on the b3chain testnet.")
+
+block content
+	.b3-mempool-page
+		.b3-hero
+			.container
+				h1.b3-hero__title B3Chain Live Mempool
+				p.b3-hero__subtitle Real-time view of unconfirmed transactions on the b3chain testnet
+
+		.container.mt-4
+			section.b3-section
+				.b3-grid.b3-grid--5
+					.b3-card
+						.b3-card__label Mempool Bytes Per Fee Level
+						.b3-fee-chart-wrap
+							canvas#feeLevelChart(height="120")
+						.b3-card__unit sat/vB &middot; live snapshot
+					.b3-card
+						.b3-card__label Average Transaction Time
+						.b3-card__value(data-bind="avgTxTime") -
+						.b3-card__unit min
+						.b3-card__desc Average gap between consecutive blocks today.
+					.b3-card
+						.b3-card__label Confirmations Per Day
+						.b3-card__value(data-bind="confirmationsPerDay") -
+						.b3-card__unit tx
+						.b3-card__desc Confirmed transactions in today's UTC day so far.
+					.b3-card
+						.b3-card__label Total Transactions
+						.b3-card__value(data-bind="totalTx") -
+						.b3-card__unit tx
+						.b3-card__desc Confirmed today plus current unconfirmed in mempool.
+					.b3-card
+						.b3-card__label Avg Transactions Per Block
+						.b3-card__value(data-bind="avgTxPerBlock") -
+						.b3-card__unit tx
+						.b3-card__desc Today's transactions divided by today's blocks.
+
+			section.b3-section
+				.b3-mempool-head
+					h2.b3-section__title Unconfirmed B3C Transactions
+					.b3-mempool-counts
+						span.b3-mempool-counts__count(data-bind="mempoolCount") 0
+						|  txs &middot; 
+						span(data-bind="mempoolBytes") 0
+						|  bytes &middot; 
+						span(data-bind="mempoolFees") 0
+						|  B3C fees
+				.b3-live-feed
+					.b3-live-feed__status#feedStatus connecting...
+					ol.b3-live-feed__list#feedList
+					.b3-live-feed__empty#feedEmpty(style="display:none;") No unconfirmed transactions right now.
+
+block endOfBody
+	+graphPageScriptSetup
+	script(src=assetUrl("./js/b3-mempool-live.js"))
+	script.
+		(function() {
+			var latestDay = !{JSON.stringify(latestDay || {})};
+			var initial = !{JSON.stringify(initialSnapshot || {})};
+			B3LiveMempool.init({
+				latestDay: latestDay,
+				initial: initial,
+				snapshotUrl: "./live-mempool/api/snapshot",
+				streamUrl: "./live-mempool/api/stream",
+				txUrlBase: "./tx/"
+			});
+		})();

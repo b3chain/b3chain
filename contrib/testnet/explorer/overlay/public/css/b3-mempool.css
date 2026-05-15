@@ -1,0 +1,190 @@
+/* ===== /live-mempool page ===== */
+
+.b3-mempool-page .b3-hero {
+	background:
+		radial-gradient(1200px 500px at 10% -10%, rgba(26, 77, 214, 0.10), transparent 70%),
+		radial-gradient(800px 400px at 90% 0%, rgba(26, 77, 214, 0.08), transparent 70%),
+		var(--b3-bg-alt);
+	padding: 48px 0 32px;
+	border-bottom: 1px solid var(--b3-border);
+	margin: -16px 0 0;
+}
+
+/* 5-up card grid: blockchain.com layout. Collapses to 2-up below
+ * 900px and 1-up below 600px so it stays usable on mobile. */
+.b3-grid.b3-grid--5 {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1199px) {
+	.b3-grid.b3-grid--5 {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+@media (max-width: 899px) {
+	.b3-grid.b3-grid--5 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+@media (max-width: 599px) {
+	.b3-grid.b3-grid--5 {
+		grid-template-columns: 1fr;
+	}
+}
+
+.b3-fee-chart-wrap {
+	height: 120px;
+	margin-top: 6px;
+}
+
+/* ----- list of unconfirmed transactions ----- */
+
+.b3-mempool-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.b3-mempool-counts {
+	color: var(--b3-muted);
+	font-size: 0.9rem;
+}
+
+.b3-mempool-counts__count {
+	color: var(--b3-ink);
+	font-weight: 700;
+}
+
+.b3-live-feed {
+	background: var(--b3-card);
+	border: 1px solid var(--b3-border);
+	border-radius: var(--b3-radius);
+	box-shadow: var(--b3-shadow-sm);
+	padding: 6px;
+}
+
+.b3-live-feed__status {
+	font-size: 0.8rem;
+	color: var(--b3-muted);
+	padding: 6px 10px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.b3-live-feed__status::before {
+	content: "";
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--b3-success);
+	box-shadow: 0 0 0 0 rgba(21, 163, 110, 0.4);
+	animation: b3-pulse 1.6s infinite;
+}
+
+.b3-live-feed__status[data-state="reconnecting"]::before,
+.b3-live-feed__status[data-state="polling"]::before {
+	background: var(--b3-warn);
+	box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.4);
+}
+
+@keyframes b3-pulse {
+	0%   { box-shadow: 0 0 0 0 rgba(21, 163, 110, 0.35); }
+	70%  { box-shadow: 0 0 0 8px rgba(21, 163, 110, 0); }
+	100% { box-shadow: 0 0 0 0 rgba(21, 163, 110, 0); }
+}
+
+.b3-live-feed__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.b3-live-feed__row {
+	border-top: 1px solid var(--b3-border);
+}
+
+.b3-live-feed__row:first-child {
+	border-top: none;
+}
+
+.b3-live-feed__link {
+	display: grid;
+	grid-template-columns: minmax(140px, 220px) 1fr auto;
+	align-items: center;
+	gap: 16px;
+	padding: 10px 14px;
+	color: var(--b3-ink);
+	text-decoration: none;
+	transition: background-color 120ms ease;
+}
+
+.b3-live-feed__link:hover {
+	background: var(--b3-accent-soft);
+	color: var(--b3-ink);
+}
+
+.b3-live-feed__hash {
+	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	font-size: 0.9rem;
+	color: var(--b3-accent);
+	background: var(--b3-accent-soft);
+	border-radius: var(--b3-radius-sm);
+	padding: 4px 10px;
+	display: inline-block;
+	white-space: nowrap;
+}
+
+.b3-live-feed__time {
+	color: var(--b3-muted);
+	font-size: 0.9rem;
+	white-space: nowrap;
+}
+
+.b3-live-feed__amount {
+	font-weight: 600;
+	color: var(--b3-ink);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	text-align: right;
+}
+
+@media (max-width: 640px) {
+	.b3-live-feed__link {
+		grid-template-columns: 1fr auto;
+	}
+	.b3-live-feed__time {
+		display: none;
+	}
+}
+
+.b3-live-feed__empty {
+	padding: 28px 14px;
+	text-align: center;
+	color: var(--b3-muted);
+}
+
+/* ----- fade-in animation for newly inserted rows ----- */
+
+@keyframes b3-fade-in {
+	0% {
+		opacity: 0;
+		transform: translateY(-6px);
+		background: var(--b3-accent-soft);
+	}
+	100% {
+		opacity: 1;
+		transform: translateY(0);
+		background: transparent;
+	}
+}
+
+.b3-live-feed__row.b3-fade-in {
+	animation: b3-fade-in 400ms ease-out;
+}

@@ -371,6 +371,7 @@ if [ -d "$OVERLAY_SRC" ]; then
     echo "==> applying b3chain charts overlay from $OVERLAY_SRC"
     install -d -o "$EXP_USER" -g "$EXP_USER" \
         "$OVERLAY_DST/views/b3-charts" \
+        "$OVERLAY_DST/views/b3-mempool" \
         "$OVERLAY_DST/app/services" \
         "$OVERLAY_DST/routes" \
         "$OVERLAY_DST/public/css" \
@@ -378,41 +379,56 @@ if [ -d "$OVERLAY_SRC" ]; then
         "$EXP_DIR/data"
     cp -f "$OVERLAY_SRC/b3-bootstrap.js"           "$OVERLAY_DST/b3-bootstrap.js"
     cp -f "$OVERLAY_SRC/routes/b3-charts-router.js" "$OVERLAY_DST/routes/b3-charts-router.js"
+    cp -f "$OVERLAY_SRC/routes/b3-mempool-router.js" "$OVERLAY_DST/routes/b3-mempool-router.js"
     cp -f "$OVERLAY_SRC/app/services/b3-chart-defs.js"        "$OVERLAY_DST/app/services/b3-chart-defs.js"
     cp -f "$OVERLAY_SRC/app/services/b3-pool-identifier.js"   "$OVERLAY_DST/app/services/b3-pool-identifier.js"
     cp -f "$OVERLAY_SRC/app/services/b3-daily-aggregator.js"  "$OVERLAY_DST/app/services/b3-daily-aggregator.js"
+    cp -f "$OVERLAY_SRC/app/services/b3-mempool-feed.js"      "$OVERLAY_DST/app/services/b3-mempool-feed.js"
     cp -f "$OVERLAY_SRC/views/b3-charts/index.pug"            "$OVERLAY_DST/views/b3-charts/index.pug"
     cp -f "$OVERLAY_SRC/views/b3-charts/chart-detail.pug"     "$OVERLAY_DST/views/b3-charts/chart-detail.pug"
+    cp -f "$OVERLAY_SRC/views/b3-mempool/live.pug"            "$OVERLAY_DST/views/b3-mempool/live.pug"
     cp -f "$OVERLAY_SRC/views/transaction.pug"                "$OVERLAY_DST/views/transaction.pug"
     cp -f "$OVERLAY_SRC/views/address.pug"                    "$OVERLAY_DST/views/address.pug"
     cp -f "$OVERLAY_SRC/public/css/b3-theme.css"              "$OVERLAY_DST/public/css/b3-theme.css"
+    cp -f "$OVERLAY_SRC/public/css/b3-mempool.css"            "$OVERLAY_DST/public/css/b3-mempool.css"
     cp -f "$OVERLAY_SRC/public/js/b3-charts.js"               "$OVERLAY_DST/public/js/b3-charts.js"
+    cp -f "$OVERLAY_SRC/public/js/b3-mempool-live.js"         "$OVERLAY_DST/public/js/b3-mempool-live.js"
     chown -R "$EXP_USER:$EXP_USER" \
         "$OVERLAY_DST/views/b3-charts" \
+        "$OVERLAY_DST/views/b3-mempool" \
         "$OVERLAY_DST/views/transaction.pug" \
         "$OVERLAY_DST/views/address.pug" \
         "$OVERLAY_DST/app/services/b3-chart-defs.js" \
         "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
+        "$OVERLAY_DST/app/services/b3-mempool-feed.js" \
         "$OVERLAY_DST/routes/b3-charts-router.js" \
+        "$OVERLAY_DST/routes/b3-mempool-router.js" \
         "$OVERLAY_DST/b3-bootstrap.js" \
         "$OVERLAY_DST/public/css/b3-theme.css" \
+        "$OVERLAY_DST/public/css/b3-mempool.css" \
         "$OVERLAY_DST/public/js/b3-charts.js" \
+        "$OVERLAY_DST/public/js/b3-mempool-live.js" \
         "$EXP_DIR/data"
     chmod 0644 \
         "$OVERLAY_DST/b3-bootstrap.js" \
         "$OVERLAY_DST/routes/b3-charts-router.js" \
+        "$OVERLAY_DST/routes/b3-mempool-router.js" \
         "$OVERLAY_DST/app/services/b3-chart-defs.js" \
         "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
+        "$OVERLAY_DST/app/services/b3-mempool-feed.js" \
         "$OVERLAY_DST/views/b3-charts/index.pug" \
         "$OVERLAY_DST/views/b3-charts/chart-detail.pug" \
+        "$OVERLAY_DST/views/b3-mempool/live.pug" \
         "$OVERLAY_DST/views/transaction.pug" \
         "$OVERLAY_DST/views/address.pug" \
         "$OVERLAY_DST/public/css/b3-theme.css" \
-        "$OVERLAY_DST/public/js/b3-charts.js"
+        "$OVERLAY_DST/public/css/b3-mempool.css" \
+        "$OVERLAY_DST/public/js/b3-charts.js" \
+        "$OVERLAY_DST/public/js/b3-mempool-live.js"
 else
-    echo "WARNING: overlay source $OVERLAY_SRC not found; charts/tx/address overlay will be unavailable" >&2
+    echo "WARNING: overlay source $OVERLAY_SRC not found; charts/tx/address/mempool overlay will be unavailable" >&2
 fi
 
 # 5e. wire the overlay into app.js (idempotent)
@@ -424,15 +440,24 @@ if [ -f "$APPJS_FILE" ] && ! grep -q 'b3-bootstrap' "$APPJS_FILE"; then
 require("./b3-bootstrap.js")(expressApp, config); // b3chain overlay' "$APPJS_FILE"
 fi
 
-# 5f. inject our theme CSS link + Charts nav item into layout.pug
-# The +themeCss directive lives at depth 2 (two tabs) and the first
-# `ul.navbar-nav.me-auto` is at depth 6 (six tabs). GNU sed's `s` with
-# \n + \t builds the replacement at the right indentation.
+# 5f. inject our theme CSS links + Charts/Live Mempool nav items into
+# layout.pug. The +themeCss directive lives at depth 2 (two tabs) and
+# the first `ul.navbar-nav.me-auto` is at depth 6 (six tabs); each
+# nav `li` sits at depth 7 with its `a` at depth 8. GNU sed's `s` with
+# \n + \t builds the replacement at the right indentation. The four
+# blocks below are independently idempotent: each is gated by a
+# `grep -q` test for its specific injected token.
 if [ -f "$LAYOUT" ] && ! grep -q 'b3-theme.css' "$LAYOUT"; then
     sed -i 's|^\t\t+themeCss$|\t\t+themeCss\n\t\tlink(rel="stylesheet", href=assetUrl("./css/b3-theme.css"))|' "$LAYOUT"
 fi
+if [ -f "$LAYOUT" ] && ! grep -q 'b3-mempool.css' "$LAYOUT"; then
+    sed -i 's|^\t\tlink(rel="stylesheet", href=assetUrl("./css/b3-theme.css"))$|\t\tlink(rel="stylesheet", href=assetUrl("./css/b3-theme.css"))\n\t\tlink(rel="stylesheet", href=assetUrl("./css/b3-mempool.css"))|' "$LAYOUT"
+fi
 if [ -f "$LAYOUT" ] && ! grep -q 'href="./charts"' "$LAYOUT"; then
     sed -i 's|^\t\t\t\t\t\tul\.navbar-nav\.me-auto$|\t\t\t\t\t\tul.navbar-nav.me-auto\n\t\t\t\t\t\t\tli.nav-item\n\t\t\t\t\t\t\t\ta.nav-link.fw-semibold(href="./charts") Charts|' "$LAYOUT"
+fi
+if [ -f "$LAYOUT" ] && ! grep -q 'href="./live-mempool"' "$LAYOUT"; then
+    sed -i 's|^\t\t\t\t\t\t\t\ta\.nav-link\.fw-semibold(href="./charts") Charts$|\t\t\t\t\t\t\ta.nav-link.fw-semibold(href="./charts") Charts\n\t\t\t\t\t\t\tli.nav-item\n\t\t\t\t\t\t\t\ta.nav-link.fw-semibold(href="./live-mempool") Live Mempool|' "$LAYOUT"
 fi
 
 # 4. environment file (RPC creds, port, network selection)
