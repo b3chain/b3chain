@@ -124,14 +124,17 @@ if [ -f "$COIN" ]; then
     # Brand name + ticker
     sed -i 's|name:"Bitcoin"|name:"B3Chain"|'                                "$COIN"
     sed -i 's|ticker:"BTC"|ticker:"B3C"|'                                    "$COIN"
-    # Currency unit display names (BTC -> B3C, mBTC -> mB3C)
+    # Currency unit DISPLAY names only (BTC -> B3C, mBTC -> mB3C).
+    # We deliberately do NOT rename the lookup keys (`values:[...]`,
+    # `currencyUnitsByName`) or change `displayCurrency` cookie values:
+    # `formatCurrencyAmount(amount, formatType)` does
+    # `global.currencyTypes[formatType.toLowerCase()]`, and
+    # `valueDisplay` mixin compares `userSettings.displayCurrency`
+    # against the literal string "btc". Renaming the keys breaks both
+    # paths and renders a bare `span 0` instead of the value. Only
+    # `name:` is what the user actually sees.
     sed -i 's|name:"BTC"|name:"B3C"|'                                        "$COIN"
     sed -i 's|name:"mBTC"|name:"mB3C"|'                                      "$COIN"
-    sed -i 's|values:\["", "btc", "BTC"\]|values:["", "b3c", "B3C"]|'        "$COIN"
-    sed -i 's|values:\["mbtc"\]|values:["mb3c"]|'                            "$COIN"
-    # currencyUnitsByName lookup keys
-    sed -i 's|"BTC":currencyUnits\[0\]|"B3C":currencyUnits[0]|'              "$COIN"
-    sed -i 's|"mBTC":currencyUnits\[1\]|"mB3C":currencyUnits[1]|'            "$COIN"
     # Site titles
     sed -i 's|"main":"Bitcoin Explorer"|"main":"B3Chain Explorer"|'          "$COIN"
     sed -i 's|"test":"Testnet Explorer"|"test":"B3Chain Testnet Explorer"|'  "$COIN"
@@ -195,8 +198,23 @@ for L in "$LAYOUT" "$IFRAME"; do
     sed -i 's|all Bitcoiners|all B3Chain users|g' "$L"
 done
 
-# layout.pug-only: currency picker BTC -> B3C
-[ -f "$LAYOUT" ] && sed -i 's|var items = \["BTC", "sat"\]|var items = ["B3C", "sat"]|g' "$LAYOUT"
+# layout.pug-only: rebrand currency picker LABELS only.
+# We can't rename the items array itself (the value= URL parameter
+# and the `displayCurrency == "btc"` comparison both depend on
+# "btc"). Inject a labels map and use it for the visible text only.
+if [ -f "$LAYOUT" ] && ! grep -q 'b3chainCurrencyLabels' "$LAYOUT"; then
+    sed -i 's|- var items = \["BTC", "sat"\];|- var items = ["BTC", "sat"];\n\t\t\t\t\t\t\t\t- var b3chainCurrencyLabels = {"BTC":"B3C", "sat":"sat", "local":"local"};|' "$LAYOUT"
+    # Replace the two `#{item}` references inside the picker block
+    # with the looked-up label. Done by line address (inside the only
+    # `each item in items` block where the items list is BTC/sat).
+    sed -i '/var items = \["BTC", "sat"\]/,/var items = \["USD"/{s|#{item}|#{b3chainCurrencyLabels[item] || item}|g;}' "$LAYOUT"
+fi
+
+# Replace the upstream "A Bitcoin Quote of the Day" iframe with a
+# B3Chain-neutral placeholder iframe (height=0 keeps it invisible
+# unless the upstream snippet endpoint produces content; on B3Chain
+# the snippet returns nothing, so the iframe stays hidden).
+[ -f "$LAYOUT" ] && sed -i 's|title="A Bitcoin Quote of the Day"|title="Quote"|g' "$LAYOUT"
 
 # Strip the bitcoinexplorer-specific donate / twitter buttons from
 # layout.pug footer (each is "a.text-* (...)" line + 1 indented icon).
