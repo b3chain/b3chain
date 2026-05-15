@@ -310,8 +310,85 @@ all "off"):
   opens UFW `3337/tcp`.
 
 The SV2 stack is fully additive and opt-in: V1 miners on `:3333`
-continue to work unchanged regardless of the new flags. Phase 6
-remains COMPLETE.
+continue to work unchanged regardless of the new flags.
+
+**Live deployment**: deployed to seed1 on 2026-05-15 immediately
+after Phase 6.2's V1 deploy. All six pool services
+(`b3chain-pool-{stratum,daemon,web,stratum-v2,tp,translator}`) are
+`active`. UFW open for `3333`, `3336`, `3337`, `34264`; TP stays on
+loopback `8442`. The translator successfully completed a Noise NX
+handshake against the local SV2 pool at boot ("loaded upstream pool
+cert"), and the SV2 mining-protocol pool is producing one job every
+2 seconds (matching the V1 `B3POOL_TEMPLATE_POLL_MS=2000`). The
+SignedCertificate is reachable at
+[`http://pool.b3chain.org/sv2/cert`](http://pool.b3chain.org/sv2/cert)
+(106 bytes) and the pinning Ed25519 authority pubkey at
+[`http://pool.b3chain.org/sv2/authority.hex`](http://pool.b3chain.org/sv2/authority.hex).
+The deploy uncovered two issues that were fixed in-flight and folded
+back into `contrib/testnet/pool/install.sh` so the script is now
+end-to-end idempotent on a host that already has a Phase 6.2 V1 pool:
+
+1. `install.sh`'s rerun branch now backfills the new SV2 / TP / JD /
+   translator env vars into an existing `pool.env` instead of leaving
+   them undefined (otherwise `npm run sv2-keys` had no path to write
+   the keys to).
+2. `npm run sv2-keys` now runs as `root`, not the `b3chain-pool`
+   service user, because `/etc/b3chain-pool/` is mode `750
+   root:b3chain-pool` -- the pool user can READ files there but
+   cannot create new ones. After generation install.sh chowns the
+   keyfiles to `640 root:b3chain-pool` so the runtime services can
+   still load them at startup.
+
+Phase 6 remains COMPLETE.
+
+### Explorer: /mempool-summary empty-mempool crash + /internal-api/ rate-limit (fixed 2026-05-15)
+
+`https://explorer.b3chain.org/mempool-summary` was showing
+`Failed loading mempool: "error" ""` instead of an empty-state summary.
+Two upstream `btc-rpc-explorer` bugs hit at the same time because
+b3chain testnet usually has an empty mempool.
+
+1. `app/api/coreApi.js#buildMempoolSummary` divides `totWeight / summary.totalWeight`.
+   With an empty mempool `summary.totalWeight === 0`, so `NaN > 0.25`
+   is false on every iteration and `topIndex` stays at its initial `-1`.
+   The next statement is `satoshiPerByteBuckets[topIndex].buckets = 0`,
+   which throws `TypeError: Cannot set properties of undefined (setting
+   'buckets')`. The `/internal-api/build-mempool-summary` route's
+   `catch` block only logs (`329r7whegee`) and never sends a response,
+   so the AJAX call hangs until the browser gives up.
+2. Once the page started failing, the 125ms status-poll (~8 req/s)
+   blew through the default 200 req / 15 min rate limit. The skip
+   function in `app.js` only excludes `"/api/"` (and the substring
+   `"/api/"` is NOT contained in `"/internal-api/"`, since the
+   leading slash is missing), so subsequent retries got 429'd.
+
+Both bugs are patched defensively in
+[`contrib/testnet/explorer/install.sh`](../contrib/testnet/explorer/install.sh)
+with `sed` (matching the existing upstream-patch style):
+
+- `coreApi.js`: change `if (topIndex < satoshiPerByteBuckets.length)`
+  to `if (topIndex >= 0 && topIndex < satoshiPerByteBuckets.length)`
+  so an empty mempool short-circuits the bucket-merge step and the
+  function returns `{count:0, ...}` cleanly.
+- `app.js`: OR-in `req.originalUrl.includes("/internal-api/")` next to
+  the existing `/api/` skip, so the AJAX-heavy internal endpoints
+  (mempool-summary, mining-summary, predicted-blocks) are not subject
+  to the per-IP page-view rate limit.
+
+One-shot script
+[`contrib/testnet/explorer/patch-mempool-summary.sh`](../contrib/testnet/explorer/patch-mempool-summary.sh)
+applies both patches to an already-deployed explorer without a full
+reinstall, and
+[`contrib/testnet/explorer/verify-mempool-summary.sh`](../contrib/testnet/explorer/verify-mempool-summary.sh)
+exercises the three `/internal-api/` endpoints that drive the page so
+this regression is easy to spot in the future.
+
+Live verification (after deploy):
+`GET /internal-api/build-mempool-summary` returns HTTP 200 in 17 ms
+(was hanging until proxy timeout), the polling endpoint reports
+`{count:0,done:0}`, `get-mempool-summary` returns a valid empty-mempool
+JSON, and the page renders the empty-state view instead of the error
+banner.
 
 ## Phase 7: Testing and QA
 
