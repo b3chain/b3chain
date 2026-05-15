@@ -1,4 +1,5 @@
 import nodemailer, { Transporter } from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import { config } from "../config";
 import { Logger } from "../lib/logger";
 
@@ -6,7 +7,7 @@ let transporter: Transporter | null = null;
 
 function getTransporter(): Transporter {
     if (!transporter) {
-        const opts: Parameters<typeof nodemailer.createTransport>[0] = {
+        const opts: SMTPTransport.Options = {
             host: config.smtp.host,
             port: config.smtp.port,
             secure: false,
@@ -14,7 +15,7 @@ function getTransporter(): Transporter {
             tls: { rejectUnauthorized: false },
         };
         if (config.smtp.user) {
-            (opts as Record<string, unknown>).auth = {
+            opts.auth = {
                 user: config.smtp.user,
                 pass: config.smtp.pass,
             };

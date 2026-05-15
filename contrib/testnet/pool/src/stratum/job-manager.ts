@@ -174,12 +174,12 @@ function computeMerkleBranches(txidsHexBE: string[]): string[] {
     let level: (string | null)[] = [null, ...txidsHexBE]; // null placeholder for coinbase
     while (level.length > 1) {
         const sibling = level[1];
-        if (sibling !== null) branches.push(sibling);
+        if (typeof sibling === "string") branches.push(sibling);
         const next: (string | null)[] = [null];
         for (let i = 2; i < level.length; i += 2) {
             const left = level[i];
             const right = i + 1 < level.length ? level[i + 1] : level[i];
-            if (left == null || right == null) {
+            if (typeof left !== "string" || typeof right !== "string") {
                 next.push(null);
             } else {
                 next.push(combineHashesBE(left, right));
