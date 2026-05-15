@@ -12,14 +12,20 @@ import { config } from "../config";
 
 export function buildApp(): Application {
     const app = express();
-    app.set("views", path.join(__dirname, "views"));
+    // EJS templates live in src/web/views (tsc only emits .ts -> .js,
+    // it does not copy .ejs templates into dist/). Resolve via the
+    // project root so the same path works from dist/web (compiled) or
+    // src/web (tsx dev).
+    const projectRoot = path.resolve(__dirname, "..", "..");
+    const viewsDir = path.join(projectRoot, "src", "web", "views");
+    app.set("views", viewsDir);
     app.set("view engine", "ejs");
     app.set("trust proxy", 1);
     app.disable("x-powered-by");
 
     app.use(express.urlencoded({ extended: false, limit: "32kb" }));
     app.use(express.json({ limit: "32kb" }));
-    app.use(express.static(path.join(__dirname, "..", "..", "public"), { maxAge: "7d" }));
+    app.use(express.static(path.join(projectRoot, "public"), { maxAge: "7d" }));
 
     app.use(sessionMiddleware());
     app.use(consumeFlash);

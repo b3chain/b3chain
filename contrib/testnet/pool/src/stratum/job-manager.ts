@@ -7,7 +7,15 @@ import { getBlockTemplate, BlockTemplate } from "../lib/rpc";
 import { JobContext } from "./share-validator";
 import { config } from "../config";
 import { Logger } from "../lib/logger";
-import { hexToBytes, reverseBytes, bytesToHex } from "../lib/header";
+import {
+    hexToBytes,
+    reverseBytes,
+    bytesToHex,
+    varInt,
+    concatBytes,
+    uint32LE,
+} from "../lib/header";
+import { addressToScriptPubKey } from "../lib/address";
 
 let jobCounter = 0;
 
@@ -73,21 +81,25 @@ export class JobManager extends EventEmitter {
     }
 
     private buildJob(tpl: BlockTemplate): StratumJob {
-        if (!tpl.coinbasetxn || !tpl.coinbasetxn.data) {
-            throw new Error(
-                "getblocktemplate did not return coinbasetxn — start b3chaind with " +
-                "the pool-payouts wallet loaded so it can build a coinbase."
-            );
-        }
-        const cb = tpl.coinbasetxn.data;
-        const { coinb1Hex, coinb2Hex } = splitCoinbaseForExtranonce(cb);
+        // Pool builds the coinbase locally, mirroring what every modern
+        // mining pool does. b3chaind / Bitcoin Core 30+ no longer returns
+        // `coinbasetxn` from getblocktemplate, so we compose it ourselves
+        // from `coinbasevalue` and the pool's payout address.
+        const { coinb1Hex, coinb2Hex } = buildCoinbase(
+            tpl,
+            config.rpc.payoutAddress,
+            "/B3Chain Pool/"
+        );
 
         const txns: string[] = [];
         const branches: string[] = [];
         for (const tx of tpl.transactions) {
             txns.push(tx.data);
-            // hash from getblocktemplate is BIG-endian txid string
-            branches.push(tx.hash);
+            // The block merkle root is computed from txids (witness-stripped),
+            // not wtxids. getblocktemplate returns the txid in `txid` for
+            // segwit txs and falls back to `hash` for non-segwit txs (where
+            // they are equal anyway).
+            branches.push(tx.txid ?? tx.hash);
         }
         const merkleBranches = computeMerkleBranches(branches);
 
@@ -113,55 +125,91 @@ export class JobManager extends EventEmitter {
     }
 }
 
-// Split the b3chaind-provided coinbase tx into (prefix, suffix) around the
-// scriptSig "extranonce window". The pool's extranonce1 + miner's extranonce2
-// will be inserted between the two halves before serialization.
-//
-// b3chaind's coinbasetxn always reserves at least 8 bytes of placeholder
-// extranonce in the coinbase scriptSig, immediately after the BIP34 height.
-// We split right after the extranonce placeholder so the pool keeps the
-// height + arbitrary script prefix and the miner provides the entropy.
-//
-// For the reference implementation we treat the whole returned coinbase as
-// "coinb1 || coinb2" with extranonce inserted at a default 8-byte offset
-// from the end of scriptSig. b3chaind's `getblocktemplate` returns a coinbase
-// whose scriptSig already encodes this layout for pool use.
-function splitCoinbaseForExtranonce(coinbaseHex: string): { coinb1Hex: string; coinb2Hex: string } {
-    // Conservative default: split at the documented offset from b3chaind's
-    // coinbase reservation. The byte position is fixed because b3chaind always
-    // emits a deterministic prefix (version + 1 input + outpoint + scriptSigLen
-    // + height-push + extranonce-placeholder).
-    //
-    // Layout (offsets in bytes -> 2 hex chars each):
-    //   0      version            4
-    //   4      marker+flag        0 (no segwit witness in coinbase data)
-    //   4      txin count         1  (always 1)
-    //   5      prevout            36 (32 hash + 4 index)
-    //   41     scriptSig length   1
-    //   42     scriptSig          variable
-    //   ...    sequence           4
-    //   ...    txout count        varint
-    //   ...    txouts             variable
-    //   ...    locktime           4
-    //
-    // b3chaind reserves an 8-byte placeholder for extranonce inside
-    // scriptSig immediately after the BIP34 height push. We can locate
-    // it by scanning for the eight-zero-byte run that getblocktemplate
-    // guarantees.
-    const placeholder = "0000000000000000";
-    const idx = coinbaseHex.indexOf(placeholder);
-    if (idx < 0) {
-        // Fall back to splitting at the script-sig boundary; simulators
-        // can override this in tests.
-        const scriptSigOffset = (4 + 1 + 36 + 1) * 2;
-        return {
-            coinb1Hex: coinbaseHex.slice(0, scriptSigOffset),
-            coinb2Hex: coinbaseHex.slice(scriptSigOffset),
-        };
+// Encodes an integer as a minimal CScriptNum push (used for BIP34 height).
+function scriptNumPush(n: number): Uint8Array {
+    if (n === 0) return new Uint8Array([0x00]);
+    const negative = n < 0;
+    let abs = Math.abs(n);
+    const bytes: number[] = [];
+    while (abs > 0) {
+        bytes.push(abs & 0xff);
+        abs >>>= 8;
     }
+    if (bytes[bytes.length - 1]! & 0x80) bytes.push(negative ? 0x80 : 0x00);
+    else if (negative) bytes[bytes.length - 1] |= 0x80;
+    const len = bytes.length;
+    const out = new Uint8Array(1 + len);
+    out[0] = len; // OP_PUSHBYTES_<len>
+    out.set(bytes, 1);
+    return out;
+}
+
+// Builds the full coinbase hex and pre-splits it into (coinb1, coinb2)
+// around the 8-byte extranonce placeholder so the Stratum server can
+// inject extranonce1 || extranonce2 between the halves at submission time.
+//
+// Layout of the coinbase scriptSig we emit:
+//   <BIP34 height push> || <extranonce placeholder, 8 zero bytes> || <pool tag>
+//
+// Layout of the coinbase outputs:
+//   vout[0] : coinbasevalue → P2WPKH(payoutAddress)
+//   vout[1] : 0             → OP_RETURN witness commitment (when present
+//                              in tpl.default_witness_commitment)
+function buildCoinbase(
+    tpl: BlockTemplate,
+    payoutAddress: string,
+    poolTag: string
+): { coinb1Hex: string; coinb2Hex: string } {
+    const spk = addressToScriptPubKey(payoutAddress);
+    if (!spk) throw new Error(`B3POOL_PAYOUT_ADDRESS is not a valid bech32 address: ${payoutAddress}`);
+
+    // ---- scriptSig (variable) -------------------------------------
+    const heightPush = scriptNumPush(tpl.height);                  // BIP34 height
+    const extranoncePlaceholder = new Uint8Array(8);               // 8 zero bytes
+    const tagBytes = new TextEncoder().encode(poolTag);
+    if (tagBytes.length > 75) throw new Error("pool tag too long");
+    const tagPush = concatBytes(new Uint8Array([tagBytes.length]), tagBytes);
+
+    const scriptSig = concatBytes(heightPush, extranoncePlaceholder, tagPush);
+    if (scriptSig.length > 100) throw new Error("coinbase scriptSig > 100 bytes");
+
+    // ---- vin[0] (the coinbase input) ------------------------------
+    // Layout: prevout(36) || varInt(scriptSigLen) || scriptSig || sequence(4)
+    // We don't materialize vin as one buffer because we need the split
+    // to land inside scriptSig (between heightPush and tagPush).
+    const prevout = new Uint8Array(36);                            // 32B null hash + 4B 0xffffffff
+    prevout.fill(0xff, 32);
+    const sequence = uint32LE(0xffffffff);
+
+    // ---- vout list -----------------------------------------------
+    const value = BigInt(tpl.coinbasevalue);
+    const valueBytes = new Uint8Array(8);
+    new DataView(valueBytes.buffer).setBigUint64(0, value, true);
+    const vout0 = concatBytes(valueBytes, varInt(spk.length), spk);
+
+    const vouts: Uint8Array[] = [vout0];
+    if (tpl.default_witness_commitment) {
+        const wcSpk = hexToBytes(tpl.default_witness_commitment);
+        const zero = new Uint8Array(8);
+        vouts.push(concatBytes(zero, varInt(wcSpk.length), wcSpk));
+    }
+
+    // ---- assemble tx (no segwit marker; coinbase has no witness) -
+    const version = uint32LE(1);
+    const txinCount = new Uint8Array([1]);
+    const txoutCount = new Uint8Array([vouts.length]);
+    const locktime = uint32LE(0);
+
+    // The split must land ON the 8 placeholder bytes so the Stratum
+    // server can splice extranonce1 || extranonce2 between coinb1 and
+    // coinb2 at submit time. Build prefix and suffix explicitly rather
+    // than searching the serialized form.
+    const coinb1 = concatBytes(version, txinCount, prevout, varInt(scriptSig.length), heightPush);
+    const coinb2 = concatBytes(tagPush, sequence, txoutCount, ...vouts, locktime);
+
     return {
-        coinb1Hex: coinbaseHex.slice(0, idx),
-        coinb2Hex: coinbaseHex.slice(idx + placeholder.length),
+        coinb1Hex: bytesToHex(coinb1),
+        coinb2Hex: bytesToHex(coinb2),
     };
 }
 

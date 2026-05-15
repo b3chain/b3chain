@@ -93,3 +93,95 @@ export function isValidB3AddressForNetwork(
     const info = parseB3Address(addr);
     return info !== null && info.network === network;
 }
+
+// --- bech32 → witness program decoding ---------------------------------
+// Decodes the address into the witness version + raw witness program.
+// Returns null on any structural / checksum failure. This is the same
+// algorithm Bitcoin Core uses (BIP173/BIP350); the only B3Chain-specific
+// part is the HRP whitelist enforced by parseB3Address().
+
+export type WitnessDecoded = {
+    network: AddressInfo["network"];
+    witnessVersion: number;        // 0 (P2WPKH/P2WSH) | 1 (P2TR) | ...
+    witnessProgram: Uint8Array;    // 20 bytes for P2WPKH, 32 for P2WSH/P2TR
+    encoding: "bech32" | "bech32m";
+};
+
+function convertBits(
+    src: number[],
+    fromBits: number,
+    toBits: number,
+    pad: boolean
+): number[] | null {
+    let acc = 0;
+    let bits = 0;
+    const ret: number[] = [];
+    const maxv = (1 << toBits) - 1;
+    const maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+    for (const v of src) {
+        if (v < 0 || v >> fromBits !== 0) return null;
+        acc = ((acc << fromBits) | v) & maxAcc;
+        bits += fromBits;
+        while (bits >= toBits) {
+            bits -= toBits;
+            ret.push((acc >> bits) & maxv);
+        }
+    }
+    if (pad) {
+        if (bits > 0) ret.push((acc << (toBits - bits)) & maxv);
+    } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+        return null;
+    }
+    return ret;
+}
+
+export function decodeWitnessAddress(addr: string): WitnessDecoded | null {
+    const info = parseB3Address(addr);
+    if (!info) return null;
+
+    const lower = addr.toLowerCase();
+    const sepPos = lower.lastIndexOf("1");
+    const dataPart = lower.substring(sepPos + 1);
+
+    const data: number[] = [];
+    for (const ch of dataPart) {
+        const v = REVERSE[ch];
+        if (v === undefined) return null;
+        data.push(v);
+    }
+    if (data.length < 7) return null; // 6 checksum + at least 1 program byte
+
+    const witnessVersion = data[0]!;
+    if (witnessVersion < 0 || witnessVersion > 16) return null;
+
+    // Enforce the right encoding: bech32 for v0, bech32m for v1+.
+    if (witnessVersion === 0 && info.encoding !== "bech32") return null;
+    if (witnessVersion >= 1 && info.encoding !== "bech32m") return null;
+
+    const dataNoChecksum = data.slice(1, data.length - 6);
+    const program = convertBits(dataNoChecksum, 5, 8, false);
+    if (program === null) return null;
+    if (program.length < 2 || program.length > 40) return null;
+    if (witnessVersion === 0 && program.length !== 20 && program.length !== 32) return null;
+
+    return {
+        network: info.network,
+        witnessVersion,
+        witnessProgram: Uint8Array.from(program),
+        encoding: info.encoding,
+    };
+}
+
+// Returns the full Bitcoin-style scriptPubKey for a B3Chain bech32
+// address. For v0 (P2WPKH/P2WSH): 0x00 || pushdata(program). For v1+
+// (P2TR + future): OP_<v+0x50> || pushdata(program).
+export function addressToScriptPubKey(addr: string): Uint8Array | null {
+    const w = decodeWitnessAddress(addr);
+    if (!w) return null;
+    const opVersion = w.witnessVersion === 0 ? 0x00 : 0x50 + w.witnessVersion;
+    const out = new Uint8Array(2 + w.witnessProgram.length);
+    out[0] = opVersion;
+    out[1] = w.witnessProgram.length;
+    out.set(w.witnessProgram, 2);
+    return out;
+}

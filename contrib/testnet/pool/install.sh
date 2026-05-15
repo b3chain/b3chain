@@ -182,14 +182,35 @@ sudo -u "$POOL_USER" bash -lc \
 
 # 10. ensure the pool-payouts wallet exists (use jq, not python, for parsing)
 RPC_PASS=$(cat /etc/b3chain/rpcpassword)
-WALLETS_JSON=$(curl -fsS --user "b3chain:$RPC_PASS" \
-    --data-binary '{"jsonrpc":"1.0","id":"pool","method":"listwallets","params":[]}' \
-    -H 'content-type: application/json' http://127.0.0.1:18534/)
-if ! echo "$WALLETS_JSON" | jq -er '.result[]' 2>/dev/null | grep -qx 'pool-payouts'; then
+RPC_URL=http://127.0.0.1:18534
+
+rpc() {
+    # rpc <method> [params-json] [/wallet/<name>]
+    local method=$1 params=${2:-[]} wallet=${3:-}
     curl -fsS --user "b3chain:$RPC_PASS" \
-        --data-binary '{"jsonrpc":"1.0","id":"pool","method":"createwallet","params":["pool-payouts"]}' \
-        -H 'content-type: application/json' http://127.0.0.1:18534/ >/dev/null
+        --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"pool\",\"method\":\"$method\",\"params\":$params}" \
+        -H 'content-type: application/json' "${RPC_URL}${wallet}"
+}
+
+WALLETS_JSON=$(rpc listwallets)
+if ! echo "$WALLETS_JSON" | jq -er '.result[]' 2>/dev/null | grep -qx 'pool-payouts'; then
+    rpc createwallet '["pool-payouts"]' >/dev/null
     echo "    created wallet 'pool-payouts'"
+fi
+
+# 10a. ensure a payout address is pinned in pool.env. The stratum
+# coinbase will pay the block subsidy to this exact bech32 address;
+# we generate it once from the pool-payouts wallet so reruns of
+# install.sh keep using the same address.
+if ! grep -q '^B3POOL_PAYOUT_ADDRESS=' "$CFG_DIR/pool.env"; then
+    PAYOUT_ADDR=$(rpc getnewaddress '["pool-coinbase","bech32"]' /wallet/pool-payouts \
+        | jq -r '.result')
+    if [ -z "$PAYOUT_ADDR" ] || [ "$PAYOUT_ADDR" = "null" ]; then
+        echo "ERROR: could not allocate payout address from pool-payouts wallet" >&2
+        exit 1
+    fi
+    echo "B3POOL_PAYOUT_ADDRESS=$PAYOUT_ADDR" >> "$CFG_DIR/pool.env"
+    echo "    pinned payout address: $PAYOUT_ADDR"
 fi
 
 # 11. systemd units

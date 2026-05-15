@@ -5,11 +5,25 @@ import { makeLogger } from "../lib/logger";
 import { JobManager } from "./job-manager";
 import { StratumServer } from "./server";
 import { IpcClient } from "../lib/ipc";
+import { addressToScriptPubKey } from "../lib/address";
 import * as http from "http";
 
 const log = makeLogger("stratum-main");
 
 async function main(): Promise<void> {
+    if (!config.rpc.payoutAddress) {
+        throw new Error(
+            "B3POOL_PAYOUT_ADDRESS is not set. Run install.sh (which generates " +
+            "one from the pool-payouts wallet) or set it manually in pool.env."
+        );
+    }
+    if (!addressToScriptPubKey(config.rpc.payoutAddress)) {
+        throw new Error(
+            `B3POOL_PAYOUT_ADDRESS=${config.rpc.payoutAddress} is not a valid bech32 address`
+        );
+    }
+    log.info({ payoutAddress: config.rpc.payoutAddress }, "coinbase will pay this address");
+
     const ipc = new IpcClient(config.pool.shareSocket);
     ipc.on("connect", () => log.info("ipc connected to pool daemon"));
     ipc.on("disconnect", () => log.warn("ipc disconnected from pool daemon"));
