@@ -470,10 +470,8 @@ BTCEXP_BITCOIND_PORT=18534
 BTCEXP_BITCOIND_USER=b3chain
 BTCEXP_BITCOIND_PASS=$RPC_PASS
 # Privacy mode OFF so the address page renders the encoding badge + QR
-# section (those are gated on !privacyMode in the upstream view). With no
-# external address indexer wired up, /address/<addr> still shows hero,
-# encoding tag, technical-details, and "Tx history unavailable" callout
-# instead of fake numbers -- the address.pug overlay handles this path.
+# section (those are gated on !privacyMode in the upstream view) AND so
+# the explorer is allowed to forward scripthash queries to electrs.
 BTCEXP_PRIVACY_MODE=false
 BTCEXP_NO_RATES=true
 BTCEXP_BASIC_AUTH_PASSWORD=
@@ -489,18 +487,15 @@ BTCEXP_SLOW_DEVICE_MODE=false
 BTCEXP_COIN=BTC
 # Site title shown in browser tab + masthead
 BTCEXP_SITE_TITLE=B3Chain Testnet Explorer
-# NOTE on address indexer:
-#   Upstream supports BTCEXP_ADDRESS_API=electrum / blockchain.com / blockchair
-#   etc., but none of them work on b3chain testnet today:
-#     - electrum (romanz/electrs) hardcodes the signet genesis hash and
-#       cannot index a custom-genesis Bitcoin Core fork (see
-#       contrib/testnet/electrs/install.sh header for details).
-#     - blockchain.com / blockchair don't index b3chain.
-#   Result: address.pug renders hero + encoding tag + QR + technical
-#   details, but the stat cards show "?" and tx history shows
-#   "Tx history unavailable". The plumbing is in place; a future
-#   commit will add an in-process indexer (or a patched electrs) to
-#   populate those cards.
+# Address indexer: b3chain/electrs fork (v0.10.6-b3chain-1) provides the
+# Electrum Protocol endpoint on 127.0.0.1:50001. The fork fetches the
+# genesis header from b3chaind at startup so the chain walk doesn't
+# blow up on signet's hardcoded bitcoin-rs genesis. See
+# contrib/testnet/electrs/install.sh for the build/deploy steps.
+# The address.pug overlay's "Address indexer not configured" branch is
+# kept as a defensive fallback for the case where electrs is stopped.
+BTCEXP_ADDRESS_API=electrum
+BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
 EOF
 chown "$EXP_USER:$EXP_USER" "$EXP_DIR/.config/btc-rpc-explorer.env"
 chmod 640 "$EXP_DIR/.config/btc-rpc-explorer.env"

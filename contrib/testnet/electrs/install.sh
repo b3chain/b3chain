@@ -1,27 +1,21 @@
 #!/usr/bin/env bash
 #
-# Install romanz/electrs (Electrum Rust Server) and stage it under
-# systemd, pointed at the local b3chaind-testnet RPC + block files.
-# The explorer would use this for /address/<addr> per-address balance
-# and tx history.
+# Install b3chain's patched electrs (Electrum Rust Server) and stage it
+# under systemd, pointed at the local b3chaind-testnet RPC + block files.
+# The explorer uses this for /address/<addr> per-address balance and tx
+# history.
 #
-# !! KNOWN-INCOMPATIBLE WITH B3CHAIN (2026-05-15) -- DISABLED BY DEFAULT !!
-# ---------------------------------------------------------------------------
-# electrs v0.10.6 has THREE hardcoded assumptions that break on a Bitcoin-
-# Core fork that changes any of them:
+# Why a fork?
+# -----------
+# Upstream romanz/electrs v0.10.6 has THREE hardcoded assumptions that
+# break on a Bitcoin-Core fork that changes any of them:
 #   1. Network magic bytes  -> solved here via `network=signet` + `signet_magic`
 #   2. Daemon P2P port      -> solved here via `daemon_p2p_addr`
-#   3. Genesis block hash   -> NOT SOLVED. electrs uses bitcoin-rs's
-#      hardcoded signet genesis when walking chain history and bails with
-#      "missing prev_blockhash <b3chain-genesis>" at sync time.
-#
-# Until either (a) electrs is patched to accept a `genesis_hash` config
-# override, or (b) we build an in-process indexer in the explorer overlay,
-# the service is installed (so the binary, user, and unit are ready) but
-# left DISABLED. The explorer overlay handles this gracefully: the
-# /address pages render their hero + QR + technical-details, and the
-# stat cards show "?" + "Tx history unavailable" callout instead of fake
-# numbers.
+#   3. Genesis block hash   -> solved by b3chain/electrs@v0.10.6-b3chain-1:
+#      Chain::new now accepts an Option<BlockHeader> override, and
+#      Tracker::new feeds it the daemon's actual genesis (via
+#      `getblockhash 0` + `getblockheader`) instead of the bitcoin-rs
+#      crate's network-ident-keyed hardcoded one.
 #
 # Run as root on seed1 AFTER b3chaind-testnet is bootstrapped and
 # answering RPC at 127.0.0.1:18534. Idempotent (safe to re-run).
@@ -29,6 +23,8 @@ set -euo pipefail
 
 # Opt-in: pass --enable to actually `systemctl enable --now` the service.
 # Without it we stop+disable so a broken indexer can't keep flapping.
+# Kept as a flag (not unconditional) so we can bisect / hold back without
+# editing the installer.
 ENABLE_SERVICE=0
 for arg in "$@"; do
     case "$arg" in
@@ -48,7 +44,8 @@ fi
 
 ELECTRS_USER=electrs
 ELECTRS_DIR=/var/lib/electrs
-ELECTRS_TAG=v0.10.6                       # pinned; bump deliberately
+ELECTRS_REPO=https://github.com/b3chain/electrs.git
+ELECTRS_TAG=v0.10.6-b3chain-1             # bump deliberately; triggers DB wipe
 ELECTRS_PORT=50001                        # Electrum RPC (loopback only)
 ELECTRS_MONITORING_PORT=4224              # Prometheus (loopback only)
 B3CHAIN_USER=b3chain
@@ -121,15 +118,19 @@ z $B3CHAIN_DATADIR/testnet3/blocks/blk*.dat 0640 - - -
 z $B3CHAIN_DATADIR/testnet3/blocks/rev*.dat 0640 - - -
 EOF
 
-# 3. Build electrs from source if not already at the pinned tag.
-INSTALLED_TAG="$(/usr/local/bin/electrs --version 2>/dev/null | awk '{print $NF}' || true)"
-WANT_TAG="${ELECTRS_TAG#v}"
-if [ "$INSTALLED_TAG" != "$WANT_TAG" ]; then
+# 3. Build electrs from the b3chain fork if not already at the pinned tag.
+#
+# We can't trust `electrs --version` to identify the fork (it prints the
+# upstream Cargo.toml version "0.10.6"). Instead stash the installed git
+# tag in $ELECTRS_DIR/.installed-tag and compare against $ELECTRS_TAG.
+TAG_STAMP="$ELECTRS_DIR/.installed-tag"
+INSTALLED_TAG="$(cat "$TAG_STAMP" 2>/dev/null || true)"
+if [ "$INSTALLED_TAG" != "$ELECTRS_TAG" ]; then
     echo "==> building electrs $ELECTRS_TAG (installed: ${INSTALLED_TAG:-none})"
     SRC=/tmp/electrs-src
     rm -rf "$SRC"
     git clone --depth=1 --branch "$ELECTRS_TAG" \
-        https://github.com/romanz/electrs.git "$SRC"
+        "$ELECTRS_REPO" "$SRC"
     # Build as the electrs user so cargo's target/ is in its home and
     # doesn't pollute /root. The cargo registry cache is also kept there.
     chown -R "$ELECTRS_USER:$ELECTRS_USER" "$SRC"
@@ -140,6 +141,20 @@ if [ "$INSTALLED_TAG" != "$WANT_TAG" ]; then
     "
     install -m 0755 "$SRC/target/release/electrs" /usr/local/bin/electrs
     rm -rf "$SRC"
+
+    # The on-disk RocksDB was indexed with the previous binary's view of
+    # the chain (potentially with the wrong genesis hash on first install
+    # under the unpatched upstream). Force a re-index when the tag
+    # changes so the new genesis takes effect.
+    if [ -d "$ELECTRS_DIR/db" ]; then
+        echo "==> wiping electrs DB (tag changed: ${INSTALLED_TAG:-none} -> $ELECTRS_TAG)"
+        systemctl stop electrs-testnet.service 2>/dev/null || true
+        rm -rf "$ELECTRS_DIR/db"
+        install -d -o "$ELECTRS_USER" -g "$ELECTRS_USER" -m 750 "$ELECTRS_DIR/db"
+    fi
+
+    echo "$ELECTRS_TAG" > "$TAG_STAMP"
+    chown "$ELECTRS_USER:$ELECTRS_USER" "$TAG_STAMP"
 fi
 /usr/local/bin/electrs --version
 
@@ -152,6 +167,9 @@ cat > /etc/electrs/config.toml <<EOF
 # the signet_magic escape hatch -- b3chaind speaks Bitcoin-Core wire protocol
 # but with custom 4-byte network magic. Block headers, txids, and merkle math
 # are all stock Bitcoin Core, so electrs indexes the chain correctly.
+# The b3chain/electrs fork additionally fetches the genesis header from the
+# daemon at startup so the chain walk uses b3chain's real genesis hash
+# instead of bitcoin-rs's hardcoded signet one.
 network         = "signet"
 signet_magic    = "$B3CHAIN_TESTNET_MAGIC"
 daemon_dir      = "$B3CHAIN_DATADIR"
@@ -225,12 +243,12 @@ else
 ==> electrs binary, user, config, and systemd unit are in place but the
     service is left STOPPED + DISABLED.
 
-    Reason: romanz/electrs v0.10.6 has a hardcoded Bitcoin-signet genesis
-    hash check that fails on b3chain's custom genesis. See the header of
-    this script for details.
+    The genesis-hash incompatibility that previously forced this default
+    is fixed by b3chain/electrs@$ELECTRS_TAG. The --enable gate is kept
+    so an operator can install the binary without committing to running
+    it (useful for bisecting / staged rollouts).
 
-    To enable anyway (will crash-loop until electrs supports custom
-    genesis hashes or you patch the source), re-run with:
+    To turn it on, re-run with:
 
         sudo $0 --enable
 
