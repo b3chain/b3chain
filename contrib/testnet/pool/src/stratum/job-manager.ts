@@ -135,8 +135,10 @@ function scriptNumPush(n: number): Uint8Array {
         bytes.push(abs & 0xff);
         abs >>>= 8;
     }
-    if (bytes[bytes.length - 1]! & 0x80) bytes.push(negative ? 0x80 : 0x00);
-    else if (negative) bytes[bytes.length - 1] |= 0x80;
+    const lastIdx = bytes.length - 1;
+    const last = bytes[lastIdx]!;
+    if (last & 0x80) bytes.push(negative ? 0x80 : 0x00);
+    else if (negative) bytes[lastIdx] = last | 0x80;
     const len = bytes.length;
     const out = new Uint8Array(1 + len);
     out[0] = len; // OP_PUSHBYTES_<len>
