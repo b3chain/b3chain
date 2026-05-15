@@ -161,6 +161,31 @@ if [ -f "$APPJS" ] && grep -q '/Satoshi\\:' "$APPJS"; then
     sed -i 's#/Satoshi\\:#/(?:Satoshi|B3Chain)\\:#' "$APPJS"
 fi
 
+# Difficulty-Δ window cap. On a fresh chain the era-start header (the
+# block at the start of the current difficulty epoch) is genesis,
+# which can be months earlier than the first mined block. The
+# upstream code averages block time over the whole epoch-from-genesis
+# and produces nonsense ("difficulty will adjust by -75% in 1762
+# days" for a chain that's actually mining a block every ~15s). Cap
+# the averaging window to the last 100 blocks so the home-page
+# prediction reflects recent mining velocity. Once we cross block
+# 2016 (first real epoch boundary) the upstream code naturally
+# produces correct numbers and this patch becomes a no-op.
+BASEROUTER=$EXP_DIR/node_modules/btc-rpc-explorer/routes/baseRouter.js
+if [ -f "$BASEROUTER" ] \
+   && grep -q 'difficultyAdjustmentData = utils.difficultyAdjustmentEstimates(eraStartBlockHeader, currentBlock)' "$BASEROUTER" \
+   && ! grep -q 'B3Chain patch' "$BASEROUTER"; then
+    sed -i '/res\.locals\.difficultyAdjustmentData = utils\.difficultyAdjustmentEstimates(eraStartBlockHeader, currentBlock);/c\
+\t\t// B3Chain patch: on a fresh chain the era-start header is genesis,\
+\t\t// which is months in the past relative to the first mined block;\
+\t\t// that produces a nonsense avg-block-time. Cap the window to the\
+\t\t// last 100 blocks so the prediction reflects recent reality.\
+\t\tif (currentBlock.height - eraStartBlockHeader.height > 100) {\
+\t\t\ttry { eraStartBlockHeader = await coreApi.getBlockHeaderByHeight(currentBlock.height - 100); } catch (_) {}\
+\t\t}\
+\t\tres.locals.difficultyAdjustmentData = utils.difficultyAdjustmentEstimates(eraStartBlockHeader, currentBlock);' "$BASEROUTER"
+fi
+
 # Neutralize the bundled Bitcoin "fun" historical events (irrelevant
 # for B3Chain; they otherwise render Bitcoin-specific timeline cards
 # on the home page).
