@@ -164,6 +164,15 @@ if [ -f "$APPJS" ] && grep -q '/Satoshi\\:' "$APPJS"; then
     sed -i 's#/Satoshi\\:#/(?:Satoshi|B3Chain)\\:#' "$APPJS"
 fi
 
+# global.currencyTypes lives in app/currencies.js (NOT btc.js).
+# `formatCurrencyAmount` does `global.currencyTypes[formatType.toLowerCase()]`
+# and uses `.name` for the displayed unit. Patch the "btc" entry's
+# name so /blocks, /tx, /address etc render "B3C" next to amounts.
+CURRENCIES=$EXP_DIR/node_modules/btc-rpc-explorer/app/currencies.js
+if [ -f "$CURRENCIES" ]; then
+    sed -i 's|name:"BTC"|name:"B3C"|' "$CURRENCIES"
+fi
+
 # 5c. Pug-template rebrand. The B3C coin-config patches above only
 # affect strings that the explorer reads from coinConfig at request
 # time. A second wave is needed for strings that are hardcoded in the
