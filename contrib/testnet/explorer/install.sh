@@ -207,7 +207,7 @@ if [ -f "$LAYOUT" ] && ! grep -q 'b3chainCurrencyLabels' "$LAYOUT"; then
     # Replace the two `#{item}` references inside the picker block
     # with the looked-up label. Done by line address (inside the only
     # `each item in items` block where the items list is BTC/sat).
-    sed -i '/var items = \["BTC", "sat"\]/,/var items = \["USD"/{s|#{item}|#{b3chainCurrencyLabels[item] || item}|g;}' "$LAYOUT"
+    sed -i '/var items = \["BTC", "sat"\]/,/var items = \["USD"/{s@#{item}@#{b3chainCurrencyLabels[item] || item}@g;}' "$LAYOUT"
 fi
 
 # Replace the upstream "A Bitcoin Quote of the Day" iframe with a
