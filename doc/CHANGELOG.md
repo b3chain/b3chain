@@ -90,6 +90,21 @@ merkle tree structure, and transaction ID format.
   - Cookie and password authentication
   - Multi-threaded mining support
   - Hash rate benchmarking mode (~1.4 MH/s single-thread)
+  - **Stratum V1 pool mode (added 2026-05-15)**: `--stratum URL`,
+    `--user`, `--pass` connect to the b3chain pool at port 3333. Each
+    `mining.submit` is preceded by a comprehensive byte-level dump
+    (job id, both extranonces, ntime, nonce, full coinbase tx,
+    coinbase txid, merkle root, 80-byte header, PoW hash LE+BE, block
+    hash, share target/difficulty, network target/difficulty,
+    `is_block?`, server response, RTT) so pool implementers can
+    cross-check share-validation byte-for-byte. Optional `--json-log`
+    writes the same data plus connect/subscribed/notify/progress/
+    disconnect/summary events as one JSON object per line.
+    `--progress-interval` emits per-thread "best-hash-so-far"
+    progress between shares. Solo mode is unchanged. End-to-end
+    integration test at `contrib/miner/test_pool_miner.py` spins up a
+    mock pool, runs the real miner, and verifies every recorded share
+    by recomputing `BLAKE3(BLAKE3(header))` from the JSONL.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

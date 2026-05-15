@@ -96,6 +96,140 @@ Stratum / pool implementer guidance has moved to its own document:
 submission, extranonce handling, default ports, and the BLAKE3
 specification reference.
 
+## Pool Mining With The Reference Miner
+
+The reference miner at `contrib/miner/b3chain-cpuminer.py` also speaks
+**Stratum V1** and is the canonical way to verify a new pool
+implementation byte-for-byte. Every share submitted to the pool is
+printed with full diagnostic detail (job id, both extranonces, ntime,
+nonce, full coinbase tx, coinbase txid, merkle root, 80-byte header,
+PoW hash LE+BE, block hash, share/network targets, accepted/rejected,
+RTT). Between shares, periodic "best-hash-so-far" progress lines show
+the nonce search progressing.
+
+### Quick start
+
+```bash
+pip3 install blake3
+
+python3 contrib/miner/b3chain-cpuminer.py \
+    --stratum stratum+tcp://pool.b3chain.org:3333 \
+    --user alice@example.com.cpu1 --pass x \
+    --threads 2 --json-log shares.jsonl
+```
+
+`--user` follows the pool's `<email>.<workerName>` convention used for
+per-user accounting. `--pass` is ignored by the pool (default `"x"`).
+
+### Pool mode flags
+
+| Flag | Purpose |
+|---|---|
+| `--stratum URL` | Pool URL, e.g. `stratum+tcp://...:3333` or `stratum+ssl://...:3334`. Selecting `--stratum` puts the miner in pool mode. |
+| `--user USER` | Worker username (`<email>.<workerName>`). |
+| `--pass PASS` | Worker password (default `"x"`). |
+| `--useragent STR` | UA advertised in `mining.subscribe` (default `b3chain-cpuminer/1.0`). |
+| `--json-log PATH` | Append-only JSONL of every event (see below). |
+| `--quiet-progress` | Suppress per-N-hash console progress lines (still in JSONL). |
+| `--progress-interval N` | Internal-hash count between progress lines (default 1,000,000). |
+| `--reconnect-delay SEC` | Reconnect backoff base (default 5s; capped at 60s). |
+| `--max-attempts N` | Stop after N share submissions (0 = forever; useful for tests). |
+| `--threads N` | Number of mining threads (each searches a disjoint extranonce2 slice). |
+
+### What you see on stdout per share
+
+When a worker's `BLAKE3(BLAKE3(header))` falls below the share target,
+the miner prints a multi-line dump **before** sending `mining.submit`
+(so the share is recorded even if the network drops on the way out),
+then appends the server response and round-trip time:
+
+```text
+[2026-05-15T10:22:31.482Z] === SHARE #42 (thread=0, job=00012ab) ===
+  trigger             : pow <= shareTarget  (BLAKE3(BLAKE3(header)) check)
+  job_id              : 00012ab
+  extranonce1         : 0000003f                 (server-assigned)
+  extranonce2         : 00000000                 (4 bytes, miner-chosen, thread 0 slice)
+  ntime               : 0x6643b257  (1715769943, 2026-05-15T10:22:23+00:00)
+  nonce               : 0x4d2a91f7  (1294467063)
+  attempts_this_job   : 1,294,467,064  (this thread)
+  hashrate_this_share : 1.82 MH/s
+  coinbase (188 B)    : 02000000010000000000000000000000000000000000000000000000000000
+                        00000000ffffffff44031e0a000000003f00000000000000000a2f4233636861
+                        696e20506f6f6c2fffffffff0200f902950000000016001431b3...
+  coinbase_txid (BE)  : 9d27c1c81b73...e4f1a3
+  merkle_root  (BE)   : 6e10b4a3c2d1...09afde
+  header (80 B)       : 00000020 7d8e91...c2 6e10b4...09 57b24366 ffff7f1e f7912a4d
+                        \--ver--/\------------- prev (LE) -------------/...
+  PoW hash (LE)       : 8a3f4c00...000000
+  PoW hash (BE)       : 00000000...4c3f8a
+  block_hash (BE)     : 0000000019aabbcc...
+                        (SHA256d, identity hash for explorer)
+  share_target  (BE)  : 00000000003fffc0000000000000000000000000000000000000000000000000
+  share_difficulty    : 1024.000000
+  network_target(BE)  : 00000000ffff0000000000000000000000000000000000000000000000000000
+  network_difficulty  : 1.000000
+  pow_int / share_tgt : 0.318  (lower = better, must be <= 1)
+  pow_int / net_tgt   : 0.000311
+  is_block            : false
+  ----- mining.submit -----
+  -> {"id":17,"method":"mining.submit","params":["alice@example.com.cpu1","00012ab","00000000","6643b257","4d2a91f7"]}
+  <- {"id":17,"result":true,"error":null}     rtt=12.4 ms
+  status              : ACCEPTED  (server validated against share target)
+  ====================================================================
+[10:22:31.482] share=#42 job=00012ab nonce=0x4d2a91f7 pow_be=00000000084c3f8a... diff=1024 net_diff=1.000000 ACCEPTED  rtt=12.4ms  rate=1.82 MH/s
+```
+
+A rejected share replaces the last two lines with a `REJECTED` status
+and the server-supplied error tuple. A block-found share gets an
+extra `*** BLOCK CANDIDATE ***` banner before the dump and `*** BLOCK
+ACCEPTED ***` after the response.
+
+Between shares, every `--progress-interval` internal attempts emit a
+one-line progress entry per worker:
+
+```text
+[10:22:29.014] progress thread=0 job=00012ab en2=00000000 attempts=5,000,000 rate=1.79 MH/s best_pow_be=000003a1f4... dist_to_share=8.41x dist_to_block=8617x
+```
+
+### JSONL log format
+
+Passing `--json-log shares.jsonl` writes one JSON object per line for
+every event the miner observes. Useful events:
+
+| `event` | When it fires |
+|---|---|
+| `connect` | TCP/TLS established. |
+| `subscribed` | `mining.subscribe` response received (extranonce1, extranonce2_size). |
+| `authorized` | `mining.authorize` response received. |
+| `set_difficulty` | Server pushed a new share difficulty (initial + every vardiff retune). |
+| `notify` | Server pushed a new job; full coinb1/coinb2/branches recorded. |
+| `progress` | Per-worker periodic best-hash-so-far line. |
+| `share_pre_submit` | Share found, dump printed, about to send `mining.submit`. |
+| `share_submit` | `mining.submit` round-trip complete; includes accepted/rejected, error, RTT. |
+| `block_found` | Share that also met the network target was accepted. |
+| `disconnect` | TCP drop or handshake failure. |
+| `summary` | Final stats (runtime, shares, blocks, attempts, avg hashrate). |
+
+To replay a share from the JSONL and verify your pool's share-validation
+pipeline byte-for-byte:
+
+```bash
+jq -c 'select(.event=="share_submit") | {seq:.share_seq,job:.job_id,header:.header_hex,pow_le:.pow_hash_le}' shares.jsonl
+# Then for any line, double-BLAKE3 the header_hex and confirm it equals pow_hash_le.
+python3 -c "
+import sys, blake3
+h = bytes.fromhex(sys.argv[1])
+pow_le = blake3.blake3(blake3.blake3(h).digest()).digest().hex()
+print('matches' if pow_le == sys.argv[2] else 'MISMATCH', pow_le)
+" "<header_hex>" "<pow_hash_le>"
+```
+
+### Stratum V2
+
+This miner only speaks Stratum V1. The pool exposes V2 separately (port
+3336 with its translator at port 3337); a future version of the miner
+may add a `stratum2://` URL scheme.
+
 ## Performance Considerations
 
 BLAKE3 is significantly faster than SHA256d on modern hardware:

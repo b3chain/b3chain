@@ -42,10 +42,17 @@ cp .env.example .env && $EDITOR .env
 npm run dev:daemon  # one terminal
 npm run dev:stratum # another
 npm run dev:web     # another
-# 6. Point the reference miner at the pool
+# 6. Point the reference miner at the pool. Every share submitted is
+#    printed with full byte-level detail (job/extranonces/header/PoW
+#    hash/targets/server response/RTT) so the pool's share-validation
+#    pipeline can be cross-checked. --json-log captures the same
+#    information as JSONL for replay.
+pip3 install blake3
 python3 ../../../contrib/miner/b3chain-cpuminer.py \
     --stratum stratum+tcp://127.0.0.1:3333 \
-    --user dev@example.com.worker1 --pass x
+    --user dev@example.com.worker1 --pass x \
+    --threads 2 --json-log /tmp/shares.jsonl \
+    --progress-interval 500000
 ```
 
 Open `http://127.0.0.1:5100` to see the public landing page.
