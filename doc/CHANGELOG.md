@@ -947,12 +947,39 @@ Three viable next steps, in order of cost:
 3. Wait until a `bitcoin-rs` release exposes per-network genesis
    overrides upstream and electrs picks it up.
 
-Path #1 is the most likely short-term resolution; the existing
-electrs installer + systemd unit + tmpfiles glue all stay valid
-under it. Until then, `/address/<addr>` shows the address, encoding
-tag, QR, technical details, and an "indexer not yet available"
-callout instead of fake balance/tx-count numbers. `/tx/<txid>`,
-`/charts`, and every other page are unaffected.
+#### electrs fix landed — b3chain/electrs v0.10.6-b3chain-1
+
+Path #1 above is now done. The b3chain/electrs fork
+(<https://github.com/b3chain/electrs>) ships tag `v0.10.6-b3chain-1`,
+which fetches the genesis block header from the connected daemon at
+startup instead of asking `bitcoin-rs` for the network ident's
+hardcoded one:
+
+- `src/daemon.rs`: new `Daemon::get_genesis_header()` calls
+  `getblockhash 0` + `getblockheader` on the daemon RPC.
+- `src/chain.rs`: `Chain::new(network, genesis_header: Option<Header>)`
+  uses the daemon-supplied header when `Some(...)`, falling back to
+  the bitcoin-rs constant when `None` (so upstream tests still pass).
+- `src/tracker.rs`: `Tracker::new` takes a `&Daemon` and feeds its
+  `get_genesis_header()` result into `Chain::new`.
+- `src/electrum.rs`: `Rpc::new` is reordered so the daemon is
+  connected before the tracker is built (the tracker needs the daemon
+  handle now).
+
+`contrib/testnet/electrs/install.sh` repoints `ELECTRS_REPO` at the
+fork and pins `ELECTRS_TAG=v0.10.6-b3chain-1`. The installer also
+stashes the installed tag in `$ELECTRS_DIR/.installed-tag` (since the
+fork keeps the upstream Cargo.toml version string) and wipes the
+RocksDB on tag change so the new genesis takes effect on re-index.
+`contrib/testnet/explorer/install.sh` re-enables
+`BTCEXP_ADDRESS_API=electrum` + `BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001`.
+The `--enable` flag is kept on the electrs installer for staged
+rollouts; the address.pug "Address indexer not configured" branch
+stays as a defensive fallback for the case where electrs is
+intentionally stopped.
+
+The "indexer not yet available" callout is now only reachable by
+operator action (stopping electrs), not by upstream-incompat.
 
 ### Live results
 
