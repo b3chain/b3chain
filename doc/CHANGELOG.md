@@ -199,6 +199,28 @@ the status column in place. The script is wired into
 under the `P-1` row of the audits array so the same one-liner continues
 to validate the full audit suite.
 
+**Live deployment**: deployed to seed1 on 2026-05-15. Three services
+running under systemd, fronted by nginx on
+`https://pool.b3chain.org/` (Let's Encrypt cert via certbot --webroot
+into the existing seed1 acme webroot). Stratum exposed at
+`stratum+tcp://pool.b3chain.org:3333`. The deploy uncovered four
+issues that were fixed in-flight and folded back into
+`contrib/testnet/pool/install.sh` so the script is now actually
+end-to-end idempotent on a fresh Ubuntu 22.04 host:
+
+1. The system user needed a real `HOME` (npm refused to create
+   `/home/b3chain-pool` under `useradd --no-create-home`).
+2. `/etc/b3chain-pool/` had to be `750 root:b3chain-pool` so the
+   pool user could traverse to read the env file.
+3. `B3POOL_SMTP_FROM` had to be quoted in the env file so bash
+   `source` would not interpret the `<noreply@…>` chevrons as a
+   redirect.
+4. Bitcoin Core 30+ no longer returns `coinbasetxn` from
+   `getblocktemplate`, so the stratum job builder now composes the
+   coinbase locally (BIP34 height + 8-byte extranonce reservation +
+   `/B3Chain Pool/` tag, P2WPKH payout to the pool-payouts wallet,
+   plus the `default_witness_commitment` OP_RETURN).
+
 The pool is an overlay: it never touches consensus rules. Phase 6
 remains COMPLETE.
 
