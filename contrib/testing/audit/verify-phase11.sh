@@ -136,6 +136,7 @@ audits=(
     "10:51-attack-sim:audit-51-attack-sim.py:python3"
     "M-1:internal-miner:audit-internal-miner.sh:bash"
     "P-1:stratum-pool:audit-stratum-pool.sh:bash"
+    "P-2:stratum-v2:audit-stratum-v2.sh:bash"
 )
 if [ "${B3CHAIN_SKIP_AUDITS:-0}" = "1" ]; then
     for entry in "${audits[@]}"; do

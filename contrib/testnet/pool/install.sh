@@ -155,6 +155,29 @@ B3POOL_SMTP_PORT=25
 B3POOL_SMTP_FROM="B3Chain Pool <noreply@b3chain.org>"
 
 B3POOL_LOG_LEVEL=info
+
+# ---- Stratum V2 (off by default; phase G of the SV2 plan flips this on) ----
+B3POOL_SV2_ENABLE=false
+B3POOL_SV2_BIND=0.0.0.0
+B3POOL_SV2_PORT=3336
+B3POOL_SV2_AUTHORITY_KEY_FILE=${CFG_DIR}/sv2-authority.key
+B3POOL_SV2_STATIC_KEY_FILE=${CFG_DIR}/sv2-static.key
+B3POOL_SV2_CERT_FILE=${CFG_DIR}/sv2-cert.bin
+B3POOL_SV2_CERT_VALIDITY_DAYS=90
+
+B3POOL_TP_BIND=127.0.0.1
+B3POOL_TP_PORT=8442
+B3POOL_TP_POLL_MS=2000
+
+B3POOL_JD_ENABLE=false
+B3POOL_JD_BIND=0.0.0.0
+B3POOL_JD_PORT=34264
+B3POOL_JD_TOKEN_TTL_MS=300000
+
+B3POOL_TRANSLATOR_ENABLE=false
+B3POOL_TRANSLATOR_BIND=0.0.0.0
+B3POOL_TRANSLATOR_PORT=3337
+B3POOL_TRANSLATOR_UPSTREAM=127.0.0.1:3336
 EOF
     chmod 640 "$CFG_DIR/pool.env"
     chown root:"$POOL_USER" "$CFG_DIR/pool.env"
@@ -213,17 +236,55 @@ if ! grep -q '^B3POOL_PAYOUT_ADDRESS=' "$CFG_DIR/pool.env"; then
     echo "    pinned payout address: $PAYOUT_ADDR"
 fi
 
+# 10b. SV2 Noise key material + signed cert. Idempotent: the CLI tool
+#      only generates on first run and only re-signs the cert when it
+#      expires (or when the underlying static key was rotated by the
+#      operator). Cert is published into WEBROOT so miners can fetch
+#      ${POOL_DOMAIN}/sv2/cert with no TLS bootstrapping required.
+SV2_KEYS_OUT=$(sudo -u "$POOL_USER" bash -lc \
+    "cd $APP_DIR && env $NPM_ENV bash -c 'set -a && . $CFG_DIR/pool.env && set +a && npm run --silent sv2-keys'")
+SV2_CERT_FILE=$(echo "$SV2_KEYS_OUT" | jq -r '.certFile')
+SV2_AUTHORITY_HEX=$(echo "$SV2_KEYS_OUT" | jq -r '.authorityPub')
+if [ -f "$SV2_CERT_FILE" ]; then
+    install -d -m 755 "$WEBROOT/sv2"
+    install -m 644 "$SV2_CERT_FILE" "$WEBROOT/sv2/cert"
+    printf '%s\n' "$SV2_AUTHORITY_HEX" > "$WEBROOT/sv2/authority.hex"
+    chmod 644 "$WEBROOT/sv2/authority.hex"
+fi
+
 # 11. systemd units
-install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-stratum.service" /etc/systemd/system/
-install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-daemon.service"  /etc/systemd/system/
-install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-web.service"     /etc/systemd/system/
-install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool.target"          /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-stratum.service"     /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-daemon.service"      /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-web.service"         /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool.target"              /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-stratum-v2.service"  /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-tp.service"          /etc/systemd/system/
+install -m 644 "$SCRIPT_DIR/systemd/b3chain-pool-translator.service"  /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable b3chain-pool.target b3chain-pool-stratum.service \
     b3chain-pool-daemon.service b3chain-pool-web.service
 systemctl restart b3chain-pool-daemon.service
 systemctl restart b3chain-pool-stratum.service
 systemctl restart b3chain-pool-web.service
+
+# 11b. SV2 services are gated by per-feature env flags. Re-source
+#      pool.env so the toggles installed in step 7 are visible here.
+set -a; . "$CFG_DIR/pool.env"; set +a
+sv2_unit_set_state() {
+    # sv2_unit_set_state UNIT ENABLE_FLAG
+    local unit="$1" want="$2"
+    if [ "$want" = "true" ] || [ "$want" = "1" ] || [ "$want" = "yes" ]; then
+        systemctl enable  "$unit" >/dev/null 2>&1 || true
+        systemctl restart "$unit"
+    else
+        systemctl disable "$unit" >/dev/null 2>&1 || true
+        systemctl stop    "$unit" >/dev/null 2>&1 || true
+    fi
+}
+sv2_unit_set_state b3chain-pool-stratum-v2.service "${B3POOL_SV2_ENABLE:-false}"
+# TP runs on loopback only; turn it on whenever SV2 mining is on.
+sv2_unit_set_state b3chain-pool-tp.service         "${B3POOL_SV2_ENABLE:-false}"
+sv2_unit_set_state b3chain-pool-translator.service "${B3POOL_TRANSLATOR_ENABLE:-false}"
 
 # 12. nginx vhost: install bootstrap (HTTP-only) first, then certbot,
 #     then swap in the full HTTPS vhost. Idempotent: if a TLS cert
@@ -265,15 +326,36 @@ ${LOG_DIR}/*.log {
 }
 EOF
 
-# 14. UFW (open stratum)
+# 14. UFW (open stratum + SV2 ports). TP (8442) stays loopback-only.
 if command -v ufw >/dev/null 2>&1; then
-    ufw allow 3333/tcp || true
+    ufw allow 3333/tcp  || true
+    if [ "${B3POOL_SV2_ENABLE:-false}" = "true" ]; then
+        ufw allow 3336/tcp  || true
+        if [ "${B3POOL_JD_ENABLE:-false}" = "true" ]; then
+            ufw allow 34264/tcp || true
+        fi
+    fi
+    if [ "${B3POOL_TRANSLATOR_ENABLE:-false}" = "true" ]; then
+        ufw allow 3337/tcp  || true
+    fi
 fi
 
 systemctl is-active b3chain-pool-stratum.service
 systemctl is-active b3chain-pool-daemon.service
 systemctl is-active b3chain-pool-web.service
 echo "==> Pool services up."
-echo "    Stratum: 0.0.0.0:3333"
-echo "    Web    : https://${POOL_DOMAIN}"
-echo "    Logs   : ${LOG_DIR}/"
+echo "    Stratum V1 : 0.0.0.0:3333"
+if [ "${B3POOL_SV2_ENABLE:-false}" = "true" ]; then
+    echo "    Stratum V2 : 0.0.0.0:3336 (Noise NX)"
+    echo "    Template Pr: 127.0.0.1:8442 (loopback only)"
+    if [ "${B3POOL_JD_ENABLE:-false}" = "true" ]; then
+        echo "    Job Decl   : 0.0.0.0:34264 (Noise NX)"
+    fi
+fi
+if [ "${B3POOL_TRANSLATOR_ENABLE:-false}" = "true" ]; then
+    echo "    V1<->V2    : 0.0.0.0:3337"
+fi
+echo "    Web        : https://${POOL_DOMAIN}"
+echo "    SV2 cert   : http://${POOL_DOMAIN}/sv2/cert"
+echo "    SV2 author : http://${POOL_DOMAIN}/sv2/authority.hex"
+echo "    Logs       : ${LOG_DIR}/"

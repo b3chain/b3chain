@@ -224,6 +224,95 @@ end-to-end idempotent on a fresh Ubuntu 22.04 host:
 The pool is an overlay: it never touches consensus rules. Phase 6
 remains COMPLETE.
 
+### Phase 6.3: Stratum V2 pool support (added 2026-05-15)
+
+Adds a pure-TypeScript Stratum V2 stack alongside the existing V1 pool.
+All four SV2 roles ship in-tree under
+[`contrib/testnet/pool/src/sv2/`](../contrib/testnet/pool/src/sv2/) and
+re-use the V1 share validator and PPLNS pipeline unchanged:
+
+- **Mining Protocol pool** (`b3chain-pool-stratum-v2`) — TCP `:3336`,
+  Noise NX framed (X25519 ECDH + ChaCha20-Poly1305 AEAD + BLAKE2s).
+  Standard + Extended channels; per-channel extranonce-prefix routing.
+- **Job Declaration server** (in-process with the mining pool, TCP
+  `:34264`) — issues single-use 32-byte job tokens, accepts
+  `DeclareMiningJob`, validates the miner-built coinbase pays the
+  pool's `B3POOL_PAYOUT_ADDRESS`, then pushes `SetCustomMiningJob` over
+  the open Extended Mining channel.
+- **Template Provider** (`b3chain-pool-tp`) — TCP `:8442` loopback.
+  Adapts `getblocktemplate` to SV2 `NewTemplate` /
+  `SetNewPrevHashTP` / `RequestTransactionData`.
+- **V1<->V2 Translator** (`b3chain-pool-translator`) — TCP `:3337`.
+  Reuses the V1 [`stratum/client.ts`](../contrib/testnet/pool/src/stratum/client.ts)
+  on the south side, opens an Extended SV2 channel against the local
+  pool on the north side, and translates jobs / shares / difficulty
+  bidirectionally so legacy V1 miners benefit from the SV2 stack.
+
+**Identity**: the pool is keyed by an Ed25519 *authority* keypair plus
+an X25519 *static* keypair. The static key is wrapped in a
+SignedCertificate (90-day default validity) signed by the authority
+key. `install.sh` invokes `npm run sv2-keys` once on first install to
+generate both keypairs, sign the cert, and publish the cert + the
+authority pubkey under [`/var/www/b3chain/sv2/`](https://pool.b3chain.org/sv2/cert)
+so miners can fetch them over plain HTTP without a TLS bootstrap (the
+cert is self-authenticating against the out-of-band authority pubkey).
+See [`docs/NOISE-KEYS.md`](../contrib/testnet/pool/docs/NOISE-KEYS.md).
+
+**Schema** ([`db/migrations/004_sv2_sessions_and_jobs.sql`](../contrib/testnet/pool/db/migrations/004_sv2_sessions_and_jobs.sql)):
+`sv2_sessions`, `sv2_channels`, `sv2_declared_jobs`. Audit-only —
+share crediting still flows through the protocol-agnostic
+[`shares`](../contrib/testnet/pool/src/lib/ipc.ts) IPC, and the daemon
+does not need to know which protocol delivered each share.
+
+**Dependencies**: adds `@noble/curves` (X25519 + Ed25519) and
+`@noble/ciphers` (ChaCha20-Poly1305 + BLAKE2s) — same `@noble/*`
+family as the existing BLAKE3 SHA256 wiring. No native compilation,
+no FFI.
+
+**Tests**:
+[`tests/sv2-codec.test.ts`](../contrib/testnet/pool/tests/sv2-codec.test.ts),
+[`tests/sv2-noise.test.ts`](../contrib/testnet/pool/tests/sv2-noise.test.ts),
+[`tests/sv2-mining.test.ts`](../contrib/testnet/pool/tests/sv2-mining.test.ts),
+[`tests/sv2-jd.test.ts`](../contrib/testnet/pool/tests/sv2-jd.test.ts),
+[`tests/sv2-tp.test.ts`](../contrib/testnet/pool/tests/sv2-tp.test.ts),
+[`tests/sv2-translator.test.ts`](../contrib/testnet/pool/tests/sv2-translator.test.ts).
+Cover frame + type round-trips with golden vectors, the full Noise NX
+handshake + AEAD transport (including a tampered-ciphertext rejection
+case), the SignedCertificate sign+verify round-trip, channel state +
+extranonce reconstruction, JD token issuance + expiry + single-use
+enforcement, the coinbase-pays-pool validator (positive + negative
+case), the TP message family, and a V1<->V2 translator integration
+test against an in-process fake SV2 upstream pool. The
+`tests/e2e/docker-compose.e2e.yml` stack now also boots
+`pool-stratum-v2` and `pool-translator`, and
+[`tests/e2e/mine-sv2-and-pay.test.ts`](../contrib/testnet/pool/tests/e2e/mine-sv2-and-pay.test.ts)
+asserts that an in-tree TS SV2 miner gets PPLNS credit through the SV2
+path.
+
+**Verification**: [`doc/PHASE-6.3-VERIFICATION.md`](PHASE-6.3-VERIFICATION.md)
+mirrors the Phase 6.2 checklist with one row per SV2 phase
+(S-1 foundation, S-2 mining pool, S-3 template provider, S-4 job
+declaration, S-5 translator, S-6 e2e).
+[`contrib/testing/audit/audit-stratum-v2.sh`](../contrib/testing/audit/audit-stratum-v2.sh)
+runs every check and rewrites the status column in place. The script
+is wired into [`contrib/testing/audit/verify-phase11.sh`](../contrib/testing/audit/verify-phase11.sh)
+under the new `P-2` row of the audits array.
+[`doc/SECURITY-AUDIT.md`](SECURITY-AUDIT.md) gains a "Pool (Stratum V2)"
+row in both the summary and the per-category section, bringing the
+audit total from 12 to 14.
+
+**Operator switches** (in `/etc/b3chain-pool/pool.env`, defaults are
+all "off"):
+- `B3POOL_SV2_ENABLE=true` — turns on the mining-protocol pool + the
+  TP service. Opens UFW `3336/tcp`. TP stays loopback-only.
+- `B3POOL_JD_ENABLE=true` — opens the JD listener on UFW `34264/tcp`.
+- `B3POOL_TRANSLATOR_ENABLE=true` — runs the V1<->V2 translator and
+  opens UFW `3337/tcp`.
+
+The SV2 stack is fully additive and opt-in: V1 miners on `:3333`
+continue to work unchanged regardless of the new flags. Phase 6
+remains COMPLETE.
+
 ## Phase 7: Testing and QA
 
 ### 7.1 Unit Tests (C++)

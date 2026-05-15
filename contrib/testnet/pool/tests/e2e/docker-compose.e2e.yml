@@ -62,3 +62,52 @@ services:
       B3POOL_STRATUM_VARDIFF_TARGET_S: "999999"
     ports: [ "13333:3333" ]
     command: ["sh", "-c", "cd /app/src && npm run start:stratum"]
+
+  pool-stratum-v2:
+    image: node:20-alpine
+    depends_on: [ pool-daemon ]
+    environment:
+      B3POOL_RPC_HOST: b3chaind
+      B3POOL_RPC_PORT: "18545"
+      B3POOL_RPC_USER: dev
+      B3POOL_RPC_PASSWORD: dev
+      B3POOL_DB_URL: postgres://b3chain_pool:dev@postgres:5432/b3chain_pool
+      B3POOL_NETWORK: regtest
+      B3POOL_COOKIE_SECRET: e2e-cookie-secret-32bytes-min-len-padding
+      B3POOL_SHARE_SOCKET: /run/share/share.sock
+      B3POOL_SV2_ENABLE: "true"
+      B3POOL_SV2_BIND: "0.0.0.0"
+      B3POOL_SV2_PORT: "3336"
+      B3POOL_JD_ENABLE: "true"
+      B3POOL_JD_PORT: "34264"
+      B3POOL_SV2_AUTHORITY_KEY_FILE: /tmp/sv2-authority.key
+      B3POOL_SV2_STATIC_KEY_FILE: /tmp/sv2-static.key
+      B3POOL_SV2_CERT_FILE: /tmp/sv2-cert.bin
+      B3POOL_STRATUM_DEFAULT_DIFF: "1"
+      B3POOL_STRATUM_VARDIFF_TARGET_S: "999999"
+    ports:
+      - "13336:3336"
+      - "34264:34264"
+    command: ["sh", "-c", "cd /app/src && npm run start:stratum-v2"]
+
+  pool-translator:
+    image: node:20-alpine
+    depends_on: [ pool-stratum-v2 ]
+    environment:
+      B3POOL_RPC_HOST: b3chaind
+      B3POOL_RPC_PORT: "18545"
+      B3POOL_RPC_USER: dev
+      B3POOL_RPC_PASSWORD: dev
+      B3POOL_DB_URL: postgres://b3chain_pool:dev@postgres:5432/b3chain_pool
+      B3POOL_NETWORK: regtest
+      B3POOL_COOKIE_SECRET: e2e-cookie-secret-32bytes-min-len-padding
+      B3POOL_SHARE_SOCKET: /run/share/share.sock
+      B3POOL_TRANSLATOR_ENABLE: "true"
+      B3POOL_TRANSLATOR_BIND: "0.0.0.0"
+      B3POOL_TRANSLATOR_PORT: "3337"
+      B3POOL_TRANSLATOR_UPSTREAM: "pool-stratum-v2:3336"
+      B3POOL_SV2_AUTHORITY_KEY_FILE: /tmp/sv2-authority.key
+      B3POOL_SV2_STATIC_KEY_FILE: /tmp/sv2-static.key
+      B3POOL_SV2_CERT_FILE: /tmp/sv2-cert.bin
+    ports: [ "13337:3337" ]
+    command: ["sh", "-c", "cd /app/src && npm run start:translator"]

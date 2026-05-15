@@ -26,3 +26,9 @@ target/
 /guix-build-*
 
 /ci/scratch/
+
+# Local audit run log directories (created by verify-phase11.sh,
+# audit-stratum-pool.sh, audit-stratum-v2.sh, etc. on failure).
+/.verify-phase11-last-run/
+/.audit-stratum-pool-last-run/
+/.audit-stratum-v2-last-run/

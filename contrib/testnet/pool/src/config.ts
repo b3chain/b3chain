@@ -31,6 +31,12 @@ function envFloat(name: string, def?: number): number {
     return n;
 }
 
+function envBool(name: string, def: boolean): boolean {
+    const v = process.env[name];
+    if (v === undefined || v === "") return def;
+    return /^(1|true|yes|on)$/i.test(v.trim());
+}
+
 function envFileOrInline(name: string): string {
     const fileEnv = process.env[`${name}_FILE`];
     if (fileEnv && fileEnv.length > 0) {
@@ -88,6 +94,32 @@ export const config = {
     },
     log: {
         level: env("B3POOL_LOG_LEVEL", "info"),
+    },
+    sv2: {
+        enable: envBool("B3POOL_SV2_ENABLE", false),
+        bind: env("B3POOL_SV2_BIND", "0.0.0.0"),
+        port: envInt("B3POOL_SV2_PORT", 3336),
+        authorityKeyFile: env("B3POOL_SV2_AUTHORITY_KEY_FILE", "/etc/b3chain-pool/sv2-authority.key"),
+        staticKeyFile: env("B3POOL_SV2_STATIC_KEY_FILE", "/etc/b3chain-pool/sv2-static.key"),
+        certFile: env("B3POOL_SV2_CERT_FILE", "/etc/b3chain-pool/sv2-cert.bin"),
+        certValidityDays: envInt("B3POOL_SV2_CERT_VALIDITY_DAYS", 90),
+    },
+    tp: {
+        bind: env("B3POOL_TP_BIND", "127.0.0.1"),
+        port: envInt("B3POOL_TP_PORT", 8442),
+        pollMs: envInt("B3POOL_TP_POLL_MS", 2000),
+    },
+    jd: {
+        enable: envBool("B3POOL_JD_ENABLE", false),
+        bind: env("B3POOL_JD_BIND", "0.0.0.0"),
+        port: envInt("B3POOL_JD_PORT", 34264),
+        tokenTtlMs: envInt("B3POOL_JD_TOKEN_TTL_MS", 300000),
+    },
+    translator: {
+        enable: envBool("B3POOL_TRANSLATOR_ENABLE", false),
+        bind: env("B3POOL_TRANSLATOR_BIND", "0.0.0.0"),
+        port: envInt("B3POOL_TRANSLATOR_PORT", 3337),
+        upstream: env("B3POOL_TRANSLATOR_UPSTREAM", "127.0.0.1:3336"),
     },
 };
 
