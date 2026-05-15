@@ -1,0 +1,27 @@
+[Unit]
+Description=B3Chain pool web UI (Express + Socket.IO)
+After=network-online.target postgresql.service
+Wants=network-online.target
+PartOf=b3chain-pool.target
+
+[Service]
+Type=simple
+User=b3chain-pool
+Group=b3chain-pool
+EnvironmentFile=/etc/b3chain-pool/pool.env
+WorkingDirectory=/usr/local/lib/b3chain-pool
+ExecStart=/usr/bin/node /usr/local/lib/b3chain-pool/dist/web/main.js
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/b3chain-pool
+
+StandardOutput=append:/var/log/b3chain-pool/web.log
+StandardError=append:/var/log/b3chain-pool/web.log
+
+[Install]
+WantedBy=multi-user.target

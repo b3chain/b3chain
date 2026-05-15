@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+
+<section>
+  <h1>Recent blocks</h1>
+  <p class="subtitle">Most recent <%= blocks.length %> blocks discovered by the pool.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Height</th>
+        <th>Hash</th>
+        <th>Reward</th>
+        <th>Status</th>
+        <th>Found at</th>
+      </tr>
+    </thead>
+    <tbody>
+    <% blocks.forEach(b => { %>
+      <tr>
+        <td><%= b.height %></td>
+        <td class="mono"><%= b.hash %></td>
+        <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+        <td>
+          <% if (b.is_orphan) { %>
+            <span class="tag tag-fail">orphan</span>
+          <% } else if (b.is_confirmed) { %>
+            <span class="tag tag-pass">confirmed</span>
+          <% } else { %>
+            <%= b.confirmations %>/100
+          <% } %>
+        </td>
+        <td class="muted"><%= b.found_at %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</section>
+
+<%- include('partials/footer') %>

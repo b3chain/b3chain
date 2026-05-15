@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><%= title %> · B3Chain Pool</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-nav">
+  <div class="wrap-wide nav-row">
+    <a class="brand" href="/">B3Chain Pool</a>
+    <nav>
+      <a href="/" class="<%= path === '/' ? 'active' : '' %>">Home</a>
+      <a href="/blocks" class="<%= path === '/blocks' ? 'active' : '' %>">Blocks</a>
+      <a href="/getting-started" class="<%= path === '/getting-started' ? 'active' : '' %>">Getting started</a>
+      <% if (user) { %>
+        <a href="/dashboard" class="<%= path.startsWith('/dashboard') ? 'active' : '' %>">Dashboard</a>
+        <form method="post" action="/auth/logout" class="inline-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="link-button" type="submit">Log out</button>
+        </form>
+      <% } else { %>
+        <a href="/auth/login">Log in</a>
+        <a href="/auth/signup" class="btn-primary">Sign up</a>
+      <% } %>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <% if (typeof flashSuccess !== 'undefined' && flashSuccess) { %>
+    <div class="flash flash-success"><%= flashSuccess %></div>
+  <% } %>
+  <% if (typeof flashError !== 'undefined' && flashError) { %>
+    <div class="flash flash-error"><%= flashError %></div>
+  <% } %>

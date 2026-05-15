@@ -1,0 +1,46 @@
+<%- include('partials/header') %>
+
+<section>
+  <h1>Getting started</h1>
+  <p class="subtitle">Point any Stratum V1 BLAKE3 miner at <code><%= poolUrl %></code>. Username format is <code>&lt;email&gt;.&lt;workerName&gt;</code>; the password is ignored. Anonymous shares are accepted but only credited to a user account when the email matches a registered, verified user.</p>
+</section>
+
+<section>
+  <h2>Reference miner (Python, single-threaded)</h2>
+  <p>The repo's <a href="https://github.com/b3chain/b3chain/blob/b3chain-main/contrib/miner/b3chain-cpuminer.py">b3chain-cpuminer.py</a> includes a small <code>--stratum</code> mode for testing. Suitable for verifying pool connectivity, not for production hashrate.</p>
+  <pre>python3 b3chain-cpuminer.py \
+  --stratum stratum+tcp://pool.b3chain.org:3333 \
+  --user you@example.com.rig1 --pass x</pre>
+</section>
+
+<section>
+  <h2>cpuminer-multi (BLAKE3 build)</h2>
+  <pre>cpuminer-multi -a blake3d \
+  -o stratum+tcp://pool.b3chain.org:3333 \
+  -u you@example.com.rig1 \
+  -p x</pre>
+  <p>The <code>blake3d</code> algorithm name corresponds to the BLAKE3(BLAKE3(header)) PoW hash documented in the repo's <a href="https://github.com/b3chain/b3chain/blob/b3chain-main/doc/mining.md"><code>doc/mining.md</code></a>.</p>
+</section>
+
+<section>
+  <h2>cgminer / bfgminer / asic-style miners</h2>
+  <p>Configure a pool entry like:</p>
+  <pre>{
+  "pools": [
+    {
+      "url": "stratum+tcp://pool.b3chain.org:3333",
+      "user": "you@example.com.rig1",
+      "pass": "x"
+    }
+  ]
+}</pre>
+  <p>Note: the pool always uses <em>variable difficulty</em>. Initial difficulty is 1024; it auto-tunes towards 1 share every 10 seconds per connection.</p>
+</section>
+
+<section>
+  <h2>Verifying your shares</h2>
+  <p>The pool validates each share by recomputing <code>BLAKE3(BLAKE3(header))</code> against the connection's current target. The same hash is used by <code>b3chaind</code> for full-block validation, so a share that meets the network target becomes a real block via <code>submitblock</code>.</p>
+  <p>Reference test vectors live in <a href="https://github.com/b3chain/b3chain/blob/b3chain-main/doc/mining.md">doc/mining.md</a>; you can sanity-check your own implementation with them.</p>
+</section>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,88 @@
+// Centralised, validated environment configuration.
+
+import * as fs from "fs";
+
+function env(name: string, def?: string): string {
+    const v = process.env[name];
+    if (v !== undefined && v !== "") return v;
+    if (def !== undefined) return def;
+    throw new Error(`Missing required env var ${name}`);
+}
+
+function envInt(name: string, def?: number): number {
+    const v = process.env[name];
+    if (v === undefined || v === "") {
+        if (def !== undefined) return def;
+        throw new Error(`Missing required env var ${name}`);
+    }
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) throw new Error(`${name} is not an integer: ${v}`);
+    return n;
+}
+
+function envFloat(name: string, def?: number): number {
+    const v = process.env[name];
+    if (v === undefined || v === "") {
+        if (def !== undefined) return def;
+        throw new Error(`Missing required env var ${name}`);
+    }
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) throw new Error(`${name} is not a number: ${v}`);
+    return n;
+}
+
+function envFileOrInline(name: string): string {
+    const fileEnv = process.env[`${name}_FILE`];
+    if (fileEnv && fileEnv.length > 0) {
+        return fs.readFileSync(fileEnv, "utf8").trim();
+    }
+    return env(name, "");
+}
+
+export const config = {
+    rpc: {
+        host: env("B3POOL_RPC_HOST", "127.0.0.1"),
+        port: envInt("B3POOL_RPC_PORT", 18534),
+        user: env("B3POOL_RPC_USER", "b3chain"),
+        password: envFileOrInline("B3POOL_RPC_PASSWORD"),
+        payoutWallet: env("B3POOL_PAYOUT_WALLET", "pool-payouts"),
+    },
+    network: env("B3POOL_NETWORK", "testnet") as "mainnet" | "testnet" | "regtest",
+    db: {
+        url: env("B3POOL_DB_URL"),
+    },
+    stratum: {
+        bind: env("B3POOL_STRATUM_BIND", "0.0.0.0"),
+        port: envInt("B3POOL_STRATUM_PORT", 3333),
+        defaultDifficulty: envInt("B3POOL_STRATUM_DEFAULT_DIFF", 1024),
+        vardiffTargetSeconds: envInt("B3POOL_STRATUM_VARDIFF_TARGET_S", 10),
+        vardiffRetuneSeconds: envInt("B3POOL_STRATUM_VARDIFF_RETUNE_S", 30),
+    },
+    pool: {
+        feePercent: envFloat("B3POOL_FEE_PERCENT", 1.0),
+        templatePollMs: envInt("B3POOL_TEMPLATE_POLL_MS", 2000),
+        payoutIntervalMs: envInt("B3POOL_PAYOUT_INTERVAL_MS", 3600000),
+        blockConfirmations: envInt("B3POOL_BLOCK_CONFIRMATIONS", 100),
+        pplnsNShares: envInt("B3POOL_PPLNS_N_SHARES", 4032),
+        shareSocket: env("B3POOL_SHARE_SOCKET", "/tmp/b3chain-pool-share.sock"),
+    },
+    web: {
+        bind: env("B3POOL_WEB_BIND", "127.0.0.1"),
+        port: envInt("B3POOL_WEB_PORT", 5100),
+        baseUrl: env("B3POOL_BASE_URL", "http://127.0.0.1:5100"),
+        cookieSecret: env("B3POOL_COOKIE_SECRET"),
+        sessionHours: envInt("B3POOL_SESSION_HOURS", 168),
+    },
+    smtp: {
+        host: env("B3POOL_SMTP_HOST", "127.0.0.1"),
+        port: envInt("B3POOL_SMTP_PORT", 25),
+        from: env("B3POOL_SMTP_FROM", "noreply@b3chain.org"),
+        user: env("B3POOL_SMTP_USER", ""),
+        pass: env("B3POOL_SMTP_PASS", ""),
+    },
+    log: {
+        level: env("B3POOL_LOG_LEVEL", "info"),
+    },
+};
+
+export type Config = typeof config;

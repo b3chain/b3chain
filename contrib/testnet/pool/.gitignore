@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+public/vendor/*.js
+public/vendor/*.map
+.npmrc
+*.pid

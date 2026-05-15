@@ -1,0 +1,31 @@
+<%- include('../partials/header') %>
+<%- include('partials/dashnav') %>
+
+<section>
+  <h1>Payouts</h1>
+  <div class="grid-3">
+    <div class="tile"><div class="tile-label">Current balance</div><div class="tile-value"><%= balance.toFixed(8) %> B3C</div></div>
+    <div class="tile"><div class="tile-label">Minimum payout</div><div class="tile-value"><%= minimum.toFixed(2) %> B3C</div></div>
+    <div class="tile"><div class="tile-label">Next auto-payout</div><div class="tile-value">≤ 1h</div></div>
+  </div>
+  <% if (payouts.length === 0) { %>
+    <p class="muted">No payouts yet.</p>
+  <% } else { %>
+    <table>
+      <thead><tr><th>When</th><th>Amount</th><th>To</th><th>TXID</th><th>Confirmed?</th></tr></thead>
+      <tbody>
+      <% payouts.forEach(p => { %>
+        <tr>
+          <td class="muted"><%= p.sent_at %></td>
+          <td><%= Number(p.amount_b3c).toFixed(8) %> B3C</td>
+          <td class="mono"><%= p.address %></td>
+          <td class="mono"><a href="https://explorer.b3chain.org/tx/<%= p.txid %>" target="_blank" rel="noopener"><%= p.txid.slice(0, 16) %>…</a></td>
+          <td><%= p.confirmed ? 'yes' : 'no' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include('../partials/footer') %>

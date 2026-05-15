@@ -1,0 +1,6 @@
+[Unit]
+Description=B3Chain mining pool (stratum + daemon + web)
+Wants=b3chain-pool-stratum.service b3chain-pool-daemon.service b3chain-pool-web.service
+
+[Install]
+WantedBy=multi-user.target

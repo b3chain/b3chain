@@ -1,0 +1,25 @@
+<%- include('../partials/header') %>
+<section class="form-card">
+  <h1>Two-factor authentication</h1>
+  <% if (enabled) { %>
+    <div class="flash flash-success">2FA is already enabled on this account.</div>
+    <form method="post" action="/auth/2fa-disable">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <button type="submit" class="btn-secondary">Disable 2FA</button>
+    </form>
+  <% } else { %>
+    <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+    <p>1. Scan this QR code with Google Authenticator, 1Password, Aegis, etc.</p>
+    <p><img src="<%= qrDataUrl %>" alt="2FA QR code" width="180" height="180"></p>
+    <p class="muted">Or enter the secret manually: <code><%= secret %></code></p>
+    <p>2. Enter the 6-digit code your app generates:</p>
+    <form method="post" action="/auth/2fa-setup" class="stacked">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label>Code
+        <input type="text" name="code" required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
+      </label>
+      <button class="btn-primary" type="submit">Enable 2FA</button>
+    </form>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

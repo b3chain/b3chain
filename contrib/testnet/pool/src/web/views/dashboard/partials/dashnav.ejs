@@ -1,0 +1,6 @@
+<nav class="subnav">
+  <a href="/dashboard" class="<%= path === '/dashboard' || path === '/dashboard/' ? 'active' : '' %>">Overview</a>
+  <a href="/dashboard/workers" class="<%= path.startsWith('/dashboard/workers') ? 'active' : '' %>">Workers</a>
+  <a href="/dashboard/payouts" class="<%= path.startsWith('/dashboard/payouts') ? 'active' : '' %>">Payouts</a>
+  <a href="/dashboard/settings" class="<%= path.startsWith('/dashboard/settings') ? 'active' : '' %>">Settings</a>
+</nav>

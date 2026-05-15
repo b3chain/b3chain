@@ -1,0 +1,41 @@
+<%- include('../partials/header') %>
+<%- include('partials/dashnav') %>
+
+<section class="form-card">
+  <h1>Settings</h1>
+  <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+  <h2>Payout</h2>
+  <form method="post" action="/dashboard/settings/payout" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>Payout B3C address (<%= network %>)
+      <input type="text" name="payout_address" value="<%= user.payoutAddress || '' %>" required>
+    </label>
+    <label>Minimum payout (B3C)
+      <input type="number" step="0.01" min="0.01" max="1000" name="minimum_payout_b3c" value="<%= user.minimumPayoutB3c.toFixed(2) %>" required>
+    </label>
+    <button class="btn-primary" type="submit">Save payout settings</button>
+  </form>
+
+  <h2>Password</h2>
+  <form method="post" action="/dashboard/settings/password" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>Current password
+      <input type="password" name="old_password" required>
+    </label>
+    <label>New password (10+ characters)
+      <input type="password" name="new_password" required minlength="10">
+    </label>
+    <button class="btn-primary" type="submit">Change password</button>
+  </form>
+
+  <h2>Two-factor authentication</h2>
+  <% if (user.totpEnabled) { %>
+    <p>2FA is <strong>enabled</strong>.
+       <a href="/auth/2fa-setup">Manage</a></p>
+  <% } else { %>
+    <p>2FA is <strong>disabled</strong>.
+       <a href="/auth/2fa-setup">Enable now</a></p>
+  <% } %>
+</section>
+
+<%- include('../partials/footer') %>

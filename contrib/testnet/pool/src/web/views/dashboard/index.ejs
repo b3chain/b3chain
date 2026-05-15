@@ -1,0 +1,76 @@
+<%- include('../partials/header') %>
+<%- include('partials/dashnav') %>
+
+<section>
+  <div class="grid-3">
+    <div class="tile">
+      <div class="tile-label">Hashrate (5-min avg)</div>
+      <div class="tile-value" id="user-hashrate">…</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Active workers</div>
+      <div class="tile-value" id="user-workers">…</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Balance</div>
+      <div class="tile-value"><span id="user-balance">…</span> B3C</div>
+    </div>
+  </div>
+  <h2>Last 24h</h2>
+  <canvas id="user-chart" height="120"></canvas>
+</section>
+
+<section>
+  <h2>Recent shares</h2>
+  <% if (recentShares.length === 0) { %>
+    <p class="muted">No shares yet. Connect a miner.</p>
+  <% } else { %>
+    <table>
+      <thead><tr><th>Worker</th><th>Difficulty</th><th>Block?</th><th>Submitted</th></tr></thead>
+      <tbody>
+      <% recentShares.forEach(s => { %>
+        <tr>
+          <td><%= s.worker_name %></td>
+          <td><%= Number(s.diff).toFixed(2) %></td>
+          <td><%= s.is_block ? 'YES (block ' + s.block_hash.slice(0, 12) + '…)' : '' %></td>
+          <td class="muted"><%= s.submitted_at %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<% if (recentBlocks.length > 0) { %>
+<section>
+  <h2>Blocks you found</h2>
+  <table>
+    <thead><tr><th>Height</th><th>Hash</th><th>Reward</th><th>Status</th><th>Found at</th></tr></thead>
+    <tbody>
+    <% recentBlocks.forEach(b => { %>
+      <tr>
+        <td><%= b.height %></td>
+        <td class="mono"><%= b.hash.slice(0, 16) %>…</td>
+        <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+        <td>
+          <% if (b.is_orphan) { %><span class="tag tag-fail">orphan</span>
+          <% } else if (b.is_confirmed) { %><span class="tag tag-pass">confirmed</span>
+          <% } else { %><%= b.confirmations %>/100<% } %>
+        </td>
+        <td class="muted"><%= b.found_at %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</section>
+<% } %>
+
+<script src="/vendor/socket.io.min.js"></script>
+<script src="/vendor/chart.umd.js"></script>
+<script>
+window.__userBuckets = <%- JSON.stringify(buckets || []) %>;
+window.__userInitial = <%- JSON.stringify(stats || {}) %>;
+</script>
+<script src="/js/dashboard.js"></script>
+
+<%- include('../partials/footer') %>

@@ -1,0 +1,20 @@
+<%- include('../partials/header') %>
+<section class="form-card">
+  <h1>Log in</h1>
+  <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+  <form method="post" action="/auth/login" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <label>Email
+      <input type="email" name="email" value="<%= email %>" required autocomplete="email">
+    </label>
+    <label>Password
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button class="btn-primary" type="submit">Log in</button>
+  </form>
+  <p class="muted">
+    <a href="/auth/forgot">Forgot password?</a> · <a href="/auth/signup">Create an account</a>
+  </p>
+</section>
+<%- include('../partials/footer') %>

@@ -1,0 +1,14 @@
+<%- include('../partials/header') %>
+<section class="form-card">
+  <h1>Two-factor verification</h1>
+  <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+  <p>Enter the 6-digit code from your authenticator app.</p>
+  <form method="post" action="/auth/2fa-verify" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>Code
+      <input type="text" name="code" required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" autofocus>
+    </label>
+    <button class="btn-primary" type="submit">Verify</button>
+  </form>
+</section>
+<%- include('../partials/footer') %>

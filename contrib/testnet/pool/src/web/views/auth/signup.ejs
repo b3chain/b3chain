@@ -1,0 +1,20 @@
+<%- include('../partials/header') %>
+<section class="form-card">
+  <h1>Create an account</h1>
+  <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+  <form method="post" action="/auth/signup" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>Email
+      <input type="email" name="email" value="<%= email %>" required autocomplete="email">
+    </label>
+    <label>Password (10+ characters)
+      <input type="password" name="password" required minlength="10" autocomplete="new-password">
+    </label>
+    <label>Payout B3C address (optional, can set later)
+      <input type="text" name="payout_address" placeholder="tb3...">
+    </label>
+    <button class="btn-primary" type="submit">Create account</button>
+  </form>
+  <p class="muted">Already have an account? <a href="/auth/login">Log in</a>.</p>
+</section>
+<%- include('../partials/footer') %>

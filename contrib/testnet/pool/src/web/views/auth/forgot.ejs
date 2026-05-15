@@ -1,0 +1,14 @@
+<%- include('../partials/header') %>
+<section class="form-card">
+  <h1>Reset your password</h1>
+  <% if (err) { %><div class="flash flash-error"><%= err %></div><% } %>
+  <% if (message) { %><div class="flash flash-success"><%= message %></div><% } %>
+  <form method="post" action="/auth/forgot" class="stacked">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>Email
+      <input type="email" name="email" required autocomplete="email">
+    </label>
+    <button class="btn-primary" type="submit">Send reset link</button>
+  </form>
+</section>
+<%- include('../partials/footer') %>

@@ -1,0 +1,64 @@
+services:
+  b3chaind:
+    image: b3chain/b3chaind:latest
+    command: >
+      b3chaind -regtest -server -txindex -listen=0
+      -rpcuser=dev -rpcpassword=dev
+      -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0
+      -wallet=pool-payouts
+      -fallbackfee=0.00001
+    ports:
+      - "127.0.0.1:18545:18545"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsu dev:dev --data '{\"method\":\"getblockcount\"}' http://127.0.0.1:18545/ || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: b3chain_pool
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: b3chain_pool
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U b3chain_pool"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  pool-daemon:
+    image: node:20-alpine
+    depends_on:
+      b3chaind: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    working_dir: /app
+    volumes: [ "..:/app/src", ".:/app/tests" ]
+    environment:
+      B3POOL_RPC_HOST: b3chaind
+      B3POOL_RPC_PORT: "18545"
+      B3POOL_RPC_USER: dev
+      B3POOL_RPC_PASSWORD: dev
+      B3POOL_DB_URL: postgres://b3chain_pool:dev@postgres:5432/b3chain_pool
+      B3POOL_NETWORK: regtest
+      B3POOL_COOKIE_SECRET: e2e-cookie-secret-32bytes-min-len-padding
+      B3POOL_SHARE_SOCKET: /run/share/share.sock
+    volumes_from: []
+    command: ["sh", "-c", "cd /app/src && npm ci && npm run migrate && npm run start:daemon"]
+
+  pool-stratum:
+    image: node:20-alpine
+    depends_on: [ pool-daemon ]
+    environment:
+      B3POOL_RPC_HOST: b3chaind
+      B3POOL_RPC_PORT: "18545"
+      B3POOL_RPC_USER: dev
+      B3POOL_RPC_PASSWORD: dev
+      B3POOL_DB_URL: postgres://b3chain_pool:dev@postgres:5432/b3chain_pool
+      B3POOL_NETWORK: regtest
+      B3POOL_COOKIE_SECRET: e2e-cookie-secret-32bytes-min-len-padding
+      B3POOL_SHARE_SOCKET: /run/share/share.sock
+      B3POOL_STRATUM_DEFAULT_DIFF: "1"
+      B3POOL_STRATUM_VARDIFF_TARGET_S: "999999"
+    ports: [ "13333:3333" ]
+    command: ["sh", "-c", "cd /app/src && npm run start:stratum"]

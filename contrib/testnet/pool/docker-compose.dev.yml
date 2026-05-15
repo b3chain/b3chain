@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: b3chain_pool
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: b3chain_pool
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pool_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U b3chain_pool"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  pool_pg_data:

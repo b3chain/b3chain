@@ -1,0 +1,63 @@
+<%- include('partials/header') %>
+
+<section class="hero">
+  <h1>B3Chain Mining Pool</h1>
+  <p class="subtitle">Stratum V1 mining pool for B3Chain. PPLNS payouts, <%= feePercent %>% fee, hourly automatic payouts.</p>
+  <div class="copy-row">
+    <code id="pool-url"><%= poolUrl %></code>
+    <button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('pool-url').innerText)">Copy</button>
+  </div>
+  <div class="cta-row">
+    <a class="btn-primary" href="/getting-started">Start mining</a>
+    <a class="btn-secondary" href="/blocks">Recent blocks</a>
+  </div>
+</section>
+
+<section>
+  <h2>Pool stats</h2>
+  <div class="grid-3">
+    <div class="tile"><div class="tile-label">Pool hashrate</div><div class="tile-value" id="pool-hashrate">…</div></div>
+    <div class="tile"><div class="tile-label">Active miners</div><div class="tile-value" id="pool-miners">…</div></div>
+    <div class="tile"><div class="tile-label">Latest block height</div><div class="tile-value" id="pool-height">…</div></div>
+  </div>
+  <canvas id="pool-chart" height="120"></canvas>
+</section>
+
+<section>
+  <h2>Last 10 blocks</h2>
+  <% if (blocks.length === 0) { %>
+    <p>No blocks yet. Be the first finder.</p>
+  <% } else { %>
+    <table>
+      <thead><tr><th>Height</th><th>Hash</th><th>Reward</th><th>Confirmations</th><th>When</th></tr></thead>
+      <tbody>
+      <% blocks.forEach(b => { %>
+        <tr>
+          <td><%= b.height %></td>
+          <td class="mono"><%= String(b.hash).slice(0, 16) %>…</td>
+          <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+          <td>
+            <% if (b.is_orphan) { %>
+              <span class="tag tag-fail">orphan</span>
+            <% } else if (b.is_confirmed) { %>
+              <span class="tag tag-pass">confirmed</span>
+            <% } else { %>
+              <%= b.confirmations %>/100
+            <% } %>
+          </td>
+          <td class="muted"><%= b.found_at %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<script src="/vendor/socket.io.min.js"></script>
+<script src="/vendor/chart.umd.js"></script>
+<script>
+window.__poolBuckets = <%- JSON.stringify(buckets || []) %>;
+</script>
+<script src="/js/home.js"></script>
+
+<%- include('partials/footer') %>

@@ -133,6 +133,75 @@ nonce loop in `src/rpc/mining.cpp:142` calls
 The verification artifacts add no consensus or production code; Phase 6
 remains COMPLETE.
 
+### Phase 6.2: Stratum mining pool (added 2026-05-15)
+
+A production-shaped Stratum V1 mining pool ships under
+[`contrib/testnet/pool/`](../contrib/testnet/pool/) so anyone can point
+a BLAKE3 miner at the testnet endpoint and start contributing hash
+power on day one. The pool is a self-contained Node.js + TypeScript
+application split into three systemd-managed services that share one
+PostgreSQL ledger.
+
+**Three services** (`b3chain-pool-stratum`, `b3chain-pool-daemon`,
+`b3chain-pool-web`):
+
+- **Stratum** speaks Stratum V1 (`mining.subscribe` / `authorize` /
+  `submit`) on TCP port 3333. Per-connection state, per-connection
+  vardiff, and BLAKE3d share validation against both the share target
+  and the network target. Forwards every accepted share to the daemon
+  over a UNIX domain socket so a stratum restart never loses data.
+- **Daemon** owns the persistent ledger: batched share writes, 1-minute
+  hashrate buckets, block confirmation polling, PPLNS crediting
+  (`creditPplns()` runs at 100 confirms, idempotent via
+  `blocks.pplns_credited`), and the hourly `sendmany` payout job
+  driven by each user's `minimum_payout_b3c` and validated payout
+  address.
+- **Web** is Express + EJS + Socket.IO behind nginx at
+  `https://pool.b3chain.org/`. Public landing page, `/getting-started`,
+  `/blocks`. Verified accounts (signup → email-verify → login →
+  password-reset → optional TOTP 2FA) using `argon2`, `cookie-session`,
+  CSRF tokens, and `nodemailer`-over-Postfix. Per-user dashboard with a
+  Chart.js hashrate graph fed by Socket.IO push updates (no polling,
+  per the workspace `complete-implementation` rule). Operator view via
+  `/metrics` (Prometheus).
+
+**Schema** (`db/migrations/{001,002,003}_*.sql`): `users`, `workers`,
+`sessions`, `email_verify_tokens`, `password_reset_tokens`, `shares`
+(partitioned by day, retained 30 days), `hashrate_buckets`,
+`pool_hashrate_buckets`, `blocks`, `payouts`, `payout_recipients`, and
+the append-only `balance_entries` ledger.
+
+**Reward scheme**: PPLNS over the last 4032 weighted shares (two
+retarget windows). Default pool fee 1%, default minimum payout 1.0
+B3C; both configurable per-user.
+
+**Documentation**:
+
+- [`docs/ARCHITECTURE.md`](../contrib/testnet/pool/docs/ARCHITECTURE.md)
+- [`docs/STRATUM-PROTOCOL.md`](../contrib/testnet/pool/docs/STRATUM-PROTOCOL.md)
+- [`docs/PPLNS.md`](../contrib/testnet/pool/docs/PPLNS.md)
+- [`docs/DEPLOYMENT.md`](../contrib/testnet/pool/docs/DEPLOYMENT.md)
+- [`docs/OPERATOR-RUNBOOK.md`](../contrib/testnet/pool/docs/OPERATOR-RUNBOOK.md)
+
+**Tests**: unit (`tests/{blake3,address,difficulty,share-validator,vardiff,pplns,stratum}.test.ts`)
+plus an end-to-end docker compose orchestrated mine-and-pay scenario
+(`tests/e2e/`) and a Playwright auth-flow smoke (`tests/playwright/`).
+The PPLNS unit test reproduces the worked example documented in
+`docs/PPLNS.md` (alice 19.80, bob 4.95, carol 24.75).
+
+**Verification**: [`doc/PHASE-6.2-VERIFICATION.md`](PHASE-6.2-VERIFICATION.md)
+mirrors `PHASE-6-VERIFICATION.md` with one row per phase
+(P-1: Mineable MVP, P-2: Verified accounts, P-3: PPLNS, P-4: Polish).
+[`contrib/testing/audit/audit-stratum-pool.sh`](../contrib/testing/audit/audit-stratum-pool.sh)
+runs every check (static greps + Node-test invocations) and rewrites
+the status column in place. The script is wired into
+[`contrib/testing/audit/verify-phase11.sh`](../contrib/testing/audit/verify-phase11.sh)
+under the `P-1` row of the audits array so the same one-liner continues
+to validate the full audit suite.
+
+The pool is an overlay: it never touches consensus rules. Phase 6
+remains COMPLETE.
+
 ## Phase 7: Testing and QA
 
 ### 7.1 Unit Tests (C++)
