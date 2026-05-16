@@ -134,11 +134,26 @@ merkle tree structure, and transaction ID format.
     `shares.jsonl`, `session-summary.json`, and `session-summary.md`.
     Last-used pool URL / user / threads / useragent persist in
     `tests/.miner_settings.json` (gitignored). Closing the dashboard
-    mid-mine cleanly terminates the miner subprocess. Tier-3
+    mid-mine cleanly terminates the miner subprocess.     Tier-3
     verification at `tests/verify_dashboard.py` exercises the JSONLTail
     (offset, partial-line, garbage, truncation), drives the runner
     against the in-process `MockStratumServer`, and checks the
     `closeEvent` cleanup path.
+  - **Stable hashrate display (fix 2026-05-16)**: rebuilt
+    `pool_mining_worker`'s rate emission so the per-thread `progress.
+    hashrate` field is the instantaneous Δattempts/Δt over the
+    inter-emit window (>=1s wall-clock cadence; attempt-count tick
+    requires >=0.2s window) using cumulative counters that span
+    `clean_jobs` outer-pass resets. Previously rate was
+    `attempts_for_job / outer_elapsed`, an average over the current
+    outer pass; with B3Chain pool sending `clean_jobs=true` on every
+    notify (~2s cadence) the average snapshot was dominated by the
+    first 100k attempts of each pass, so the same thread reported wild
+    swings (e.g. 28 -> 318 -> 71 -> 226 kH/s within seconds). The
+    dashboard's `HashrateRing.current_rate()` now also averages the
+    aggregate over a short 5s window so per-thread emit-timing jitter
+    doesn't ripple the big-stat card. Per-thread coefficient of
+    variation under steady state dropped from ~0.7 to ~0.10.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

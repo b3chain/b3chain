@@ -38,8 +38,13 @@ class HashrateRing:
     the time-aligned aggregate.
     """
 
-    def __init__(self, window_s: float = HASHRATE_WINDOW_SECONDS) -> None:
+    def __init__(self, window_s: float = HASHRATE_WINDOW_SECONDS,
+                 smooth_window_s: float = 5.0) -> None:
         self.window_s = window_s
+        # The chart deque holds samples for `window_s` (5 min by default).
+        # `current_rate()` averages over `_smooth_window_s` (a much
+        # shorter window) so the big stat card doesn't flicker.
+        self._smooth_window_s = smooth_window_s
         # Each thread gets its own deque so cross-thread samples don't fight.
         self._per_thread: Dict[int, Deque[Tuple[float, float]]] = {}
         # Aggregate samples (t, total_rate) for the chart.
@@ -69,9 +74,23 @@ class HashrateRing:
         return total
 
     def current_rate(self) -> float:
+        """Smoothed instantaneous total hashrate.
+
+        Each per-thread `progress` event from the miner is already an
+        instantaneous Δattempts/Δt sample over a >=1s window per worker,
+        but threads emit at staggered times. Returning just the latest
+        aggregate sample causes per-emit ripple in the displayed value.
+        Average the last `_smooth_window_s` seconds of aggregate samples
+        so the displayed hashrate is stable while still tracking real
+        changes within a few seconds.
+        """
         if not self._agg:
             return 0.0
-        return self._agg[-1][1]
+        cutoff = self._agg[-1][0] - self._smooth_window_s
+        recent = [r for t, r in self._agg if t >= cutoff]
+        if not recent:
+            return self._agg[-1][1]
+        return sum(recent) / len(recent)
 
     def avg_rate(self) -> float:
         if not self._agg:

@@ -95,8 +95,10 @@ the full picture in real time:
   **Start** / **Stop**.
 * **Status strip** — connection state, `extranonce1`, `extranonce2_size`,
   network difficulty, share difficulty, current job id.
-* **Stats cards** — large hashrate readout, submitted / accepted (with
-  acceptance %), rejected, total attempts, blocks found.
+* **Stats cards** — large hashrate readout (smoothed over a 5 s rolling
+  window so per-thread emit-timing jitter doesn't ripple the display),
+  submitted / accepted (with acceptance %), rejected, total attempts,
+  blocks found.
 * **Hashrate chart** — rolling 5-minute polyline (custom QWidget, no
   extra dependencies) with a "now" marker and auto-rescaled y-axis.
 * **Last share panel** — every field of the most recent submission
