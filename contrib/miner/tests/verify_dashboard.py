@@ -36,6 +36,21 @@ if MINER_DIR not in sys.path:
 from PyQt6.QtCore import QEventLoop  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
+# IMPORTANT: redirect the dashboard's settings path to a temp file BEFORE
+# importing it -- Suite C drives the dashboard with mock localhost ports
+# and persistence would otherwise clobber the developer's real
+# tests/.miner_settings.json (lesson learned 2026-05-16).
+from tests import mining_dashboard as _md_mod  # noqa: E402
+
+_TMP_SETTINGS_FD, _TMP_SETTINGS_PATH = tempfile.mkstemp(
+    prefix="b3chain-verify-", suffix=".miner_settings.json")
+os.close(_TMP_SETTINGS_FD)
+try:
+    os.unlink(_TMP_SETTINGS_PATH)
+except OSError:
+    pass
+_md_mod.SETTINGS_PATH = _TMP_SETTINGS_PATH
+
 from tests.mining_dashboard import (  # noqa: E402
     MiningConfig, MiningDashboard, MiningRunner,
 )
@@ -279,16 +294,27 @@ def suite_c_close_event(app: QApplication) -> bool:
 
 def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
-    results = []
-    results.append(("A", suite_a_jsonl_tail()))
-    results.append(("B", suite_b_runner(app)))
-    results.append(("C", suite_c_close_event(app)))
-    failed = [name for name, ok in results if not ok]
-    if failed:
-        print(f"FAILED: {','.join(failed)}")
-        return 1
-    print("ALL OK")
-    return 0
+    try:
+        results = []
+        results.append(("A", suite_a_jsonl_tail()))
+        results.append(("B", suite_b_runner(app)))
+        results.append(("C", suite_c_close_event(app)))
+        failed = [name for name, ok in results if not ok]
+        if failed:
+            print(f"FAILED: {','.join(failed)}")
+            return 1
+        print("ALL OK")
+        return 0
+    finally:
+        # Defence in depth: remove the temp settings file we redirected
+        # the dashboard at, AND make sure nothing wrote to the real one
+        # via a stale module reference.
+        for path in (_TMP_SETTINGS_PATH,):
+            try:
+                if os.path.exists(path):
+                    os.unlink(path)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
