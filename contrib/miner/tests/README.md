@@ -83,12 +83,118 @@ The Markdown rendering is suitable for pasting into email or chat.
   killed if the graceful stop hangs) on success, failure, or window
   close. Its temp datadir is wiped.
 
+## Live mining dashboard (Mine button)
+
+Click **Mine** in the toolbar (between **Recheck Env** and **Run All**)
+to open a separate live-mining window. The dashboard runs
+`b3chain-cpuminer.py` against a configurable Stratum V1 pool and shows
+the full picture in real time:
+
+* **Top bar** — pool URL combo box (with last-used dropdown), user,
+  password, threads spin (defaults to `cpu_count - 1`), useragent,
+  **Start** / **Stop**.
+* **Status strip** — connection state, `extranonce1`, `extranonce2_size`,
+  network difficulty, share difficulty, current job id.
+* **Stats cards** — large hashrate readout, submitted / accepted (with
+  acceptance %), rejected, total attempts, blocks found.
+* **Hashrate chart** — rolling 5-minute polyline (custom QWidget, no
+  extra dependencies) with a "now" marker and auto-rescaled y-axis.
+* **Last share panel** — every field of the most recent submission
+  (job, ntime, nonce, extranonces, PoW LE/BE, share target, network
+  difficulty, RTT, block-hash, header hex, server error if any).
+* **Per-thread table** — rate, accumulated attempts, best PoW (BE) per
+  worker.
+* **Recent shares table** — last 200 shares with seq, job, status,
+  RTT, share-difficulty and block flag (rows are colour-coded ACCEPTED
+  / REJECTED).
+* **Tabs** — Raw stdout (every line the miner prints, dark monospace)
+  and JSONL events (the canonical structured stream the dashboard
+  parses).
+* **Footer** — runtime, shares/min, average hashrate, best PoW so far,
+  **Save Session** and **Open Log** buttons.
+
+The dashboard talks to the miner through `--json-log <tmp>`; a 250 ms
+`QTimer` polls the file via a stateful `JSONLTail` (`mining_parsers.py`)
+that tracks the byte offset and a partial-line buffer, so mid-write
+lines are never split or double-read. All UI updates happen on the GUI
+thread via typed Qt signals. The miner subprocess inherits a clean
+environment with `PYTHONUNBUFFERED=1`.
+
+### Save Session
+
+Click **Save Session** while a run is in progress (or just after
+**Stop**) to pick a parent directory; the dashboard creates a
+`mining-session-YYYYMMDD-HHMMSS/` subfolder containing:
+
+```
+mining-session-20260516-031455/
+  miner-stdout.log         # full raw dump (per-share, progress, banners)
+  shares.jsonl             # canonical structured stream (preserved as-is)
+  session-summary.json     # UI's aggregated stats snapshot
+  session-summary.md       # readable rendering
+```
+
+`session-summary.json` shape:
+
+```json
+{
+  "ts": "2026-05-16T03:14:55Z",
+  "host": {"os": "Windows 10", "machine": "AMD64", "python": "3.12.4"},
+  "config": {"host": "pool.b3chain.org", "port": 3333,
+             "use_tls": false, "user": "...", "useragent": "..."},
+  "extranonce1": "deadbeef",
+  "extranonce2_size": 4,
+  "runtime_s": 222.4,
+  "totals": {"submitted": 42, "accepted": 41, "rejected": 1, "blocks": 0,
+             "accept_rate": 0.9762, "attempts": 7423981234,
+             "current_hashrate_hps": 1812345.6,
+             "avg_hashrate_hps": 1801234.0,
+             "best_pow_be": "0000000a..."},
+  "network": {"difficulty": 1.0, "target_be": "00000000ffff..."},
+  "share":   {"difficulty": 1024.0, "target_be": "..."},
+  "current_job": "0001a3",
+  "per_thread": [
+    {"id": 0, "rate_hps": 1820000, "attempts": 954000000,
+     "best_pow_be": "...", "job_id": "0001a3"}
+  ],
+  "last_share": { "...": "every field of the last share submission" },
+  "disconnect_reason": ""
+}
+```
+
+The Markdown rendering is suitable for pasting into email or chat.
+Persisted UI state lives in `tests/.miner_settings.json` (gitignored)
+and remembers the last 8 pool URLs, the user, threads and useragent.
+
+### Tier-3 verification
+
+`tests/verify_dashboard.py` runs three offscreen suites:
+
+```bat
+python tests\verify_dashboard.py
+```
+
+* **Suite A** — JSONLTail unit tests (offset, partial line, garbage
+  line, truncation reset).
+* **Suite B** — drives `MiningRunner` against the in-process
+  `MockStratumServer` and asserts subscribed/authorized/progress/share
+  signals fire and that the JSONL temp file ends up on disk.
+* **Suite C** — opens `MiningDashboard`, starts a real miner, then
+  closes the window mid-mine and asserts the runner is no longer
+  running and that the temp JSONL file was cleaned up.
+
+> **Windows note.** `QProcess.terminate()` on Windows bypasses Python's
+> `signal.SIGTERM` handler, so the miner's own `summary` JSONL event
+> may not fire after **Stop**. The dashboard does **not** depend on
+> that event — all session totals are derived from `share` events as
+> they arrive, so Save Session is correct regardless.
+
 ## Architecture
 
 ```
 b3chain/contrib/miner/tests/
   __init__.py
-  test_ui.py               # PyQt6 MainWindow (entry point)
+  test_ui.py               # PyQt6 MainWindow (entry point) + Mine button
   test_definitions.py      # TestRegistry + TestCase subclasses + extractors
   capability_check.py      # CapabilityProbe
   helper_tests.py          # tests 2 + 6
@@ -96,6 +202,11 @@ b3chain/contrib/miner/tests/
   pool_stack_runner.py     # test 9 docker+npm orchestration
   live_pool_probe.py       # test 8 TCP smoke
   report_writer.py         # Save Report (JSON + Markdown)
+  mining_dashboard.py      # MiningDashboard window + MiningRunner
+  mining_parsers.py        # JSONLTail + Share/Progress/Notify dataclasses
+  mining_state.py          # HashrateRing, ShareList, PerThreadStats
+  hashrate_chart.py        # custom QWidget polyline chart
+  verify_dashboard.py      # Tier-3 verification (offscreen Qt)
   run_tests_ui.bat         # double-click launcher (creates venv)
   requirements.txt         # PyQt6, blake3
 ```

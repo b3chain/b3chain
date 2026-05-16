@@ -242,6 +242,15 @@ console output of every run. See
 [`contrib/miner/tests/README.md`](../contrib/miner/tests/README.md) for
 details.
 
+The same launcher also ships a **live mining dashboard** — click the
+**Mine** toolbar button to open a separate window that drives the CPU
+miner against any Stratum V1 pool with rolling 5-minute hashrate, an
+auto-rescaling polyline chart, per-share details (job, ntime, nonce,
+PoW LE/BE, share & network targets, RTT, server response), per-thread
+breakdown, the last 200 shares, raw stdout + JSONL event tabs, and a
+**Save Session** button that writes a `mining-session-*` directory
+(stdout, JSONL, JSON & Markdown summaries).
+
 ## Performance Considerations
 
 BLAKE3 is significantly faster than SHA256d on modern hardware:

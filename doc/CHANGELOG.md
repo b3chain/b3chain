@@ -118,6 +118,27 @@ merkle tree structure, and transaction ID format.
     `report-*.json` + `report-*.md` on Save Report. The launcher
     bootstraps a private venv on first run; subsequent launches are
     instant.
+  - **Live mining dashboard (added 2026-05-16)**: a separate window
+    launched from a **Mine** toolbar button in the test UI. Drives
+    `b3chain-cpuminer.py` against any Stratum V1 pool with
+    `--json-log <tmp>`, parses the JSONL via a stateful tail reader
+    (`mining_parsers.py`, with offset + partial-line buffer), and
+    shows: a rolling 5-minute hashrate polyline chart (custom QWidget,
+    no extra deps), big-number stats cards (current hashrate,
+    submitted / accepted / rejected, attempts, blocks), a per-thread
+    table (rate / attempts / best PoW BE), the last 200 shares, a
+    last-share details panel (job, ntime, nonce, extranonces, PoW LE/BE,
+    share + network targets, RTT, error), live status banner, and Raw
+    stdout + JSONL events tabs. **Save Session** writes
+    `mining-session-YYYYMMDD-HHMMSS/` containing `miner-stdout.log`,
+    `shares.jsonl`, `session-summary.json`, and `session-summary.md`.
+    Last-used pool URL / user / threads / useragent persist in
+    `tests/.miner_settings.json` (gitignored). Closing the dashboard
+    mid-mine cleanly terminates the miner subprocess. Tier-3
+    verification at `tests/verify_dashboard.py` exercises the JSONLTail
+    (offset, partial-line, garbage, truncation), drives the runner
+    against the in-process `MockStratumServer`, and checks the
+    `closeEvent` cleanup path.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

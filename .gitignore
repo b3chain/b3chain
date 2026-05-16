@@ -32,3 +32,11 @@ target/
 /.verify-phase11-last-run/
 /.audit-stratum-pool-last-run/
 /.audit-stratum-v2-last-run/
+
+# Windows test UI / live mining dashboard (created by
+# contrib/miner/tests/run_tests_ui.bat).
+contrib/miner/tests/.venv/
+contrib/miner/tests/.miner_settings.json
+contrib/miner/tests/mining-session-*/
+contrib/miner/tests/report-*.json
+contrib/miner/tests/report-*.md

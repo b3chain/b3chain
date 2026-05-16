@@ -436,6 +436,12 @@ class MainWindow(QMainWindow):
         self._recheck_btn = QPushButton("Recheck Env")
         self._recheck_btn.clicked.connect(self._on_recheck)
         toolbar.addWidget(self._recheck_btn)
+        self._mine_btn = QPushButton("Mine")
+        self._mine_btn.setToolTip(
+            "Open the live mining dashboard (current hashrate, shares, "
+            "per-thread stats, recent shares, full per-share details)")
+        self._mine_btn.clicked.connect(self._on_open_mine)
+        toolbar.addWidget(self._mine_btn)
         self._run_all_btn = QPushButton("Run All")
         self._run_all_btn.clicked.connect(self._on_run_all)
         toolbar.addWidget(self._run_all_btn)
@@ -443,6 +449,8 @@ class MainWindow(QMainWindow):
         self._save_btn.clicked.connect(self._on_save_report)
         toolbar.addWidget(self._save_btn)
         layout.addLayout(toolbar)
+
+        self._mine_window = None  # lazy-constructed MiningDashboard
 
         # ---- Capability strip ----
         env_label = QLabel("<b>Environment</b>")
@@ -714,6 +722,27 @@ class MainWindow(QMainWindow):
             self, "Report saved",
             f"Wrote:\n  {json_path}\n  {md_path}")
 
+    # ------------------------------------------------------ Mine dashboard
+    @pyqtSlot()
+    def _on_open_mine(self) -> None:
+        """Lazy-create the MiningDashboard and show it (or raise if open).
+
+        We import here so the test UI itself doesn't fail to start if the
+        mining dashboard module has a problem (it would only break Mine).
+        """
+        try:
+            from .mining_dashboard import MiningDashboard
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Mining dashboard unavailable",
+                f"Could not load mining_dashboard: {e}")
+            return
+        if self._mine_window is None:
+            self._mine_window = MiningDashboard(parent=None)
+        self._mine_window.show()
+        self._mine_window.raise_()
+        self._mine_window.activateWindow()
+
     # --------------------------------------------------------- Window close
     def closeEvent(self, event):
         # Cleanup hook: kill any in-flight test before the window dies.
@@ -722,6 +751,10 @@ class MainWindow(QMainWindow):
             self._runner.kill_all()
             # Give the kill signal a moment to land.
             QApplication.processEvents()
+        # Also close the mining dashboard if it's open (its own closeEvent
+        # stops the miner subprocess).
+        if self._mine_window is not None:
+            self._mine_window.close()
         super().closeEvent(event)
 
 
