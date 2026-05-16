@@ -154,6 +154,19 @@ merkle tree structure, and transaction ID format.
     aggregate over a short 5s window so per-thread emit-timing jitter
     doesn't ripple the big-stat card. Per-thread coefficient of
     variation under steady state dropped from ~0.7 to ~0.10.
+  - **Stale-job breakout (fix 2026-05-16)**: the inner nonce loop's
+    `clean_epoch` check now fires every iteration instead of every
+    1024 nonces. The 1024-aligned check assumed every worker stayed
+    near peak throughput; in practice GIL-starved workers (e.g. 30
+    Python threads on a 16-core box) can drop to ~1 attempt/sec, so
+    the next 1024-aligned check is up to ~17 minutes away and the
+    thread keeps mining a stale job long after the pool sent
+    `clean_jobs=true`. Per-iteration check cost is ~50 ns
+    (one int read + compare), negligible vs the ~1 us BLAKE3
+    double-hash. After the new instantaneous rate display this issue
+    became visible as workers reporting `1 H/s` on a job several
+    notifies in the past; with the breakout fixed those workers
+    re-snapshot the current job within a single hash.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

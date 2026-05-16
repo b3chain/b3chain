@@ -1002,8 +1002,8 @@ def pool_mining_worker(thread_idx: int,
 
     Outer loop: re-snapshot job + extranonce1 + share_target + clean_epoch
     each pass. Inner loop: iterate nonce 0..2^32 within the snapshot,
-    breaking out IMMEDIATELY (every 1024 nonces) if clean_epoch changes,
-    so a stale extranonce1 / job is never mined past one chunk.
+    breaking out IMMEDIATELY (every nonce) if clean_epoch changes, so a
+    stale extranonce1 / job is never mined past one hash.
 
     Disjoint extranonce2 slicing across N threads: thread i starts at
     en2 = i and bumps by N when the nonce range is exhausted, so each
@@ -1072,14 +1072,17 @@ def pool_mining_worker(thread_idx: int,
             nonce = 0
             broke_for_epoch = False
             while nonce < 0x1_0000_0000:
-                # Cheap epoch breakout every 1024 nonces; this is the loop
-                # that actually drops a stale job mid-search. (V11.2.321
-                # lesson: "workers restart on clean_jobs" must point to a
-                # real loop break, not a comment.)
-                if (nonce & 0x3ff) == 0:
-                    if state.stopping.is_set() or local_epoch != client.clean_epoch:
-                        broke_for_epoch = True
-                        break
+                # Epoch breakout EVERY nonce. The cost is one int read +
+                # compare (~50 ns) which is negligible vs the BLAKE3
+                # double-hash (~1 us). Checking only every 1024 nonces
+                # caused GIL-starved threads (e.g. 30 workers on 16 cores)
+                # to be stranded on stale jobs for many seconds, because
+                # at 1 attempt/sec the next 1024-aligned check is ~17 min
+                # away. (V11.2.321 lesson: "workers restart on clean_jobs"
+                # must point to a real loop break, not a comment.)
+                if local_epoch != client.clean_epoch or state.stopping.is_set():
+                    broke_for_epoch = True
+                    break
                 header = serialize_header(job.version, prev_le, merkle_root_le,
                                           job.ntime, job.bits, nonce)
                 pow_le = double_blake3(header)
