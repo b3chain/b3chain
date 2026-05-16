@@ -304,6 +304,71 @@ fi
 [ -f "$LAYOUT" ] && sed -i '/donate\.bitcoinexplorer\.org/,+1d' "$LAYOUT"
 [ -f "$LAYOUT" ] && sed -i '/twitter\.com\/BitcoinExplorer/,+1d' "$LAYOUT"
 
+# Remove the upstream "Project", "App Details", and "Links" footer
+# columns. Each is one of the four .col-lg-3 blocks inside the
+# .row.mt-4.mb-6 below the <hr> divider. We keep the "Public Demos"
+# column (which is conditional on config.demoSite and stays hidden on
+# B3Chain) and we keep the divider itself.
+#
+# Pug is whitespace-significant, so this is a structural deletion done
+# in awk: walk the file, buffer each .col-lg-3 block at depth 5
+# (literal 5 tabs), drop the buffer if it contains h6 Project /
+# App Details / Links at depth 7, otherwise emit it unchanged. End of
+# a column block is signaled by either the next .col-lg-3 at depth 5
+# or by any non-blank line at depth <= 5 (the +sharedScriptTags line
+# after the row). Idempotent: gated by grep so reruns are no-ops.
+if [ -f "$LAYOUT" ] \
+   && grep -qE $'^\t\t\t\t\t\t\th6 (Project|App Details|Links)$' "$LAYOUT"; then
+    awk '
+    function flush(   i) {
+        if (in_col) {
+            if (drop == 0) {
+                for (i = 0; i < n_buf; i++) print buf[i]
+            }
+        }
+        in_col = 0
+        drop = 0
+        n_buf = 0
+    }
+
+    BEGIN {
+        in_col = 0; drop = 0; n_buf = 0
+        COL  = "\t\t\t\t\t.col-lg-3"
+        TGT1 = "\t\t\t\t\t\t\th6 Project"
+        TGT2 = "\t\t\t\t\t\t\th6 App Details"
+        TGT3 = "\t\t\t\t\t\t\th6 Links"
+    }
+
+    {
+        depth = 0
+        while (depth < length($0) && substr($0, depth + 1, 1) == "\t") depth++
+
+        if ($0 == COL) {
+            flush()
+            in_col = 1
+            drop = 0
+            buf[n_buf++] = $0
+            next
+        }
+
+        if (in_col) {
+            if (length($0) > 0 && depth <= 5) {
+                flush()
+                print
+                next
+            }
+            if ($0 == TGT1 || $0 == TGT2 || $0 == TGT3) drop = 1
+            buf[n_buf++] = $0
+            next
+        }
+
+        print
+    }
+
+    END { flush() }
+    ' "$LAYOUT" > "$LAYOUT.b3fix" && mv "$LAYOUT.b3fix" "$LAYOUT"
+fi
+
 # index.pug (home-page welcome banner)
 if [ -f "$HOMEPAGE" ]; then
     sed -i 's|title Bitcoin Explorer|title B3Chain Explorer|g' "$HOMEPAGE"
