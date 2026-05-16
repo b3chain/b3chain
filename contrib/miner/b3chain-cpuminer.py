@@ -1039,6 +1039,12 @@ def pool_mining_worker(thread_idx: int,
         best_pow_int = (1 << 256) - 1
         attempts_for_job = 0
         local_start = time.time()
+        # Wall-clock floor for progress emits, so a pool sending
+        # clean_jobs=true on every notify (which forces the worker to
+        # reset attempts_for_job every notify) still produces hashrate
+        # samples for downstream consumers (e.g. the live dashboard).
+        last_progress_at = local_start
+        attempts_at_last_emit = 0
 
         # ---- Iterate extranonce2 slices within this snapshot ----
         while not state.stopping.is_set():
@@ -1109,10 +1115,26 @@ def pool_mining_worker(thread_idx: int,
                     # Continue scanning the rest of the nonce space; only a
                     # clean_epoch change breaks us out.
 
-                if (attempts_for_job % progress_interval) == 0:
-                    elapsed = time.time() - local_start
+                # Emit progress when EITHER the attempt-count threshold is
+                # hit OR a full second of wall-clock has elapsed since the
+                # last emit. The wall-clock floor matters when a pool
+                # sends clean_jobs=true on every notify: the worker resets
+                # attempts_for_job to 0 every ~2s, and on slower boxes it
+                # would otherwise never reach `progress_interval` and
+                # never emit hashrate samples.
+                attempt_tick = (
+                    attempts_for_job > 0
+                    and (attempts_for_job % progress_interval) == 0
+                )
+                now_t = time.time()
+                time_tick = (now_t - last_progress_at) >= 1.0
+                if attempt_tick or time_tick:
+                    elapsed = now_t - local_start
                     rate = attempts_for_job / elapsed if elapsed > 0 else 0.0
-                    state.add_attempts(progress_interval)
+                    delta = max(attempts_for_job - attempts_at_last_emit, 0)
+                    state.add_attempts(delta)
+                    attempts_at_last_emit = attempts_for_job
+                    last_progress_at = now_t
                     dist_to_share = (float(best_pow_int) / float(share_target)
                                      if share_target > 0 else float("inf"))
                     dist_to_block = (float(best_pow_int) / float(net_target)
@@ -1142,6 +1164,13 @@ def pool_mining_worker(thread_idx: int,
                 break
             # Nonce range exhausted within this en2; bump and continue.
             en2_counter += num_threads
+
+        # Commit any leftover attempts before the next outer-pass reset
+        # so the global total_attempts counter does not lose work done
+        # since the last progress emit.
+        leftover = max(attempts_for_job - attempts_at_last_emit, 0)
+        if leftover > 0:
+            state.add_attempts(leftover)
 
 
 # ---------------------------------------------------------------------------

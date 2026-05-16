@@ -91,6 +91,26 @@ def _save_settings(d: dict) -> None:
         pass
 
 
+def _python_console_executable() -> str:
+    """Return the console-mode Python interpreter to use for subprocesses.
+
+    On Windows the launcher hosts the dashboard under pythonw.exe (so it
+    has no console window). If we spawn the miner with sys.executable
+    we'd inherit pythonw, where any thread that touches sys.stdout/stderr
+    can hit None and silently die. Resolve to python.exe in the same
+    directory; QProcess pipe redirection prevents a second console window
+    from popping up. Fall back to sys.executable on every other platform.
+    """
+    exe = sys.executable
+    if sys.platform == "win32":
+        base = os.path.basename(exe).lower()
+        if base == "pythonw.exe":
+            console = os.path.join(os.path.dirname(exe), "python.exe")
+            if os.path.exists(console):
+                return console
+    return exe
+
+
 # ---------------------------------------------------------------------------
 # MiningRunner -- owns the QProcess + JSONLTail + signals
 # ---------------------------------------------------------------------------
@@ -244,15 +264,22 @@ class MiningRunner(QObject):
 
     @staticmethod
     def _build_argv(cfg: MiningConfig, jsonl_path: str) -> List[str]:
+        # Use a smaller --progress-interval than the miner CLI default
+        # (1_000_000) so the dashboard's hashrate ticks fast even on
+        # slower boxes. The miner also has a wall-clock floor of ~1s, so
+        # progress lands at most 1s after start regardless of interval.
+        # Use the console interpreter (python.exe) on Windows even when
+        # the dashboard itself is hosted by pythonw.exe -- the miner
+        # threads call print() and we want stdout captured normally.
         return [
-            sys.executable, MINER_SCRIPT,
+            _python_console_executable(), MINER_SCRIPT,
             "--stratum", cfg.pool_url,
             "--user", cfg.user,
             "--pass", cfg.password,
             "--threads", str(cfg.threads),
             "--useragent", cfg.useragent,
             "--json-log", jsonl_path,
-            "--progress-interval", "1000000",
+            "--progress-interval", "100000",
         ]
 
     # ---------------------------------------------------------- subprocess
