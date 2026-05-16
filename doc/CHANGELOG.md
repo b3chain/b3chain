@@ -105,6 +105,19 @@ merkle tree structure, and transaction ID format.
     integration test at `contrib/miner/test_pool_miner.py` spins up a
     mock pool, runs the real miner, and verifies every recorded share
     by recomputing `BLAKE3(BLAKE3(header))` from the JSONL.
+  - **Windows test UI (added 2026-05-16)**: PyQt6 application at
+    `contrib/miner/tests/` (entry point
+    `contrib/miner/tests/run_tests_ui.bat`) runs the full miner test
+    suite with one click. Auto-detects `b3chaind`, `b3chain-cli`,
+    `docker`, `npm`, internet, and `pool.b3chain.org` reachability;
+    greys out tests whose prerequisites are missing. Includes nine
+    tests (env check, helper unit asserts, argparse mutex,
+    `--benchmark`, mock-pool E2E, JSONL re-derive, solo regtest, live
+    pool reachability, and an opt-in local Docker pool stack), live
+    streams every test's stdout to a monospace pane, and writes
+    `report-*.json` + `report-*.md` on Save Report. The launcher
+    bootstraps a private venv on first run; subsequent launches are
+    instant.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

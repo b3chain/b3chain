@@ -230,6 +230,18 @@ This miner only speaks Stratum V1. The pool exposes V2 separately (port
 3336 with its translator at port 3337); a future version of the miner
 may add a `stratum2://` URL scheme.
 
+### Windows test UI
+
+On Windows, double-clicking
+[`contrib/miner/tests/run_tests_ui.bat`](../contrib/miner/tests/run_tests_ui.bat)
+opens a PyQt6 application that runs every miner test (helper unit
+tests, argparse mutex, `--benchmark`, mock-pool E2E, JSONL re-derive,
+solo regtest, live pool reachability, and the optional local Docker
+pool stack) with one click and shows pass/fail/skip plus the live
+console output of every run. See
+[`contrib/miner/tests/README.md`](../contrib/miner/tests/README.md) for
+details.
+
 ## Performance Considerations
 
 BLAKE3 is significantly faster than SHA256d on modern hardware:
