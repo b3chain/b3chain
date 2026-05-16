@@ -62,12 +62,30 @@ STDOUT_BUFFER_LINES = 20_000   # cap for in-memory stdout buffer
 JSONL_RAW_TAIL_LINES = 5_000   # cap for the JSONL events tab text
 
 
+def _default_thread_count() -> int:
+    """Sensible default thread count for a Python BLAKE3 miner.
+
+    Each worker holds the Python GIL for the per-iteration overhead
+    (header serialise, int compares, target check) and only releases
+    it during the BLAKE3 C call. On a hyperthreaded box, scheduling
+    one worker per LOGICAL core (cpu_count - 1) over-subscribes the
+    GIL and starves half the workers, producing skewed per-thread
+    rates. Capping at roughly the physical core count gives a much
+    more uniform per-thread hashrate and a HIGHER aggregate. We
+    approximate physical cores as logical/2 (true on every Intel /
+    AMD desktop SKU since Nehalem; false only on non-SMT CPUs, where
+    logical/2 just leaves one core spare for the dispatcher + UI).
+    """
+    logical = os.cpu_count() or 2
+    return max(1, logical // 2)
+
+
 @dataclasses.dataclass
 class MiningConfig:
     pool_url: str = DEFAULT_POOL_URL
     user: str = DEFAULT_USER
     password: str = "x"
-    threads: int = max(1, (os.cpu_count() or 2) - 1)
+    threads: int = dataclasses.field(default_factory=_default_thread_count)
     useragent: str = DEFAULT_USERAGENT
 
 
@@ -632,7 +650,14 @@ class MiningDashboard(QMainWindow):
         h.addWidget(QLabel("Threads:"))
         self._threads_spin = QSpinBox()
         self._threads_spin.setRange(1, 64)
-        self._threads_spin.setValue(max(1, (os.cpu_count() or 2) - 1))
+        self._threads_spin.setValue(_default_thread_count())
+        self._threads_spin.setToolTip(
+            "Number of mining worker threads. Default is half the logical\n"
+            "core count, which approximates physical cores on hyperthreaded\n"
+            "CPUs. Going higher usually REDUCES aggregate hashrate because\n"
+            "Python's GIL serialises the per-iteration overhead and extra\n"
+            "threads just starve each other."
+        )
         h.addWidget(self._threads_spin)
 
         h.addWidget(QLabel("UA:"))

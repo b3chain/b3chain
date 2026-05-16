@@ -167,6 +167,33 @@ merkle tree structure, and transaction ID format.
     became visible as workers reporting `1 H/s` on a job several
     notifies in the past; with the breakout fixed those workers
     re-snapshot the current job within a single hash.
+  - **Per-pass rate baseline reset (fix 2026-05-16)**: after the
+    stale-job-breakout fix, GIL-starved workers still emitted
+    `attempts=1 rate=1 H/s` once per `clean_jobs=true` notify. Cause:
+    the cumulative-counter rate window stretched across the OLD
+    pass's tail + outer-loop bookkeeping (state_lock contention,
+    coinbase build, merkle compute) + the NEW pass's start. Under
+    heavy GIL contention the inner loop barely ran in that window, so
+    the very first emit in the new pass measured ~1 hash over ~1s of
+    wall time. Each transition produced a burst of ~14 such emits
+    that dragged the dashboard's smoothed total down by ~20% per
+    notify. Fix: on every outer-pass entry, flush leftover
+    cum_attempts to `state.total_attempts` (so global throughput
+    stays accurate) and reset `last_progress_at` and
+    `cum_at_last_emit`. The first emit in each new pass now measures
+    inner-loop hashing within that pass only; cumulative state stats
+    still reflect true wall-clock throughput.
+  - **Lower default thread count (fix 2026-05-16)**: the live mining
+    dashboard's `Threads` default dropped from `os.cpu_count() - 1`
+    (which over-subscribes hyperthreaded boxes -- e.g. 31 threads on
+    a 16C/32T CPU) to `os.cpu_count() // 2` (~physical core count on
+    every Intel/AMD SMT desktop SKU since Nehalem). Each Python
+    worker holds the GIL for the per-iteration overhead and only
+    releases it during the BLAKE3 C call, so scheduling more workers
+    than physical cores starves half of them and lowers the aggregate
+    hashrate. The spinbox tooltip now explains this. Existing users
+    can override via the spinbox; the value persists in
+    `tests/.miner_settings.json`.
 - **Mining documentation**: `doc/mining.md`
   - PoW algorithm overview and 80-byte header layout
   - `getblocktemplate` workflow + Python pseudocode

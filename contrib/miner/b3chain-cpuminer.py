@@ -1051,6 +1051,22 @@ def pool_mining_worker(thread_idx: int,
         attempts_for_job = 0
         local_start = time.time()
 
+        # Reset the rate-emit baseline for the new outer pass.
+        # Without this, the FIRST emit in this pass would measure
+        # delta_attempts/delta_t over a window that spans the OLD
+        # pass's tail + outer-loop bookkeeping (state_lock contention,
+        # coinbase build, merkle). Under heavy GIL pressure (e.g.
+        # 30 worker threads on a 16-physical-core box) the inner loop
+        # may barely run in that window, producing a misleading tiny
+        # rate (e.g. attempts=1 rate=1 H/s) that pollutes the dashboard.
+        # state.total_attempts stays accurate because the leftover
+        # delta is flushed to the global counter before the reset.
+        leftover = cum_attempts - cum_at_last_emit
+        if leftover > 0:
+            state.add_attempts(leftover)
+            cum_at_last_emit = cum_attempts
+        last_progress_at = local_start
+
         # ---- Iterate extranonce2 slices within this snapshot ----
         while not state.stopping.is_set():
             if local_epoch != client.clean_epoch:

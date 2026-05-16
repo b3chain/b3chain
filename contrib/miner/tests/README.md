@@ -91,8 +91,11 @@ to open a separate live-mining window. The dashboard runs
 the full picture in real time:
 
 * **Top bar** — pool URL combo box (with last-used dropdown), user,
-  password, threads spin (defaults to `cpu_count - 1`), useragent,
-  **Start** / **Stop**.
+  password, threads spin (defaults to `cpu_count // 2`, which
+  approximates physical cores on hyperthreaded CPUs -- raising this
+  past physical cores typically *lowers* aggregate hashrate because
+  Python's GIL serialises the per-iteration overhead and extra
+  workers just starve each other), useragent, **Start** / **Stop**.
 * **Status strip** — connection state, `extranonce1`, `extranonce2_size`,
   network difficulty, share difficulty, current job id.
 * **Stats cards** — large hashrate readout (smoothed over a 5 s rolling
