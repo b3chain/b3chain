@@ -378,6 +378,24 @@ if [ -f "$HOMEPAGE" ]; then
     # indented sub-lines (icon + text).
     sed -i '/donate\.bitcoinexplorer\.org/,+2d' "$HOMEPAGE"
     sed -i '/twitter\.com\/BitcoinExplorer/,+2d' "$HOMEPAGE"
+    # Strip the upstream welcome-banner marketing copy entirely.
+    # Upstream renders an `h5 Bitcoin Explorer : The free, open-source,
+    # easy-to-setup, easy-to-use, self-hosted explorer` heading with a
+    # `Protect your privacy ... Enjoy!` tagline below it. After our
+    # Bitcoin->B3Chain rebrand the heading text becomes "B3Chain
+    # Explorer", but the surrounding "free, open-source, easy-to-setup,
+    # easy-to-use, self-hosted" + "Protect your privacy" copy is
+    # bitcoinexplorer.org marketing that does not apply to B3Chain and
+    # is just visual noise on our home page.
+    # Delete:
+    #   1. `span.fst-italic.ms-1 The free, open-source, ...` (italic tagline)
+    #   2. its parent `span.fw-light :` (a colon-only wrapper, would
+    #      render as a stray ":" if left without the child above)
+    #   3. `span.fw-light Protect your privacy ... Made for B3Chain. Enjoy!`
+    # Each `sed /.../d` is idempotent: a no-op once the line is gone.
+    sed -i '/span\.fst-italic\.ms-1 The free, open-source/d' "$HOMEPAGE"
+    sed -i '/^[[:space:]]\+span\.fw-light :$/d' "$HOMEPAGE"
+    sed -i '/span\.fw-light Protect your privacy while enjoying/d' "$HOMEPAGE"
 fi
 
 # shared-mixins.pug: BTC -> B3C in the formatted-currency tooltip strings
