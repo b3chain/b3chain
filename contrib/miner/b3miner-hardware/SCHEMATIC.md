@@ -115,8 +115,10 @@ flowchart LR
         W5500["W5500 Ethernet"]
         USBC["USB-C 2.0<br/>native USB-Serial-JTAG"]
         JTAG["Xilinx 2x7 JTAG<br/>FPGA only"]
+        SEC["ATECC608B<br/>secure element<br/>(I2C, ECC P-256, TRNG)"]
         ESP --- W5500
         ESP --- USBC
+        ESP -- "I2C @ 400 kHz" --- SEC
     end
 
     subgraph IO [Front + rear panel]
@@ -137,6 +139,7 @@ flowchart LR
     V3V3 --> ESP
     V3V3 --> W5500
     V3V3 --> KU5P
+    V3V3 --> SEC
     V5V0 --> FAN
     JTAG --- KU5P
     ESP -- "SPI0 @ 25 MHz +<br/>SHARE_IRQ + CFG" --- KU5P
@@ -433,6 +436,8 @@ does not touch them. Confirmed safe.
 | ESP GPIO | Function | Net | Notes |
 |---|---|---|---|
 | 0 | BOOT strap | `ESP_BOOT` | Strap + button |
+| 1 | I2C SDA (secure element) | `SEC_I2C_SDA` | Open-drain, 4.7 kΩ ext pull-up to 3.3 V; ATECC608B |
+| 2 | I2C SCL (secure element) | `SEC_I2C_SCL` | Open-drain, 4.7 kΩ ext pull-up to 3.3 V; ATECC608B |
 | 3 | Strap (JTAG en) | `ESP_STRAP3` | Pulled low; native USB JTAG used instead |
 | 4 | FPGA share IRQ in | `FPGA_SHARE_IRQ` | Input, internal pull-up; firmware `PIN_FPGA_IRQ` |
 | 5 | FPGA PROG_B out | `FPGA_PROG_B` | OD output, ext pull-up |
@@ -474,9 +479,141 @@ To go with this board, the firmware must change:
   device config on `SPI2_HOST` using the pins in §6.5.
 - Drop the `PIN_ETH_MDC`/`PIN_ETH_MDIO`/`PIN_ETH_PHY_*` macros and add
   `PIN_W5500_*` macros consistent with §6.5.
+- Add a new component `b3_sec` that talks to the ATECC608B over
+  `I2C_NUM_0` on GPIO 1/2 (see §6.7 below). Add `PIN_SEC_I2C_SDA=1`
+  and `PIN_SEC_I2C_SCL=2` macros and pull in Microchip's
+  `cryptoauthlib` as an ESP-IDF component.
 
 This is documented here so the change is not invisible to the firmware
 maintainers.
+
+### 6.7 Secure element (ATECC608B)
+
+#### 6.7.1 Role
+
+The ATECC608B is a tamper-resistant crypto-authentication IC that
+holds per-card private keys in hardware so the ESP32-S3 firmware
+never sees them in plaintext. It exists for four reasons specific to
+B3Miner-1:
+
+1. **Stratum V2 Noise XX static key.** SV2's Noise handshake
+   requires each client to present a long-term static ECC public key
+   so the pool can authenticate the connection and bind submitted
+   shares to a specific worker. The matching private key lives in
+   ATECC slot 0 and never leaves the chip — sign operations execute
+   inside the ATECC die. Per [`IMPLEMENTATION.md`](../b3miner-firmware/IMPLEMENTATION.md)
+   Phase 4, `b3_stratum_v2.c` calls into `b3_sec_sign_p256()`
+   instead of mbedTLS for the handshake.
+2. **OTA defence in depth.** ESP-IDF Secure Boot V2 already
+   verifies the application image with the chip's eFuse RSA-3072
+   key. The ATECC adds a *second* signature check on the OTA
+   *manifest* itself, signed by the project's release key whose
+   public half lives in ATECC slot 2 (write-locked). A compromised
+   build server alone cannot push a malicious update — it would
+   also need the offline release-signing key.
+3. **TRNG seeding.** ATECC's hardware TRNG seeds the
+   mbedTLS DRBG at boot. Removes reliance on the ESP's PSRAM-based
+   entropy collector in early boot, which is weak before the
+   Ethernet stack provides timing jitter.
+4. **Worker identity for the dashboard.** Each card has an
+   immutable 9-byte serial number readable over I²C (no
+   authentication needed). The web UI displays it, the OTA agent
+   reports it, and the pool's admin tools use it to revoke a
+   specific physical card if needed.
+
+#### 6.7.2 Part selection
+
+| Field | Value |
+|---|---|
+| Part | Microchip **ATECC608B-MAHDA-T** |
+| Package | SOIC-8 150 mil, 5.0 × 4.0 mm (hand-solder friendly) |
+| Interface | I²C, 100 kHz – 1 MHz (firmware uses 400 kHz) |
+| Default I²C address | `0xC0` (7-bit `0x60`); reconfigurable in Configuration Zone |
+| Crypto primitives | ECDSA P-256 sign/verify, ECDH, AES-128, SHA-256, HMAC-SHA-256, TRNG (NIST SP 800-90A/B compliant) |
+| Storage | 16 slots × 36 bytes (576 bytes user) + 64 bytes one-time-programmable |
+| Operating voltage | 2.0 – 5.5 V (we run at 3.3 V) |
+| Idle / active current | < 4 µA / 14 mA peak during sign |
+| Tamper class | "Common-Criteria-equivalent" hardware countermeasures (active shield, fault-injection detection, side-channel mitigations) |
+| Cert | NIST CMVP / FIPS 140-2 path available via the ATECC608A variant (B is feature-superset) |
+
+Alternative: ATECC608A-MAHDA-T is a footprint-compatible second
+source; the B revision adds the IO protection (encrypted I²C transit)
+mode we use for slot-3 traffic and is preferred for new designs.
+
+#### 6.7.3 Pinout (SOIC-8)
+
+| Pin | Name | Connection |
+|---|---|---|
+| 1 | NC | No connect (floated) |
+| 2 | NC | No connect |
+| 3 | NC | No connect |
+| 4 | GND | Local GND, single via to inner plane |
+| 5 | SDA | `SEC_I2C_SDA` → ESP GPIO 1, with 4.7 kΩ pull-up to 3.3 V |
+| 6 | SCL | `SEC_I2C_SCL` → ESP GPIO 2, with 4.7 kΩ pull-up to 3.3 V |
+| 7 | NC | No connect |
+| 8 | VCC | 3.3 V (from `V3V3_SYS`), 0.1 µF X7R + 1 µF X7R decoupling within 2 mm |
+
+The two NCs on pins 1, 2, 3, 7 in the I²C variant must be left
+floating — they are wafer-test pads and tying them to anything
+permanently disables the device.
+
+#### 6.7.4 Slot allocation
+
+Configuration Zone is locked at the factory provisioning step (see
+§16 item 10). The slot layout is binding on firmware
+[`components/b3_sec/`](../b3miner-firmware/components/b3_sec) and
+must not drift without a paired firmware update:
+
+| Slot | Type | Contents | Read | Write | Use |
+|---|---|---|---|---|---|
+| 0 | ECC P-256 keypair | Per-card unique private key (generated on-chip via `GenKey`) | Never (pubkey-only via `GenKey/PubKey`) | Locked after gen | Stratum V2 Noise XX static private key |
+| 1 | ECC P-256 pubkey | Pool authority pubkey (for verifying pool's messages) | Always | Locked after write | SV2 pool authentication |
+| 2 | ECC P-256 pubkey | b3chain project release-signing pubkey | Always | Locked after write | OTA manifest verification |
+| 3 | AES-128 key | Per-card unique AES key | Encrypted-read only | Locked after gen | Encrypt pool password before NVS write |
+| 4 | Data | 32-byte board provisioning record (date, fab lot, test pass) | Always | Locked after write | Manufacturing audit trail |
+| 5 | ECC P-256 keypair | Per-card unique attestation key | Never | Locked after gen | Future: hardware attestation to b3chain network |
+| 6–14 | (unused) | Reserved for future use | — | — | — |
+| 15 | Data | TempKey scratch (used by ECDH ops) | — | — | Standard ATECC use |
+
+#### 6.7.5 Layout rules
+
+- Place within **20 mm** of the ESP32-S3 module — short I²C trace
+  improves edge rates at 400 kHz.
+- 4.7 kΩ pull-ups to 3.3 V on both SDA and SCL, placed near the
+  ESP-side end of the bus (not near the ATECC), so the rise-time
+  budget is dominated by trace + chip capacitance not pull-up R.
+- Decoupling: 0.1 µF X7R + 1 µF X7R within 2 mm of VCC pin.
+- **No** external secure-boot signing pins or attack-debug pads on
+  the PCB. The chip's value depends on physical opacity; do not
+  add a JTAG header that touches its bus.
+- Place on the **top** side under the heatsink shadow if possible
+  — the heatsink physically obstructs probing the I²C bus on a
+  populated board.
+
+#### 6.7.6 Firmware integration
+
+ESP-IDF component: Microchip's open-source
+[`cryptoauthlib`](https://github.com/MicrochipTech/cryptoauthlib)
+(BSD-3-Clause), added as a managed component. Wraps low-level I²C
+in a portable HAL.
+
+New firmware component `b3_sec/` (see §6.6 firmware deltas) exposes:
+
+```c
+esp_err_t b3_sec_init(int sda_gpio, int scl_gpio);
+esp_err_t b3_sec_serial(uint8_t out[9]);
+esp_err_t b3_sec_sign_p256(uint8_t slot, const uint8_t msg32[32], uint8_t sig64[64]);
+esp_err_t b3_sec_verify_p256(const uint8_t pub64[64], const uint8_t msg32[32], const uint8_t sig64[64]);
+esp_err_t b3_sec_random(uint8_t *buf, size_t len);
+esp_err_t b3_sec_aes_encrypt_block(uint8_t slot, const uint8_t in[16], uint8_t out[16]);
+```
+
+Called by:
+- `b3_stratum_v2.c` — sign every Noise XX handshake response.
+- `b3_ota.c` — verify OTA manifest signature against slot-2 pubkey.
+- `app_main.c` — seed mbedTLS DRBG at boot (`b3_sec_random` →
+  `mbedtls_ctr_drbg_seed`).
+- `b3_config.c` — encrypt pool password before NVS commit using slot 3.
 
 ---
 
@@ -741,6 +878,8 @@ HB-3211 modified, or an SLS-printed enclosure for short-run.
 - PCIe 6-pin: (60, 5) flush to rear edge.
 - Fan header: (105, 5) flush to rear edge.
 - JTAG 2×7: x = 118, y = 40 (side, right edge).
+- ATECC608B: (28, 60) — SOIC-8, right of the ESP module, under
+  the heatsink shadow when the heatsink lands; courtyard 6 × 5 mm.
 
 ### 12.3 Z-stack
 
@@ -836,6 +975,7 @@ Critical parts with second sources. Full BOM lives in
 | LEDs | Kingbright APT3216SECK | Lite-On LTST-C170 series | Various colors |
 | Tact switches | Omron B3U-1100P | C&K KMR2 | Same 4×4 mm footprint |
 | Fan | Sunon MF40101V2-1000U-A99 | Sanyo Denki 9GA0412P7G001 | Latter has higher CFM, drop-in |
+| Secure element | Microchip ATECC608B-MAHDA-T (SOIC-8) | Microchip ATECC608A-MAHDA-T | A-rev is footprint-compatible second source; lacks IO protection mode used for slot 3 |
 
 > **Reel vs cut-tape:** for any production run > 100 units, parts
 > ordered on reel only — the assembly house will reject mixed-feed.
@@ -865,6 +1005,8 @@ they're measuring.
 | TP12 | 200 MHz LVDS clk (+ side only) | sine-shape, ~ 800 mVpp |
 | TP13 | W5500 INTn | high idle, low on socket event |
 | TP14 | KU5P die temp (via XADC, software read) | < 80 °C at full mining |
+| TP15 | `SEC_I2C_SDA` | 3.3 V idle, clean 400 kHz square wave during ATECC ops |
+| TP16 | `SEC_I2C_SCL` | 3.3 V idle, clean 400 kHz square wave during ATECC ops |
 
 ### 15.2 Bring-up sequence
 
@@ -879,23 +1021,30 @@ Each step references the firmware module/function that proves it.
    [`contrib/miner/b3miner-firmware/`](../b3miner-firmware/). Expect
    the `B3Miner-1 firmware boot` log line from `app_main()`. **GO**
    when log appears and no crash.
-3. **W5500 populated.** Reboot. Expect `Ethernet started` and
+3. **ATECC608B presence check.** Populate the secure element.
+   Firmware `b3_sec_init()` runs `atcab_info()` and reads the 9-byte
+   serial number; expect a non-zero serial starting with `0x01 0x23`
+   (Microchip's vendor prefix). **GO** when serial is logged. If
+   Configuration Zone is unlocked (factory state, see §16 item 10),
+   firmware refuses to start mining and falls into a provisioning
+   wait — that is intentional and the next step covers it.
+4. **W5500 populated.** Reboot. Expect `Ethernet started` and
    `Ethernet link up` from `eth_event_handler()` in
    [`app_main.c`](../b3miner-firmware/main/app_main.c). DHCP-assigned
    IP shows up in `IP_EVENT_ETH_GOT_IP`. **GO** when the dashboard
    responds on `http://<ip>:80`.
-4. **KU5P populated, bitstream load.** ESP fires the slave-serial
+5. **KU5P populated, bitstream load.** ESP fires the slave-serial
    load path in `b3_fpga_load_bitstream_from_flash()` (currently a
    FILL IN per
    [`IMPLEMENTATION.md`](../b3miner-firmware/IMPLEMENTATION.md)).
    Expect `DONE` (TP7) to go high within 200 ms.
-5. **FPGA register handshake.** ESP reads `B3_FPGA_REG_ID` from
+6. **FPGA register handshake.** ESP reads `B3_FPGA_REG_ID` from
    [`b3_fpga_regs.h`](../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h);
    must return `0xB3M10001`. **GO** on magic match.
-6. **First job.** Configure pool URL via the web UI. Stratum subscribes,
+7. **First job.** Configure pool URL via the web UI. Stratum subscribes,
    gets a notify, ESP pushes work to FPGA. **GO** when the mining LED
    begins blinking (`hashrate_khs > 0.1`).
-7. **First share.** Wait for `SHARE_IRQ` rising edge (TP10). ESP reads
+8. **First share.** Wait for `SHARE_IRQ` rising edge (TP10). ESP reads
    nonce + pow hash from the register map, submits to pool, expects
    `result: true`. **GO** on the first accepted share.
 
@@ -934,6 +1083,21 @@ implementation details:
 8. **Panelisation tabs vs V-score** decision for the 2×2 production
    panel.
 9. **3D STEP model** of the final board returned for chassis design.
+10. **ATECC608B factory provisioning script** (Python, using
+    `cryptoauthlib` host bindings). Runs on the production test
+    fixture once per card; tasks per slot per §6.7.4:
+    - Generate slot-0 ECC keypair on-chip, export pubkey, ship
+      to pool's enrollment endpoint
+    - Write slot-1 with the canonical pool authority pubkey
+      (`pool.b3chain.org` long-term key)
+    - Write slot-2 with the b3chain project release-signing pubkey
+    - Generate slot-3 AES key on-chip
+    - Write slot-4 with the provisioning record (UTC date, fab
+      lot ID, ICT test pass timestamp, operator ID)
+    - Generate slot-5 attestation keypair on-chip
+    - **Lock the Configuration Zone and Data Zone** (one-way)
+    - Verify by reading the chip's serial and signing a known
+      challenge — fixture refuses to pass the card if any step fails
 
 ---
 
@@ -950,7 +1114,12 @@ Tracked here so they are not forgotten:
 - Enclosure mechanical drawing — produced by the chassis vendor once
   the STEP file (§16 item 9) lands.
 - Production test fixture (ICT bed of nails) — separate doc once
-  layout settles.
+  layout settles. The ATECC608B provisioning script (§16 item 10)
+  is part of this fixture, not a hand-run step.
+- Secure-element key-ceremony procedure (offline air-gapped
+  signing host for the slot-2 release-signing private key) — lives
+  in `doc/SECURITY-INHERITANCE.md`, separate from this hardware
+  doc.
 
 ---
 
@@ -971,9 +1140,11 @@ All schematic nets follow `DOMAIN_FUNCTION[_INDEX]` in UPPER_SNAKE_CASE.
 | `FAN_*` | Fan-header signal |
 | `TP*` | Test point |
 | `JTAG_*` | FPGA JTAG signal (TCK/TDI/TDO/TMS/VREF) |
+| `SEC_*` | Secure element (ATECC608B) I²C bus and related |
 
 ## Appendix B — Document change log
 
 | Rev | Date | Author | Notes |
 |---|---|---|---|
 | R0 | 2026-05-18 | b3chain | Initial implementer-grade draft. Flagged Ethernet MAC contradiction (§1.1). Chose W5500 (Option A). |
+| R0.1 | 2026-05-18 | b3chain | Added Microchip ATECC608B secure element on I²C (GPIO 1/2). New §6.7 with slot allocation, pinout, layout rules, firmware integration surface. Added to system block (§2), pin map (§6.5), floorplan (§12.2), BOM (§14), test points (§15.1, TP15/TP16), bring-up sequence (§15.2 new step 3), open items (§16 item 10 — factory provisioning), out-of-scope (§17), net naming (Appendix A `SEC_*`). Paired with [`b3miner-firmware/IMPLEMENTATION.md`](../b3miner-firmware/IMPLEMENTATION.md) Phase 4 add. |
