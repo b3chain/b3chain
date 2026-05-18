@@ -64,5 +64,18 @@ matching schematic / layout source files are tagged in git with
 
 ## Currently in this folder
 
-Nothing yet. This README is a drop-zone placeholder so the folder
-exists in the tree before the first fab spin lands.
+| File | What it is |
+|---|---|
+| [`README.md`](README.md) | This file |
+| [`b3miner1.kicad_pro`](b3miner1.kicad_pro) | KiCad 8 project skeleton — pre-encodes the 9 net classes from [`../SCHEMATIC.md`](../SCHEMATIC.md) §13 (USB 90 Ω diff, Ethernet 100 Ω diff, LVDS clock 100 Ω diff, GTH future, SPI bus, three power-rail classes), DRC rules at 8L / 4 mil fab class, BOM export format, and project text variables. Opens in KiCad 8.0+ without further setup. |
+| [`kicad-bringup.md`](kicad-bringup.md) | Paste-ready GUI checklist to take the project from skeleton to a working capture + layout starter — layer stack-up dialog values, board outline coordinates, mounting-hole positions, hierarchical sheet structure for the schematic, inter-sheet net list, symbol-library prerequisites, and the explicit "what still needs the engineer" boundary. |
+
+**Not yet in this folder (contract-house deliverables):**
+
+- `b3miner1.kicad_sch` + per-subsystem sheet files (`01_power.kicad_sch` etc.) — schematic capture per `kicad-bringup.md` Step 2
+- `b3miner1.kicad_pcb` — board layout per `kicad-bringup.md` Step 1
+- `lib/b3chain.kicad_sym` + `lib/b3chain.pretty/` — custom symbols/footprints (KU5P BGA-676, ESP32-S3 module, W5500, etc.)
+- `pinplan/b3miner_r0.csv` — KU5P FFVB676 pin assignment from Vivado pin-planner
+- `fab/gerbers_r0/` and the rest of the `fab/` outputs
+
+**Altium variant:** the Altium files listed in the "Expected contents" table above are an alternative project format the contract house may use instead of KiCad. They are binary and cannot be created as text in this repo — if the house chooses Altium, they will commit those files directly alongside the matching `*.SchDoc.pdf` and `*.PcbDoc.pdf` reviewer renders (see "Version control rules" below).
