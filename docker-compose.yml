@@ -1,0 +1,140 @@
+# docker-compose.yml — local B3Chain regtest stack.
+#
+# Brings up a single b3chaind in regtest mode plus two opt-in helpers:
+#
+#   * `miner`  — the reference Python CPU miner (b3chain-cpuminer.py),
+#                gated behind the `mine` profile so the default
+#                `docker compose up` brings up just the node.
+#   * `verify` — a one-shot job that runs the standalone B3PoW-Scratch
+#                verifier against the committed consensus vectors and,
+#                optionally, against live blocks from the running node.
+#
+# All images are built from the same Dockerfile (multi-stage targets).
+# The node's datadir is shared into the helper containers via the
+# `b3chain-data` named volume so the Python miner can read the JSON-RPC
+# cookie file (`/home/b3chain/.b3chain/regtest/.cookie`) without
+# embedding credentials in the compose file.
+#
+# Typical workflows:
+#
+#   # 1) Just spin up a node and tail its logs:
+#   docker compose up
+#
+#   # 2) Node + reference miner (regtest blocks roll in every ~10 s):
+#   docker compose --profile mine up
+#
+#   # 3) One-shot vector + live verification:
+#   docker compose --profile verify run --rm verify
+#
+#   # 4) Open a shell against the node from the host:
+#   docker compose exec b3chaind b3chain-cli -regtest getblockchaininfo
+#
+# Mainnet / testnet are intentionally NOT covered here: this stack is
+# scoped to local development.  See doc/reproducible-builds.md and
+# doc/testnet-runbook.md for the production / public-testnet flow.
+
+services:
+
+  b3chaind:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: b3chaind
+    image: b3chain/b3chaind:dev
+    container_name: b3chaind
+    user: "1000:1000"
+    restart: unless-stopped
+    volumes:
+      - b3chain-data:/home/b3chain/.b3chain
+    # Default command keeps the node in regtest mode with the JSON-RPC
+    # server listening on all interfaces inside the compose network so
+    # the `miner` and `verify` containers can reach it.  Cookie auth
+    # remains in force; no static rpcuser/rpcpassword.
+    command:
+      - "-regtest"
+      - "-server=1"
+      - "-printtoconsole"
+      - "-rpcbind=0.0.0.0:18545"
+      - "-rpcallowip=10.0.0.0/8"
+      - "-rpcallowip=172.16.0.0/12"
+      - "-rpcallowip=192.168.0.0/16"
+      - "-fallbackfee=0.0001"
+    healthcheck:
+      test: ["CMD", "b3chain-cli", "-regtest", "-datadir=/home/b3chain/.b3chain", "getblockcount"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    # No external port publishing by default.  Uncomment to expose:
+    #   - testnet:  18533 (P2P), 18534 (RPC)
+    #   - mainnet:   8533 (P2P),  8534 (RPC)
+    #   - regtest:  18444 (P2P), 18545 (RPC)
+    # ports:
+    #   - "18533:18533"
+    #   - "18534:18534"
+    networks:
+      - b3chain
+
+  miner:
+    profiles: ["mine"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: b3chain-python-miner
+    image: b3chain/b3chain-python-miner:dev
+    container_name: b3chain-miner
+    user: "1000:1000"
+    depends_on:
+      b3chaind:
+        condition: service_healthy
+    volumes:
+      - b3chain-data:/home/b3chain/.b3chain:ro
+    # The miner reads cookie auth from the shared datadir and talks to
+    # the node over the compose network at b3chaind:18545.  Address is
+    # a deterministic regtest bech32 ("b3rt1q...") -- swap for one you
+    # control if you want to claim the coinbases on a fresh wallet.
+    command:
+      - "--rpcconnect=b3chaind"
+      - "--rpcport=18545"
+      - "--datadir=/home/b3chain/.b3chain"
+      - "--regtest"
+      - "--coinbaseaddr=b3rt1qzqd0gnxlwsv7kqvcg6hvph9c4t6f0u8mzxq8sa"
+      - "--threads=1"
+    restart: on-failure
+    networks:
+      - b3chain
+
+  verify:
+    profiles: ["verify"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: b3chain-verify-b3pow
+    image: b3chain/b3chain-verify-b3pow:dev
+    container_name: b3chain-verify
+    user: "1000:1000"
+    depends_on:
+      b3chaind:
+        condition: service_healthy
+    # verify-b3pow.py hard-codes 127.0.0.1 for the live-RPC check, so we
+    # share the node's network namespace -- localhost:18545 inside this
+    # container then resolves to the b3chaind JSON-RPC server.  Bind-
+    # mounting the datadir read-only gives us the cookie file for auth.
+    network_mode: "service:b3chaind"
+    volumes:
+      - b3chain-data:/home/b3chain/.b3chain:ro
+    # One-shot: re-derive every committed consensus vector and (if the
+    # node has any) verify live blocks against the running b3chaind.
+    # Exits 0 on success.
+    command:
+      - "--rpc-port=18545"
+    restart: "no"
+
+volumes:
+  b3chain-data:
+    name: b3chain-data
+
+networks:
+  b3chain:
+    name: b3chain
+    driver: bridge

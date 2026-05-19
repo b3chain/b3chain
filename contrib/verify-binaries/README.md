@@ -1,5 +1,16 @@
 ### Verify Binaries
 
+> **B3Chain note.** This script targets the historical Bitcoin Core
+> `SHA256SUMS` + multi-builder PGP flow, kept here for users following that
+> recipe. **The canonical B3Chain release-verification flow is documented
+> at [`doc/reproducible-builds.md`](../../doc/reproducible-builds.md)**,
+> which covers cosign keyless verification of both release blobs and
+> container images, `sha256sum -c SHA256SUMS`, the optional `SHA256SUMS.asc`
+> PGP path, and CycloneDX SBOM consumption. The two flows are
+> complementary — cosign + `SHA256SUMS` are emitted on every release; a
+> Guix-style multi-builder PGP attestation set is only emitted once enough
+> independent builders sign a given tag.
+
 #### Preparation
 
 As of Bitcoin Core v22.0, releases are signed by a number of public keys on the basis
@@ -88,3 +99,42 @@ Verify only a subset of the files listed in a local checksum file
     ~/Downloads/bitcoin-24.0.1-x86_64-linux-gnu.tar.gz \
     ~/Downloads/bitcoin-24.0.1-arm-linux-gnueabihf.tar.gz
 ```
+
+#### B3Chain release verification (quick reference)
+
+The full flow, including container-image verification and SBOM
+consumption, is in [`doc/reproducible-builds.md`](../../doc/reproducible-builds.md).
+Quick recipe for a tagged B3Chain release:
+
+```sh
+# 1. From a GitHub Release page for tag v<X.Y.Z>, download the binary
+#    archive(s) you want, the matching .sig + .crt, plus SHA256SUMS,
+#    SHA256SUMS.sig, and SHA256SUMS.crt.
+
+# 2. Cosign-verify SHA256SUMS itself:
+cosign verify-blob \
+  --signature   SHA256SUMS.sig \
+  --certificate SHA256SUMS.crt \
+  --certificate-identity-regexp '^https://github.com/b3chain/b3chain/\.github/workflows/release\.yml@refs/tags/v.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+# 3. Verify every downloaded binary against SHA256SUMS:
+sha256sum -c --ignore-missing SHA256SUMS
+
+# 4. (Optional) Also cosign-verify each individual blob to anchor it
+#    independently of SHA256SUMS:
+cosign verify-blob \
+  --signature   b3chain-<version>-<host>.tar.gz.sig \
+  --certificate b3chain-<version>-<host>.tar.gz.crt \
+  --certificate-identity-regexp '^https://github.com/b3chain/b3chain/\.github/workflows/release\.yml@refs/tags/v.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  b3chain-<version>-<host>.tar.gz
+
+# 5. (Optional) When a maintainer PGP signature is shipped, also verify:
+gpg --verify SHA256SUMS.asc SHA256SUMS
+```
+
+See [`doc/reproducible-builds.md`](../../doc/reproducible-builds.md) for
+the container-image (`cosign verify ghcr.io/b3chain/...`) and SBOM
+(`syft` / `grype`) verification paths.

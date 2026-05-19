@@ -1,0 +1,666 @@
+# Release pipeline — runs on a tag push (v*.*.*) or manual dispatch.
+#
+# Produces, for each tagged release:
+#
+#   * Linux x86_64 binaries (.tar.gz)
+#   * Linux aarch64 binaries (.tar.gz)
+#   * macOS arm64 binaries (.tar.gz)
+#   * Windows x86_64 binaries (.zip)
+#   * Multi-arch Docker images (b3chaind, b3chain-cli, b3chain-python-miner,
+#     b3chain-verify-b3pow) pushed to ghcr.io/b3chain/*
+#   * CycloneDX SBOMs per platform
+#   * Sigstore/Cosign signatures on every blob and every container image
+#   * SHA256SUMS + SHA256SUMS.sig (cosign blob) + optional SHA256SUMS.asc
+#     (PGP, only when the RELEASE_PGP_KEY secret is configured)
+#   * A GitHub Release with every artefact attached
+#
+# Supply-chain hygiene:
+#
+#   - Every third-party action is pinned by 40-char commit SHA, with the
+#     human-readable version on the same line as a comment.  Bump these by
+#     updating both the SHA and the comment; never use floating tags here.
+#     TODO(maintainer): re-verify every SHA below against the upstream
+#     release matching the version comment before the first signed release.
+#   - Cosign is invoked in keyless mode -- the OIDC identity that signs is
+#     the GitHub Actions workflow itself, anchored to this repo + ref so
+#     verifiers can pin trust to a specific repository + branch.
+#   - The workflow refuses to run on pull requests, so a forked PR cannot
+#     publish to GHCR or to the Releases page.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version tag (e.g. v0.1.0).  Leave blank to use the git tag."
+        required: false
+        default: ""
+
+# Hard guard: this workflow must NEVER run on a PR.  Belt-and-braces with
+# the trigger filter above.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # TODO(maintainer): change if the org/owner under ghcr.io is not "b3chain".
+  IMAGE_NAMESPACE: b3chain
+  # Image names exported by Dockerfile stages.  Keep in lockstep with the
+  # `target:` keys in the docker-build matrix below.
+  IMAGE_BASES: "b3chaind b3chain-cli b3chain-python-miner b3chain-verify-b3pow"
+
+jobs:
+
+  # --------------------------------------------------------------------------
+  # 0. Resolve the version string once so every downstream job agrees.
+  # --------------------------------------------------------------------------
+  prepare:
+    name: Prepare release metadata
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      version_no_v: ${{ steps.meta.outputs.version_no_v }}
+      source_date_epoch: ${{ steps.meta.outputs.source_date_epoch }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+        with:
+          fetch-depth: 0
+      - id: meta
+        name: Compute version + SOURCE_DATE_EPOCH
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ github.event.inputs.version || '' }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="v0.0.0-$(git rev-parse --short=12 HEAD)"
+          fi
+          echo "version=${VERSION}"                                >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION#v}"                         >> "$GITHUB_OUTPUT"
+          echo "source_date_epoch=$(git show -s --format=%ct HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short=12 HEAD)"        >> "$GITHUB_OUTPUT"
+
+  # --------------------------------------------------------------------------
+  # 1. Native binary builds — one job per OS/arch.  Each emits a tarball or
+  #    zip into `artifacts/` and uploads it as a workflow artifact so the
+  #    sbom/sign/release jobs can pull it back down.
+  # --------------------------------------------------------------------------
+  build-linux-x86_64:
+    name: Build linux-x86_64
+    runs-on: ubuntu-22.04
+    needs: prepare
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
+      ARTIFACT: b3chain-${{ needs.prepare.outputs.version_no_v }}-x86_64-linux-gnu.tar.gz
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libboost-dev libevent-dev libsqlite3-dev python3
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF \
+            -DENABLE_WALLET=ON -DENABLE_IPC=OFF -DWITH_ZMQ=OFF -DWITH_USDT=OFF
+      - name: Build
+        run: cmake --build build -j "$(nproc)" --target b3chaind b3chain-cli b3chain-tx b3chain-wallet b3chain-util
+      - name: Stage tarball
+        run: |
+          set -euo pipefail
+          STAGE="b3chain-${{ needs.prepare.outputs.version_no_v }}"
+          mkdir -p "artifacts/${STAGE}/bin"
+          cp build/bin/b3chaind build/bin/b3chain-cli build/bin/b3chain-tx \
+             build/bin/b3chain-wallet build/bin/b3chain-util "artifacts/${STAGE}/bin/"
+          strip "artifacts/${STAGE}/bin/"*
+          cp COPYING README.md "artifacts/${STAGE}/"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+              --mtime="@${SOURCE_DATE_EPOCH}" \
+              -C artifacts -czf "artifacts/${ARTIFACT}" "${STAGE}"
+          rm -rf "artifacts/${STAGE}"
+          sha256sum "artifacts/${ARTIFACT}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-linux-x86_64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux-arm64:
+    name: Build linux-aarch64
+    runs-on: ubuntu-22.04
+    needs: prepare
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
+      ARTIFACT: b3chain-${{ needs.prepare.outputs.version_no_v }}-aarch64-linux-gnu.tar.gz
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      # Cross-build under QEMU; swap to `ubuntu-24.04-arm` (no QEMU needed)
+      # when the runner becomes generally available in the b3chain org.
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
+        with:
+          platforms: arm64
+      - name: Build inside arm64 container
+        run: |
+          set -euo pipefail
+          docker run --rm --platform=linux/arm64 \
+            -v "${PWD}:/src" -w /src \
+            -e SOURCE_DATE_EPOCH \
+            debian:12-slim bash -eu -c '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential cmake ninja-build pkg-config \
+                libboost-dev libevent-dev libsqlite3-dev python3 binutils
+              cmake -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_GUI=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF \
+                -DENABLE_WALLET=ON -DENABLE_IPC=OFF -DWITH_ZMQ=OFF -DWITH_USDT=OFF
+              cmake --build build -j "$(nproc)" --target b3chaind b3chain-cli b3chain-tx b3chain-wallet b3chain-util
+            '
+      - name: Stage tarball
+        run: |
+          set -euo pipefail
+          STAGE="b3chain-${{ needs.prepare.outputs.version_no_v }}"
+          mkdir -p "artifacts/${STAGE}/bin"
+          cp build/bin/b3chaind build/bin/b3chain-cli build/bin/b3chain-tx \
+             build/bin/b3chain-wallet build/bin/b3chain-util "artifacts/${STAGE}/bin/"
+          docker run --rm --platform=linux/arm64 -v "${PWD}/artifacts/${STAGE}:/s" \
+            debian:12-slim bash -c "strip /s/bin/*"
+          cp COPYING README.md "artifacts/${STAGE}/"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+              --mtime="@${SOURCE_DATE_EPOCH}" \
+              -C artifacts -czf "artifacts/${ARTIFACT}" "${STAGE}"
+          rm -rf "artifacts/${STAGE}"
+          sha256sum "artifacts/${ARTIFACT}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-linux-arm64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos-arm64:
+    name: Build macos-arm64
+    runs-on: macos-14
+    needs: prepare
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
+      ARTIFACT: b3chain-${{ needs.prepare.outputs.version_no_v }}-arm64-apple-darwin.tar.gz
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Install build dependencies
+        run: |
+          brew update
+          brew install cmake ninja pkg-config boost libevent sqlite
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF \
+            -DENABLE_WALLET=ON -DENABLE_IPC=OFF -DWITH_ZMQ=OFF -DWITH_USDT=OFF
+      - name: Build
+        run: cmake --build build -j "$(sysctl -n hw.logicalcpu)" --target b3chaind b3chain-cli b3chain-tx b3chain-wallet b3chain-util
+      - name: Stage tarball
+        run: |
+          set -euo pipefail
+          STAGE="b3chain-${{ needs.prepare.outputs.version_no_v }}"
+          mkdir -p "artifacts/${STAGE}/bin"
+          cp build/bin/b3chaind build/bin/b3chain-cli build/bin/b3chain-tx \
+             build/bin/b3chain-wallet build/bin/b3chain-util "artifacts/${STAGE}/bin/"
+          strip "artifacts/${STAGE}/bin/"* 2>/dev/null || true
+          cp COPYING README.md "artifacts/${STAGE}/"
+          # gtar from coreutils is not the default on macOS; bsdtar does
+          # not support --mtime / --sort, so we use Python instead for a
+          # deterministic tar.  Falls back to system tar if Python is gone.
+          python3 - <<'PY'
+          import os, tarfile, pathlib
+          stage = "${{ needs.prepare.outputs.version_no_v }}"
+          src   = pathlib.Path(f"artifacts/b3chain-{stage}")
+          out   = pathlib.Path(f"artifacts/b3chain-{stage}-arm64-apple-darwin.tar.gz")
+          epoch = int(os.environ["SOURCE_DATE_EPOCH"])
+          def reset(ti):
+              ti.uid = ti.gid = 0
+              ti.uname = ti.gname = ""
+              ti.mtime = epoch
+              return ti
+          with tarfile.open(out, "w:gz") as tf:
+              for p in sorted(src.rglob("*")):
+                  tf.add(p, arcname=str(p.relative_to(src.parent)), filter=reset)
+          PY
+          rm -rf "artifacts/${STAGE}"
+          shasum -a 256 "artifacts/${ARTIFACT}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-macos-arm64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows-x86_64:
+    name: Build windows-x86_64
+    runs-on: windows-2022
+    needs: prepare
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ARTIFACT: b3chain-${{ needs.prepare.outputs.version_no_v }}-x86_64-w64-mingw32.zip
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Install vcpkg dependencies
+        # The CMake configure step below pulls dependencies from vcpkg.json
+        # via the bundled vcpkg integration; see doc/build-windows-msvc.md.
+        run: |
+          choco install -y ninja
+      - name: Configure
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -B build -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DBUILD_GUI=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF ^
+            -DENABLE_WALLET=ON -DENABLE_IPC=OFF -DWITH_ZMQ=OFF
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake --build build --config Release --target b3chaind b3chain-cli b3chain-tx b3chain-wallet b3chain-util
+      - name: Stage zip
+        shell: pwsh
+        run: |
+          $stage = "b3chain-${{ needs.prepare.outputs.version_no_v }}"
+          New-Item -ItemType Directory -Force -Path "artifacts/$stage/bin" | Out-Null
+          Copy-Item build/bin/b3chaind.exe,build/bin/b3chain-cli.exe,build/bin/b3chain-tx.exe,build/bin/b3chain-wallet.exe,build/bin/b3chain-util.exe "artifacts/$stage/bin/"
+          Copy-Item COPYING,README.md "artifacts/$stage/"
+          Compress-Archive -Path "artifacts/$stage" -DestinationPath "artifacts/$env:ARTIFACT"
+          Remove-Item -Recurse -Force "artifacts/$stage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-windows-x86_64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # 2. Multi-arch Docker images, pushed to GHCR.  One image per Dockerfile
+  #    stage; cosign signing happens in the dedicated sign job below.
+  # --------------------------------------------------------------------------
+  docker-build:
+    name: Docker (${{ matrix.target }})
+    runs-on: ubuntu-22.04
+    needs: prepare
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - b3chaind
+          - b3chain-cli
+          - b3chain-python-miner
+          - b3chain-verify-b3pow
+    outputs:
+      # The digest for each image is set per-matrix-leg in `meta`'s output;
+      # the sign job rebuilds the full ghcr ref from $IMAGE_NAMESPACE and
+      # matrix.target so it does not need to read these back.
+      registry: ${{ env.REGISTRY }}
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
+        with:
+          platforms: amd64,arm64
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804  # v5.7.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.target }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
+      - id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_TYPE=Release
+            SOURCE_DATE_EPOCH=${{ needs.prepare.outputs.source_date_epoch }}
+          provenance: mode=max
+          sbom: true
+      - name: Persist image digest for the sign job
+        run: |
+          mkdir -p digests
+          printf '%s' '${{ steps.build.outputs.digest }}' > "digests/${{ matrix.target }}.digest"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: docker-digest-${{ matrix.target }}
+          path: digests/
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # 3. SBOM per release artefact (CycloneDX JSON).
+  # --------------------------------------------------------------------------
+  sbom:
+    name: Generate SBOMs
+    runs-on: ubuntu-22.04
+    needs:
+      - prepare
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-arm64
+      - build-windows-x86_64
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Download all build artefacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          pattern: build-*
+          merge-multiple: true
+      - name: Generate CycloneDX SBOM per artefact
+        # TODO(maintainer): pin to the latest sigstore-released SHA before
+        # the first signed release.  The version comment must match.
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5  # v0.20.4
+        with:
+          path: artifacts/
+          format: cyclonedx-json
+          artifact-name: b3chain-${{ needs.prepare.outputs.version }}.cdx.json
+          output-file: artifacts/b3chain-${{ needs.prepare.outputs.version }}.cdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: sbom
+          path: artifacts/*.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # --------------------------------------------------------------------------
+  # 4. Sigstore / Cosign signing.  Signs every release blob AND every
+  #    container image digest.  Keyless: the OIDC identity is this workflow.
+  # --------------------------------------------------------------------------
+  sign:
+    name: Sign artefacts + images
+    runs-on: ubuntu-22.04
+    needs:
+      - prepare
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-arm64
+      - build-windows-x86_64
+      - docker-build
+      - sbom
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Download all release blobs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          pattern: 'build-*'
+          merge-multiple: true
+      - name: Download SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: sbom
+          path: artifacts
+      - name: Download Docker digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: digests
+          pattern: docker-digest-*
+          merge-multiple: true
+      - uses: sigstore/cosign-installer@d7d6e07c8650b04ad17e3d3edcf57f6e2e0a35f1  # v3.9.2
+        with:
+          cosign-release: 'v2.5.0'
+      - name: Sign release blobs (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in artifacts/*.tar.gz artifacts/*.zip artifacts/*.cdx.json; do
+            echo "Signing ${f}"
+            cosign sign-blob --yes \
+              --output-signature   "${f}.sig" \
+              --output-certificate "${f}.crt" \
+              "${f}"
+          done
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sign container images (keyless, by digest)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          for target in ${IMAGE_BASES}; do
+            digest_file="digests/${target}.digest"
+            if [[ ! -s "${digest_file}" ]]; then
+              echo "ERROR: missing digest for ${target}" >&2
+              exit 1
+            fi
+            digest="$(cat "${digest_file}")"
+            ref="${REGISTRY}/${IMAGE_NAMESPACE}/${target}@${digest}"
+            echo "Signing ${ref}"
+            cosign sign --yes "${ref}"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: signatures
+          path: |
+            artifacts/*.sig
+            artifacts/*.crt
+          if-no-files-found: error
+          retention-days: 30
+
+  # --------------------------------------------------------------------------
+  # 5. SHA256SUMS — one file, every artefact.  Cosign-signed, and PGP-signed
+  #    too when RELEASE_PGP_KEY is configured.
+  # --------------------------------------------------------------------------
+  sha256sums:
+    name: SHA256SUMS
+    runs-on: ubuntu-22.04
+    needs:
+      - prepare
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-arm64
+      - build-windows-x86_64
+      - sbom
+      - sign
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download release blobs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          pattern: 'build-*'
+          merge-multiple: true
+      - name: Download SBOM + signatures
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          pattern: 'sbom'
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          pattern: 'signatures'
+          merge-multiple: true
+      - name: Emit SHA256SUMS
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          : > SHA256SUMS
+          for f in *.tar.gz *.zip *.cdx.json *.sig *.crt; do
+            [[ -f "${f}" ]] || continue
+            sha256sum "${f}" >> SHA256SUMS
+          done
+          cat SHA256SUMS
+      - uses: sigstore/cosign-installer@d7d6e07c8650b04ad17e3d3edcf57f6e2e0a35f1  # v3.9.2
+        with:
+          cosign-release: 'v2.5.0'
+      - name: Cosign-sign SHA256SUMS (keyless)
+        working-directory: artifacts
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign-blob --yes \
+            --output-signature   SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.crt \
+            SHA256SUMS
+      - name: PGP-sign SHA256SUMS (optional)
+        if: ${{ env.RELEASE_PGP_KEY != '' }}
+        env:
+          RELEASE_PGP_KEY: ${{ secrets.RELEASE_PGP_KEY }}
+          RELEASE_PGP_PASSPHRASE: ${{ secrets.RELEASE_PGP_PASSPHRASE }}
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s' "${RELEASE_PGP_KEY}" | gpg --batch --import
+          if [[ -n "${RELEASE_PGP_PASSPHRASE:-}" ]]; then
+            printf '%s' "${RELEASE_PGP_PASSPHRASE}" | \
+              gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+                  --detach-sign --armor --output SHA256SUMS.asc SHA256SUMS
+          else
+            gpg --batch --yes --detach-sign --armor --output SHA256SUMS.asc SHA256SUMS
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: sha256sums
+          path: |
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sig
+            artifacts/SHA256SUMS.crt
+            artifacts/SHA256SUMS.asc
+          if-no-files-found: error
+          retention-days: 90
+
+  # --------------------------------------------------------------------------
+  # 6. Publish the GitHub Release.
+  # --------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs:
+      - prepare
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-arm64
+      - build-windows-x86_64
+      - docker-build
+      - sbom
+      - sign
+      - sha256sums
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v5.0.0
+      - name: Download every release artefact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: release
+          merge-multiple: true
+      - name: Resolve release-notes body
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          NOTES="doc/release-notes/release-notes-${VERSION#v}.md"
+          if [[ -f "${NOTES}" ]]; then
+            echo "body_path=${NOTES}" >> "$GITHUB_OUTPUT"
+          else
+            # Fallback: emit a minimal body pointing at the canonical
+            # in-tree release notes.  Maintainers should write the per-
+            # version markdown ahead of tagging; this branch is a safety
+            # net so the release still publishes if they forget.
+            tmp="$(mktemp)"
+            cat > "${tmp}" <<EOF
+          B3Chain Core ${VERSION}
+
+          Per-release notes were not committed at doc/release-notes/release-notes-${VERSION#v}.md
+          when this release was tagged.  See doc/release-notes.md and the
+          doc/CHANGELOG.md entry for this version for the human-written summary.
+
+          Verifying this release:
+            * Cosign + SHA256SUMS: see doc/reproducible-builds.md
+            * PGP (if signed):     SHA256SUMS.asc against the maintainer key
+              listed in doc/reproducible-builds.md
+          EOF
+            echo "body_path=${tmp}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.2.2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: B3Chain Core ${{ needs.prepare.outputs.version }}
+          body_path: ${{ steps.notes.outputs.body_path }}
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-rc') || contains(needs.prepare.outputs.version, '-beta') || contains(needs.prepare.outputs.version, '-alpha') }}
+          fail_on_unmatched_files: true
+          files: |
+            release/*.tar.gz
+            release/*.zip
+            release/*.cdx.json
+            release/*.sig
+            release/*.crt
+            release/SHA256SUMS
+            release/SHA256SUMS.asc

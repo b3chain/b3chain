@@ -1,0 +1,115 @@
+# .dockerignore — minimise the build context shipped to the daemon.
+#
+# Rules:
+#   1. Exclude the world first (`*`).
+#   2. Re-include only the trees the multi-stage build actually reads.
+#   3. Inside re-included trees, blacklist build artefacts, caches, logs,
+#      dev-only tooling, and anything that pulls reproducibility off the
+#      table (per-developer settings, IDE state, virtualenvs, etc.).
+#
+# Keep this file in lockstep with Dockerfile -- if a stage adds a new COPY
+# you have to whitelist the path here, or the build will fail with
+# "lstat ...: no such file or directory".
+
+# ---------- 1. start by excluding everything ----------
+*
+
+# ---------- 2. re-include trees the build needs ----------
+
+# Top-level files referenced by stage 1 (cmake build of the C++ binaries).
+!CMakeLists.txt
+!CMakePresets.json
+!COPYING
+!libbitcoinkernel.pc.in
+!vcpkg.json
+!.python-version
+
+# Source trees consumed by cmake.
+!cmake/**
+!src/**
+!depends/**
+!share/**
+
+# Files the Python miner + verifier stages copy in.
+!contrib/miner/b3chain-cpuminer.py
+!contrib/miner/b3miner-rtl/ref/b3pow_ref.py
+!contrib/testing/verify-b3pow.py
+!src/test/data/b3pow_consensus_vectors.json
+
+# ---------- 3. inside the re-included trees, drop noise ----------
+
+# Build outputs (in-tree or out-of-tree) — never want these in the context.
+**/build/
+**/build-*/
+**/cmake-build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+CMakeUserPresets.json
+
+# Compiled artefacts.
+**/*.o
+**/*.obj
+**/*.a
+**/*.so
+**/*.so.*
+**/*.dylib
+**/*.dll
+**/*.exe
+**/*.pdb
+**/*.pyc
+**/*.pyo
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Local virtualenvs, Node modules, Rust targets.
+**/.venv/
+**/venv/
+**/env/
+**/node_modules/
+**/target/
+
+# VCS + CI scratch.
+.git
+.gitattributes
+.gitignore
+.github/
+.tx/
+.style.yapf
+.editorconfig
+
+# Audit / inheritance logs that live under the repo root and are large.
+.audit-*-last-run/
+.inheritance-logs/
+.verify-*-last-run/
+ci/scratch/
+contrib/testing/audit/results/
+contrib/testing/results/
+guix-build-*/
+releases/
+
+# Editor / IDE / OS junk.
+**/.vscode/
+**/.idea/
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+**/*~
+
+# Local secrets / env files — must NEVER be baked into an image.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Pre-built FPGA bitstreams + Vivado project state can be hundreds of MB.
+contrib/miner/b3miner-rtl/build/
+contrib/miner/b3miner-rtl/sim/build/
+contrib/miner/b3miner-rtl/syn/build/
+contrib/miner/b3miner-firmware/build/
+
+# Whitepaper PDF render scratch (regeneratable from markdown).
+doc/whitepaper/*.pdf
+doc/whitepaper/pandoc-template/*.aux
+doc/whitepaper/pandoc-template/*.log
