@@ -72,9 +72,11 @@ jobs:
           python gen_vectors.py --out ../sim/vectors \
                                 --consensus-out vectors/consensus_vectors.json
           # The C++ test consumes a copy under src/test/data/; we expect
-          # the two to match byte-for-byte.
+          # the two to match byte-for-byte.  ref/ -> b3miner-rtl/ ->
+          # miner/ -> contrib/ -> repo root, so the relative path needs
+          # FOUR levels of `..` to reach `src/test/data/` from cwd.
           diff -q vectors/consensus_vectors.json \
-                   ../../../src/test/data/b3pow_consensus_vectors.json
+                   ../../../../src/test/data/b3pow_consensus_vectors.json
 
   # Audit-mode uniformity gate -- run on tagged release candidates only
   # (~5-10 min wall-clock).  Triggered by tag pushes matching v*.
