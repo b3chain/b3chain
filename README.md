@@ -61,9 +61,12 @@ and the FPGA / ASIC economic analysis (forthcoming) at
 [`doc/analysis/`](doc/analysis/).
 
 Further information is available in the [doc folder](/doc), including:
+- [B3PoW-Scratch whitepaper](doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md)
+- [Repository map](doc/REPO-MAP.md)
 - [PoW design document](doc/b3chain-pow-design.md)
 - [Mining documentation](doc/mining.md)
 - [Stratum / pool implementer guide](doc/stratum.md)
+- [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
 - [Project changelog](doc/CHANGELOG.md)
 
 Building

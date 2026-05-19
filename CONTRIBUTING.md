@@ -1,443 +1,665 @@
-Contributing to B3Chain Core
-============================
+# Contributing to B3Chain Core
 
-B3Chain Core is forked from Bitcoin Core and follows the same open contributor
-model where anyone is welcome to contribute towards development in the form of
-peer review, testing and patches. This document explains the practical process
-and guidelines for contributing.
+B3Chain Core is forked from Bitcoin Core and inherits Bitcoin Core's
+open contributor model: anyone is welcome to contribute through peer
+review, testing, and patches. This document explains the practical
+process and expectations for landing a change.
 
-First, in terms of structure, there is no particular concept of "B3Chain Core
-developers" in the sense of privileged people. Open source often naturally
-revolves around a meritocracy where contributors earn trust from the developer
-community over time. Nevertheless, some hierarchy is necessary for practical
-purposes. As such, there are repository maintainers who are responsible for
-merging pull requests, the [release cycle](/doc/release-process.md), and
-moderation.
+The tone is deliberately conservative. B3Chain is a Layer 1 PoW
+blockchain that holds user funds; we will rather take longer to merge a
+patch than land one we do not understand.
 
-Getting Started
----------------
+## Contents
 
-New contributors are very welcome and needed.
+- [1. Getting started](#1-getting-started)
+- [2. Repository layout](#2-repository-layout)
+- [3. Communication channels](#3-communication-channels)
+- [4. Branching and pull-request workflow](#4-branching-and-pull-request-workflow)
+- [5. Commit hygiene](#5-commit-hygiene)
+- [6. Sign-offs, DCO, and signed commits](#6-sign-offs-dco-and-signed-commits)
+- [7. Required tests by change class](#7-required-tests-by-change-class)
+- [8. Code style](#8-code-style)
+- [9. What NOT to commit](#9-what-not-to-commit)
+- [10. Security disclosure](#10-security-disclosure)
+- [11. License](#11-license)
+- [12. Maintainers and review](#12-maintainers-and-review)
 
-Reviewing and testing is highly valued and the most effective way you can contribute
-as a new contributor. It also will teach you much more about the code and
-process than opening pull requests. Please refer to the [peer review](#peer-review)
-section below.
+---
 
-Before you start contributing, familiarize yourself with the B3Chain Core build
-system and tests. Refer to the documentation in the repository on how to build
-B3Chain Core and how to run the unit tests, functional tests, and fuzz tests.
+## 1. Getting started
 
-There are many open issues of varying difficulty waiting to be fixed.
-If you're looking for somewhere to start contributing, check out the
-[good first issue](https://github.com/b3chain/b3chain/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
-list or changes that are
-[up for grabs](https://github.com/b3chain/b3chain/issues?utf8=%E2%9C%93&q=label%3A%22Up+for+grabs%22).
-Some of them might no longer be applicable. So if you are interested, but
-unsure, you might want to leave a comment on the issue first.
+### 1.1 Build
 
-You may also participate in the [Bitcoin Core PR Review Club](https://bitcoincore.reviews/).
+Building B3Chain Core uses the same toolchain as Bitcoin Core. Pick the
+guide for your platform:
 
-### Good First Issue Label
+| Platform | Doc |
+|---|---|
+| Linux | [`doc/build-unix.md`](doc/build-unix.md) |
+| macOS | [`doc/build-osx.md`](doc/build-osx.md) |
+| Windows (cross) | [`doc/build-windows.md`](doc/build-windows.md) |
+| Windows (MSVC) | [`doc/build-windows-msvc.md`](doc/build-windows-msvc.md) |
+| FreeBSD | [`doc/build-freebsd.md`](doc/build-freebsd.md) |
+| NetBSD | [`doc/build-netbsd.md`](doc/build-netbsd.md) |
+| OpenBSD | [`doc/build-openbsd.md`](doc/build-openbsd.md) |
 
-The purpose of the `good first issue` label is to highlight which issues are
-suitable for a new contributor without a deep understanding of the codebase.
+A typical Linux build:
 
-However, good first issues can be solved by anyone. If they remain unsolved
-for a longer time, a frequent contributor might address them.
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build . -j$(nproc)
+```
 
-You do not need to request permission to start working on an issue. However,
-you are encouraged to leave a comment if you are planning to work on it. This
-will help other contributors monitor which issues are actively being addressed
-and is also an effective way to request assistance if and when you need it.
+Binaries are emitted as `b3chaind`, `b3chain-cli`, `b3chain-tx`,
+`b3chain-wallet`, and (when configured) `b3chain-qt`.
 
-Communication Channels
-----------------------
+### 1.2 Run the test suites
 
-Most communication about Bitcoin Core development happens on IRC, in the
-`#bitcoin-core-dev` channel on Libera Chat. The easiest way to participate on IRC is
-with the web client, [web.libera.chat](https://web.libera.chat/#bitcoin-core-dev). Chat
-history logs can be found
-on [https://www.erisian.com.au/bitcoin-core-dev/](https://www.erisian.com.au/bitcoin-core-dev/)
-and [https://gnusha.org/bitcoin-core-dev/](https://gnusha.org/bitcoin-core-dev/).
+Before opening a PR, run the test suites your change is likely to touch.
+See section [7. Required tests by change class](#7-required-tests-by-change-class)
+for a full per-change matrix; at minimum:
 
-Discussion about codebase improvements happens in GitHub issues and pull
-requests.
+```bash
+cd build
 
-The developer
-[mailing list](https://groups.google.com/g/bitcoindev)
-should be used to discuss complicated or controversial consensus or P2P protocol changes before working on
-a patch set.
-Archives can be found on [https://gnusha.org/pi/bitcoindev/](https://gnusha.org/pi/bitcoindev/).
+# C++ unit tests (catch + boost::test)
+ctest --output-on-failure
 
+# Python functional tests
+python3 ../test/functional/test_runner.py
 
-Contributor Workflow
---------------------
+# B3PoW-Scratch end-to-end verifier (consensus vectors)
+pip3 install blake3
+python3 ../contrib/testing/verify-b3pow.py
+```
 
-The codebase is maintained using the "contributor workflow" where everyone
-without exception contributes patch proposals using "pull requests" (PRs). This
-facilitates social contribution, easy testing and peer review.
+Reference current status from `README.md`: 148 C++ unit tests pass,
+258 functional tests pass, 17/17 B3PoW-Scratch consensus vectors pass.
 
-To contribute a patch, the workflow is as follows:
+### 1.3 Regtest
 
-  1. Fork repository ([only for the first time](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo))
-  1. Create topic branch
-  1. Commit patches
+A scripted three-node regtest network is provided:
 
-For all issues and pull requests, the https://github.com/b3chain/b3chain repository should be used.
+```bash
+bash contrib/testing/regtest-simulation.sh
+```
 
-The master branch for all monotree repositories is identical.
+It mines 2,016 blocks, exercises wallet send/receive across nodes, and
+verifies chain consistency. Current expected output: 19/19 checks pass.
 
-As a rule of thumb, everything that only modifies `src/qt` is a GUI-only pull
-request. However:
+### 1.4 Finding something to work on
 
-* For global refactoring or other transversal changes the node repository
-  should be used.
-* For GUI-related build system changes, the node repository should be used
-  because the change needs review by the build systems reviewers.
-* Changes in `src/interfaces` need to go to the node repository because they
-  might affect other components like the wallet.
+- Issues labelled `good first issue` on
+  <https://github.com/b3chain/b3chain/issues> are deliberately scoped
+  for new contributors.
+- The roadmap and open audit items live in
+  [`doc/SECURITY-ROADMAP.md`](doc/SECURITY-ROADMAP.md).
+- Each subtree under `contrib/` carries its own README with open
+  fill-in items (e.g.
+  [`contrib/miner/b3miner-firmware/README.md`](contrib/miner/b3miner-firmware/README.md)
+  has a "Fill-in checklist (skeleton → production)" section).
 
-For large GUI changes that include build system and interface changes, it is
-recommended to first open a pull request against the GUI repository. When there
-is agreement to proceed with the changes, a pull request with the build system
-and interfaces changes can be submitted to the node repository.
+You do not need permission to start work. Leaving a comment on the
+issue is encouraged so others can see it is being addressed.
 
-The project coding conventions in the [developer notes](doc/developer-notes.md)
-must be followed.
+---
 
-### Committing Patches
+## 2. Repository layout
 
-In general, [commits should be atomic](https://en.wikipedia.org/wiki/Atomic_commit#Atomic_commit_convention)
-and diffs should be easy to read. For this reason, do not mix any formatting
-fixes or code moves with actual code changes.
+A topographic map of the repo lives in
+[`doc/REPO-MAP.md`](doc/REPO-MAP.md). Read it before your first
+non-trivial change — it tells you where consensus code, RPC, wallet,
+PoW, RTL, firmware, pool, tests, and docs each live, and includes a
+"where do I add X?" decision matrix.
 
-Make sure each individual commit is hygienic: that it builds successfully on its
-own without warnings, errors, regressions, or test failures.
-This means tests must be updated in the same commit that changes the behavior.
+If you make a change that adds, removes, or moves a top-level subtree,
+update `doc/REPO-MAP.md` in the same PR.
 
-Commit messages should be verbose by default consisting of a short subject line
-(50 chars max), a blank line and detailed explanatory text as separate
-paragraph(s), unless the title alone is self-explanatory (like "Correct typo
-in init.cpp") in which case a single title line is sufficient. Commit messages should be
-helpful to people reading your code in the future, so explain the reasoning for
-your decisions. Further explanation [here](https://cbea.ms/git-commit/).
+---
 
-If a particular commit references another issue, please add the reference. For
-example: `refs #1234` or `fixes #4321`. Using the `fixes` or `closes` keywords
-will cause the corresponding issue to be closed when the pull request is merged.
+## 3. Communication channels
 
-Commit messages should never contain any `@` mentions (usernames prefixed with "@").
+The project uses these channels (in approximate descending order of
+formality and persistence):
 
-Please refer to the [Git manual](https://git-scm.com/doc) for more information
-about Git.
+| Channel | Purpose |
+|---|---|
+| GitHub issues — <https://github.com/b3chain/b3chain/issues> | Bugs, feature requests, design discussions. Use issues for anything that should outlive a chat thread. |
+| GitHub pull requests | Code review. |
+| GitHub Discussions — <https://github.com/b3chain/b3chain/discussions> | Open-ended questions, RFCs prior to issue. |
+| Discord / Matrix (announced post-launch) | Real-time chat. Bridge URLs added to this document once the bridge is stood up. |
+| `dev@b3chain.org` mailing list (post-launch) | Long-form discussion. Mirrors the Bitcoin Core `bitcoindev` model. |
+| `security@b3chain.org` | Security disclosure only — see section [10](#10-security-disclosure). |
 
-  - Push changes to your fork
-  - Create pull request
+Do not use Discord or Matrix for anything load-bearing (decisions,
+specs, agreements). Any decision that affects merged code must be
+recorded in an issue or PR.
 
-### Creating the Pull Request
+For complex or potentially-controversial consensus or P2P changes,
+post a short design RFC as a GitHub Discussion *before* opening a PR.
+A PR is not the right place to debate whether something should exist.
 
-The title of the pull request should be prefixed by the component or area that
-the pull request affects. Valid areas as:
+---
 
-  - `consensus` for changes to consensus critical code
-  - `doc` for changes to the documentation
-  - `qt` or `gui` for changes to b3chain-qt
-  - `log` for changes to log messages
-  - `mining` for changes to the mining code
-  - `net` or `p2p` for changes to the peer-to-peer network code
-  - `refactor` for structural changes that do not change behavior
-  - `rpc`, `rest` or `zmq` for changes to the RPC, REST or ZMQ APIs
-  - `contrib` or `cli` for changes to the scripts and tools
-  - `test`, `qa` or `ci` for changes to the unit tests, QA tests or CI code
-  - `util` or `lib` for changes to the utils or libraries
-  - `wallet` for changes to the wallet code
-  - `build` for changes to CMake
-  - `guix` for changes to the GUIX reproducible builds
+## 4. Branching and pull-request workflow
+
+B3Chain follows the **fork-PR model**:
+
+1. Fork <https://github.com/b3chain/b3chain> on GitHub.
+2. Create a topic branch off the latest `b3chain-main`. Branch names
+   are not normative; descriptive is better than clever
+   (`fix-stratum-vardiff-race`, not `fix-thing`).
+3. Push to your fork.
+4. Open a PR against `upstream/b3chain-main`.
+
+`b3chain-main` is the integration branch. It is intended to be
+buildable and test-clean at every commit; if you find it isn't, that's
+a bug worth filing.
+
+### 4.1 Rebasing vs merging
+
+Rebase your topic branch on top of `b3chain-main` before requesting
+review. Do **not** add merge commits from upstream into your topic
+branch — they make the history hard to read. Force-pushing your topic
+branch after review feedback is expected and welcome; reviewers will
+look at the "Files changed" tab, not at individual commits.
+
+### 4.2 PR scope
+
+A good PR does one thing. If your change is a refactor *and* a feature,
+split it. The reviewer's question "could I review the refactor alone
+without thinking about the feature?" should be answerable yes.
+
+For very large changes (anything over ~1,500 lines diff, or any
+consensus change of any size), open an issue or RFC discussion first.
+
+### 4.3 PR description
+
+The PR description is the contract you offer the reviewer. Include:
+
+- **What** changed (1-2 sentences).
+- **Why** it changed (the actual motivation, not "fix bug").
+- **How** to verify (commands, vectors, regtest steps).
+- **Risk** assessment (consensus / P2P / wallet / non-consensus
+  /docs-only). Spell it out — the reviewer will not infer.
+- For consensus changes, the **deployment** plan (pre-genesis hard fork
+  / soft fork via versionbits / activation height).
+
+If a PR closes an issue, use the GitHub `Closes #N` syntax.
+
+### 4.4 Conventional-commits-lite
+
+We do not enforce strict
+[Conventional Commits](https://www.conventionalcommits.org/), but
+commit subjects should start with a scope tag drawn from the table
+below, followed by a colon and an imperative present-tense summary:
+
+| Scope | Used for |
+|---|---|
+| `consensus:` | Consensus-affecting code. Triggers extra review and the consensus test matrix. |
+| `pow:` | B3PoW-Scratch reference, C++, TS, RTL, or firmware changes. |
+| `p2p:` | Network protocol, peer management. |
+| `wallet:` | Wallet, descriptors, key management. |
+| `rpc:` | RPC interface. |
+| `node:` | `b3chaind`, init, chain state. |
+| `mempool:` | Mempool, transaction relay. |
+| `qt:` | Qt GUI. |
+| `build:` | CMake, depends, packaging. |
+| `ci:` | CI configuration (`.github/workflows/`). |
+| `test:` | Tests-only changes. |
+| `doc:` | Documentation-only changes (no code). |
+| `rtl:` | `contrib/miner/b3miner-rtl/`. |
+| `firmware:` | `contrib/miner/b3miner-firmware/`. |
+| `hardware:` | `contrib/miner/b3miner-hardware/`. |
+| `pool:` | `contrib/testnet/pool/`. |
+| `miner:` | `contrib/miner/b3chain-cpuminer.py`, `b3chain-gpuminer/`. |
+| `chore:` | Tooling, formatting, deps without behaviour change. |
 
 Examples:
 
-    consensus: Add new opcode for BIP-XXXX OP_CHECKAWESOMESIG
-    net: Automatically create onion service, listen on Tor
-    qt: Add feed bump button
-    log: Fix typo in log message
-
-The body of the pull request should contain sufficient description of *what* the
-patch does, and even more importantly, *why*, with justification and reasoning.
-You should include references to any discussions (for example, other issues or
-mailing list discussions).
-
-The description for a new pull request should not contain any `@` mentions. The
-PR description will be included in the commit message when the PR is merged and
-any users mentioned in the description will be annoyingly notified each time a
-fork of B3Chain Core copies the merge. Instead, make any username mentions in a
-subsequent comment to the PR.
-
-### Translation changes
-
-Note that translations should not be submitted as pull requests. Please see
-[Translation Process](https://github.com/bitcoin/bitcoin/blob/master/doc/translation_process.md)
-for more information on helping with translations.
-
-### Work in Progress Changes and Requests for Comments
-
-If a pull request is not to be considered for merging (yet), please
-prefix the title with [WIP] or use [Tasks Lists](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#task-lists)
-in the body of the pull request to indicate tasks are pending.
-
-### Address Feedback
-
-At this stage, one should expect comments and review from other contributors. You
-can add more commits to your pull request by committing them locally and pushing
-to your fork.
-
-You are expected to reply to any review comments before your pull request is
-merged. You may update the code or reject the feedback if you do not agree with
-it, but you should express so in a reply. If there is outstanding feedback and
-you are not actively working on it, your pull request may be closed.
-
-Please refer to the [peer review](#peer-review) section below for more details.
-
-### Squashing Commits
-
-If your pull request contains fixup commits (commits that change the same line of code repeatedly) or too fine-grained
-commits, you may be asked to [squash](https://git-scm.com/docs/git-rebase#_interactive_mode) your commits
-before it will be reviewed. The basic squashing workflow is shown below.
-
-    git checkout your_branch_name
-    git rebase -i HEAD~n
-    # n is normally the number of commits in the pull request.
-    # Set commits (except the one in the first line) from 'pick' to 'squash', save and quit.
-    # On the next screen, edit/refine commit messages.
-    # Save and quit.
-    git push -f # (force push to GitHub)
-
-Please update the resulting commit message, if needed. It should read as a
-coherent message. In most cases, this means not just listing the interim
-commits.
-
-If your change contains a merge commit, the above workflow may not work and you
-will need to remove the merge commit first. See the next section for details on
-how to rebase.
-
-Please refrain from creating several pull requests for the same change.
-Use the pull request that is already open (or was created earlier) to amend
-changes. This preserves the discussion and review that happened earlier for
-the respective change set.
-
-The length of time required for peer review is unpredictable and will vary from
-pull request to pull request.
-
-### Rebasing Changes
-
-When a pull request conflicts with the target branch, you may be asked to rebase it on top of the current target branch.
-
-    git fetch https://github.com/b3chain/b3chain  # Fetch the latest upstream commit
-    git rebase FETCH_HEAD  # Rebuild commits on top of the new base
-
-This project aims to have a clean git history, where code changes are only made in non-merge commits. This simplifies
-auditability because merge commits can be assumed to not contain arbitrary code changes. Merge commits should be signed,
-and the resulting git tree hash must be deterministic and reproducible. The script in
-[/contrib/verify-commits](/contrib/verify-commits) checks that.
-
-After a rebase, reviewers are encouraged to sign off on the force push. This should be relatively straightforward with
-the `git range-diff` tool explained in the [productivity
-notes](/doc/productivity.md#diff-the-diffs-with-git-range-diff). To avoid needless review churn, maintainers will
-generally merge pull requests that received the most review attention first.
-
-Pull Request Philosophy
------------------------
-
-Patchsets should always be focused. For example, a pull request could add a
-feature, fix a bug, or refactor code; but not a mixture. Please also avoid super
-pull requests which attempt to do too much, are overly large, or overly complex
-as this makes review difficult.
-
-
-### Features
-
-When adding a new feature, thought must be given to the long term technical debt
-and maintenance that feature may require after inclusion. Before proposing a new
-feature that will require maintenance, please consider if you are willing to
-maintain it (including bug fixing). If features get orphaned with no maintainer
-in the future, they may be removed by the Repository Maintainer.
-
-
-### Refactoring
-
-Refactoring is a necessary part of any software project's evolution. The
-following guidelines cover refactoring pull requests for the project.
-
-There are three categories of refactoring: code-only moves, code style fixes, and
-code refactoring. In general, refactoring pull requests should not mix these
-three kinds of activities in order to make refactoring pull requests easy to
-review and uncontroversial. In all cases, refactoring PRs must not change the
-behaviour of code within the pull request (bugs must be preserved as is).
-
-Project maintainers aim for a quick turnaround on refactoring pull requests, so
-where possible keep them short, uncomplex and easy to verify.
-
-Pull requests that refactor the code should not be made by new contributors. It
-requires a certain level of experience to know where the code belongs to and to
-understand the full ramification (including rebase effort of open pull requests).
-
-Trivial pull requests or pull requests that refactor the code with no clear
-benefits may be immediately closed by the maintainers to reduce unnecessary
-workload on reviewing.
-
-
-"Decision Making" Process
--------------------------
-
-The following applies to code changes to the B3Chain Core project (and related
-projects such as libsecp256k1), and is not to be confused with overall B3Chain
-network consensus changes.
-
-Whether a pull request is merged into B3Chain Core rests with the project merge
-maintainers.
-
-Maintainers will take into consideration if a patch is in line with the general
-principles of the project; meets the minimum standards for inclusion; and will
-judge the general consensus of contributors.
-
-In general, all pull requests must:
-
-  - Have a clear use case, fix a demonstrable bug or serve the greater good of
-    the project (for example refactoring for modularisation);
-  - Be well peer-reviewed;
-  - Have unit tests, functional tests, and fuzz tests, where appropriate;
-  - Follow code style guidelines ([C++](doc/developer-notes.md), [functional tests](test/functional/README.md));
-  - Not break the existing test suite;
-  - Where bugs are fixed, where possible, there should be unit tests
-    demonstrating the bug and also proving the fix. This helps prevent regression.
-  - Change relevant comments and documentation when behaviour of code changes.
-
-Patches that change B3Chain consensus rules are considerably more involved than
-normal because they affect the entire ecosystem and so must be preceded by
-extensive mailing list discussions and have a numbered BIP. While each case will
-be different, one should be prepared to expend more time and effort than for
-other kinds of patches because of increased peer review and consensus building
-requirements.
-
-
-### Peer Review
-
-Anyone may participate in peer review which is expressed by comments in the pull
-request. Typically reviewers will review the code for obvious errors, as well as
-test out the patch set and opine on the technical merits of the patch. Project
-maintainers take into account the peer review when determining if there is
-consensus to merge a pull request (remember that discussions may have been
-spread out over GitHub, mailing list and IRC discussions).
-
-Code review is a burdensome but important part of the development process, and
-as such, certain types of pull requests are rejected. In general, if the
-**improvements** do not warrant the **review effort** required, the PR has a
-high chance of being rejected. It is up to the PR author to convince the
-reviewers that the changes warrant the review effort, and if reviewers are
-"Concept NACK'ing" the PR, the author may need to present arguments and/or do
-research backing their suggested changes.
-
-#### Conceptual Review
-
-A review can be a conceptual review, where the reviewer leaves a comment
- * `Concept (N)ACK`, meaning "I do (not) agree with the general goal of this pull
-   request",
- * `Approach (N)ACK`, meaning `Concept ACK`, but "I do (not) agree with the
-   approach of this change".
-
-A `NACK` needs to include a rationale why the change is not worthwhile.
-NACKs without accompanying reasoning may be disregarded.
-
-#### Code Review
-
-After conceptual agreement on the change, code review can be provided. A review
-begins with `ACK BRANCH_COMMIT`, where `BRANCH_COMMIT` is the top of the PR
-branch, followed by a description of how the reviewer did the review. The
-following language is used within pull request comments:
-
-  - "I have tested the code", involving change-specific manual testing in
-    addition to running the unit, functional, or fuzz tests, and in case it is
-    not obvious how the manual testing was done, it should be described;
-  - "I have not tested the code, but I have reviewed it and it looks
-    OK, I agree it can be merged";
-  - A "nit" refers to a trivial, often non-blocking issue.
-
-Project maintainers reserve the right to weigh the opinions of peer reviewers
-using common sense judgement and may also weigh based on merit. Reviewers that
-have demonstrated a deeper commitment and understanding of the project over time
-or who have clear domain expertise may naturally have more weight, as one would
-expect in all walks of life.
-
-Where a patch set affects consensus-critical code, the bar will be much
-higher in terms of discussion and peer review requirements, keeping in mind that
-mistakes could be very costly to the wider community. This includes refactoring
-of consensus-critical code.
-
-Where a patch set proposes to change the B3Chain consensus, it must have been
-discussed extensively on the mailing list and IRC, be accompanied by a widely
-discussed BIP and have a generally widely perceived technical consensus of being
-a worthwhile change based on the judgement of the maintainers.
-
-### Finding Reviewers
-
-As most reviewers are themselves developers with their own projects, the review
-process can be quite lengthy, and some amount of patience is required. If you find
-that you've been waiting for a pull request to be given attention for several
-months, there may be a number of reasons for this, some of which you can do something
-about:
-
-  - It may be because of a feature freeze due to an upcoming release. During this time,
-    only bug fixes are taken into consideration. If your pull request is a new feature,
-    it will not be prioritized until after the release. Wait for the release.
-  - It may be because the changes you are suggesting do not appeal to people. Rather than
-    nits and critique, which require effort and means they care enough to spend time on your
-    contribution, thundering silence is a good sign of widespread (mild) dislike of a given change
-    (because people don't assume *others* won't actually like the proposal). Don't take
-    that personally, though! Instead, take another critical look at what you are suggesting
-    and see if it: changes too much, is too broad, doesn't adhere to the
-    [developer notes](doc/developer-notes.md), is dangerous or insecure, is messily written, etc.
-    Identify and address any of the issues you find. Then ask e.g. on IRC if someone could give
-    their opinion on the concept itself.
-  - It may be because your code is too complex for all but a few people, and those people
-    may not have realized your pull request even exists. A great way to find people who
-    are qualified and care about the code you are touching is the
-    [Git Blame feature](https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files). Simply
-    look up who last modified the code you are changing and see if you can find
-    them and give them a nudge. Don't be incessant about the nudging, though.
-  - Finally, if all else fails, ask on IRC or elsewhere for someone to give your pull request
-    a look. If you think you've been waiting for an unreasonably long time (say,
-    more than a month) for no particular reason (a few lines changed, etc.),
-    this is totally fine. Try to return the favor when someone else is asking
-    for feedback on their code, and the universe balances out.
-  - Remember that the best thing you can do while waiting is give review to others!
-
-
-Backporting
------------
-
-Security and bug fixes can be backported from `master` to release
-branches.
-Maintainers will do backports in batches and
-use the proper `Needs backport (...)` labels
-when needed (the original author does not need to worry about it).
-
-A backport should contain the following metadata in the commit body:
-
 ```
-Github-Pull: #<PR number>
-Rebased-From: <commit hash of the original commit>
+pow: tighten ITER_MUL[7] uniformity gate to 2^22 samples
+consensus: enforce max_reorg_depth = 200 at activation height
+doc: REPO-MAP add audit subtree
+pool: fix vardiff retune race on disconnect during set_difficulty
 ```
 
-Have a look at [an example backport PR](
-https://github.com/bitcoin/bitcoin/pull/16189).
+Subject lines are ≤ 72 characters. Body is wrapped at 72 characters.
 
-Also see the [backport.py script](
-https://github.com/bitcoin-core/bitcoin-maintainer-tools#backport).
+### 4.5 Review
 
-Copyright
----------
+Two reviewer ACKs are required for any consensus change; one for
+anything else. ACKs use Bitcoin-Core-style nomenclature:
 
-By contributing to this repository, you agree to license your work under the
-MIT license unless specified otherwise in `contrib/debian/copyright` or at
-the top of the file itself. Any work contributed where you are not the original
-author must contain its license header with the original author(s) and source.
+| Marker | Meaning |
+|---|---|
+| `ACK <hash>` | "I have reviewed this commit hash and am satisfied with its content." |
+| `utACK <hash>` | "Untested ACK — I read the code and it looks right; I did not run it." |
+| `tACK <hash>` | "Tested ACK — I ran it (specify how)." |
+| `Concept ACK` | "I agree with the goal; I have not finished reviewing the code." |
+| `NACK` | "I object." NACKs must explain *why*. |
+
+Maintainers will only merge a PR with at least one explicit ACK on the
+final commit hash. A `Concept ACK` is not sufficient to merge.
+
+### 4.6 Backports
+
+Upstream Bitcoin Core security and non-consensus fixes are cherry-picked
+into B3Chain on a periodic cadence. If you spot a missing backport, open
+an issue. PRs that cherry-pick should keep the original author's
+attribution and prefix the subject `(cherry-pick) ` if the patch was
+modified, leaving the original Bitcoin Core commit message intact.
+
+---
+
+## 5. Commit hygiene
+
+- Each commit must compile and pass its directly-affected tests. We
+  use `git bisect` to find regressions; broken intermediate commits
+  defeat it.
+- Avoid drive-by reformatting in the same commit as a logic change.
+- Keep diff hunks small and reviewable. Reviewers do not have infinite
+  patience.
+- Reference issue or PR numbers in the commit body only when relevant;
+  do not pollute the subject with `(#1234)`.
+- If you generate code (e.g. with a code-generation script), commit the
+  generator change and the generated change as separate commits.
+
+### 5.1 Commit message template
+
+```
+<scope>: <imperative present-tense subject, ≤72 chars>
+
+<longer body, wrapped at 72 chars; explain WHY, not just what.
+Reference relevant SPEC sections, issues, or upstream commits.>
+
+<optional footer with metadata, blank-line-separated, e.g.>
+
+Closes: #123
+Refs: doc/security/B3POW-51-ATTACK-ANALYSIS.md §3.4
+
+Signed-off-by: Pat Contributor <pat@example.com>
+```
+
+---
+
+## 6. Sign-offs, DCO, and signed commits
+
+### 6.1 DCO sign-off (required)
+
+Every commit must carry a Developer Certificate of Origin sign-off
+line:
+
+```
+Signed-off-by: Pat Contributor <pat@example.com>
+```
+
+You can append it automatically with `git commit -s`. The name and
+email must match a real identity that you are willing to be reached at;
+pseudonyms are accepted provided the address resolves to you.
+
+By signing off, you certify the
+[DCO v1.1](https://developercertificate.org/) — in short, that you have
+the right to submit the patch under the project's MIT license.
+
+A PR with unsigned commits will be asked to amend. Use
+`git rebase --signoff` to add sign-offs retroactively.
+
+### 6.2 Signed commits (recommended)
+
+Cryptographically-signed commits are strongly recommended, especially
+for anyone seeking commit access in the future. Use GPG or SSH commit
+signing as supported by GitHub:
+
+```bash
+git config commit.gpgsign true
+git config user.signingkey <KEYID>
+```
+
+The maintainer GPG fingerprints will be published in
+[`doc/security/MAINTAINER-KEYS.md`](doc/security/MAINTAINER-KEYS.md)
+(*placeholder — to be populated at launch*). Until then, the only key
+fingerprints that should be trusted for release artifacts are the ones
+published on <https://b3chain.org> over TLS.
+
+### 6.3 Merging maintainer's view
+
+When a maintainer merges, they will:
+
+1. Verify the PR has the required ACKs on the final commit hash.
+2. Squash only at the author's request (default is to preserve
+   individual commits).
+3. Add a merge commit with the PR number and a summary of the review
+   trail in the body.
+4. Push to `b3chain-main`.
+
+---
+
+## 7. Required tests by change class
+
+Treat this table as the minimum bar. A PR may need *more* than this if
+the maintainer asks; it should rarely need less.
+
+| Change class | What it is | Tests required |
+|---|---|---|
+| Consensus | Anything in `src/consensus/`, `src/pow.cpp`, `src/validation.cpp`, `src/chainparams.cpp`, `src/crypto/b3pow_scratch.cpp`, `src/script/`, `src/primitives/`, `src/policy/` consensus-impacting paths. | Full `ctest` + full functional test runner + `verify-b3pow.py` + `regtest-simulation.sh` + a new functional test that demonstrates the new behaviour. Two-reviewer ACK and explicit risk analysis in the PR body. |
+| Non-consensus C++ | RPC, P2P, wallet, mempool relay policy. | `ctest` on changed targets + relevant functional tests + new tests covering the change. One-reviewer ACK. |
+| Documentation | Anything under `doc/`, `README.md`, `CONTRIBUTING.md`, `*.md` in `contrib/`. | Build the doc locally if it is rendered (e.g. Doxygen-touching changes). Pure-text changes need only a careful re-read. |
+| Build / CI | `CMakeLists.txt`, `cmake/`, `.github/workflows/`, `depends/`, `ci/`. | Demonstrate that the affected CI job passes on your fork before requesting review. For depends changes, link to a successful Guix-reproducible build. |
+| RTL | `contrib/miner/b3miner-rtl/rtl/`. | `make ref-test`, `make lint`, `make sim`. For changes that affect interpretation, also run the parity tests against `src/test/data/b3pow_consensus_vectors.json`. |
+| Firmware | `contrib/miner/b3miner-firmware/`. | ESP-IDF build clean on `esp32s3`. Where applicable, hardware-in-loop bring-up against a real B3Miner-1 board (note in PR description). |
+| Pool (TypeScript) | `contrib/testnet/pool/`. | `npm test`. Include the parity test against `b3pow_consensus_vectors.json`. For Stratum-protocol changes, a recorded session against the reference cpuminer. |
+| Miners | `contrib/miner/b3chain-cpuminer.py`, `contrib/miner/b3chain-gpuminer/`. | `contrib/miner/tests/run_tests.py` clean. JSONL replay against `verify-b3pow.py`. |
+| Reference Python | `contrib/miner/b3miner-rtl/ref/`. | `pytest contrib/miner/b3miner-rtl/ref/tests/` clean. Re-derive every entry in `b3pow_consensus_vectors.json`. |
+
+### 7.1 Consensus changes — extra hurdles
+
+A consensus change is a change to the rules of valid blocks or
+transactions. Examples: tweaking
+`Consensus::Params::b3pow_verify_budget_ms`, modifying the LWMA-3
+difficulty algorithm, altering script validation, changing the
+B3PoW-Scratch algorithm parameters.
+
+Consensus PRs must additionally:
+
+1. Be opened against `b3chain-main` only (no consensus changes are
+   merged through `release/*` branches without a fresh PR).
+2. Include a **deployment plan**: pre-genesis hard fork; soft fork via
+   versionbits with a specified activation height window; emergency
+   activation. Reference
+   [`doc/SECURITY-ROADMAP.md`](doc/SECURITY-ROADMAP.md) for in-flight
+   plans.
+3. Include a **rollback story**: how would the change be unwound if it
+   misbehaves? Some changes cannot be unwound; say so explicitly.
+4. Carry two reviewer ACKs from distinct maintainers, at least one of
+   whom should have *not* been involved in writing the patch.
+5. Be sanity-checked against the **51% threat model**:
+   [`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](doc/security/B3POW-51-ATTACK-ANALYSIS.md).
+   Explain in the PR body whether the change weakens, strengthens, or
+   leaves unchanged each of the mitigations M-1 through M-13.
+
+### 7.2 Reproducible builds
+
+Releases are built via the Guix-pinned `depends/` system. Changes
+under `depends/` need a reproducible-build demonstration before merge.
+See [`doc/release-process.md`](doc/release-process.md) for the binary
+release procedure.
+
+---
+
+## 8. Code style
+
+We inherit Bitcoin Core's style discipline. The summary below is the
+minimum bar; if in doubt, read [`doc/developer-notes.md`](doc/developer-notes.md).
+
+### 8.1 C++ (C++17)
+
+- Standard: **C++17**, same as Bitcoin Core.
+- Style enforced by [`src/.clang-format`](src/.clang-format) and
+  [`src/.clang-tidy`](src/.clang-tidy). Run `clang-format --style=file`
+  on new files; do not reformat unrelated lines.
+- Pointer/reference style: `Type* var`, `Type& var` (asterisk and
+  ampersand bind to the type, not the name).
+- 4-space indentation, no tabs, LF line endings.
+- Prefer `enum class` over plain `enum`.
+- Prefer `std::span` / `std::string_view` over `(ptr, len)` pairs.
+- Never use `using namespace std;` at file scope.
+- No exceptions in consensus-critical paths; return values or
+  `std::optional` instead. Existing exceptions in non-consensus code
+  are tolerated where they replace what would otherwise be a `throw`
+  several layers up.
+- Header guards: `#ifndef BITCOIN_<PATH>_H` (preserved from upstream
+  Bitcoin Core; we do not retag these).
+- New consensus code must use the `Consensus::*` namespace and live
+  under `src/consensus/` or `src/crypto/` as appropriate.
+
+### 8.2 Python (PEP 8)
+
+- Target Python 3.10+ (the `.python-version` file pins the test
+  framework's version).
+- Follow PEP 8 + Bitcoin Core's test-framework conventions.
+- 4-space indentation, no tabs.
+- Use `f-strings`; do not use `%`-style formatting in new code.
+- Type hints are encouraged for non-trivial functions (`def foo(x:
+  bytes) -> int:`).
+- For test framework changes, follow the patterns in
+  `test/functional/test_framework/`.
+- Linting: `flake8` config in `test/lint/`; run via `test/lint/lint-all.py`.
+
+### 8.3 TypeScript (strict mode)
+
+- Target: TypeScript 5.x, `strict: true`, `noImplicitAny: true`.
+- `tsconfig.json` per package; do not loosen `strict` in a PR.
+- Prefer `unknown` over `any`. Where `any` is unavoidable, comment
+  why.
+- Async code: `async/await`, never raw `.then()` chains in new code.
+- Lints: `npm run lint` in each package directory.
+
+### 8.4 SystemVerilog
+
+- Style is enforced by the project's Verilator lint config
+  (`contrib/miner/b3miner-rtl/ci/verilator.cfg`).
+- Module headers use the convention shown in
+  [`contrib/miner/b3miner-rtl/rtl/blake3_compress.sv`](contrib/miner/b3miner-rtl/rtl/blake3_compress.sv).
+- All parameters live in `params_pkg.sv` and are mirrored in the C
+  header `b3_fpga_regs.h`.
+
+### 8.5 Shell / scripts
+
+- POSIX `sh` where portable. Bash extensions are acceptable in scripts
+  that are clearly tagged `#!/usr/bin/env bash`.
+- ShellCheck-clean. Configure via `.shellcheckrc` where needed.
+
+### 8.6 Markdown
+
+- One sentence per line is **not** required; we wrap at ~72 characters
+  for readability.
+- Use ATX-style headers (`#`, `##`, ...).
+- Tables use the GitHub-flavoured pipe syntax.
+- Cross-reference siblings with relative links
+  (`[stratum.md](stratum.md)`, not absolute URLs to GitHub).
+
+---
+
+## 9. What NOT to commit
+
+The repo is source-only with tightly-scoped exceptions. Do not commit:
+
+- **Binary build artifacts.** `*.o`, `*.a`, `*.so`, compiled bitstreams
+  (`*.bit`, `*.bin` from RTL builds), `*.elf` firmware images,
+  packaged installers. The `.gitignore` excludes the usual suspects;
+  if you add a new artifact format, extend `.gitignore` instead of
+  committing it.
+- **Generated test vectors that have an in-tree generator.** Vectors
+  are committed only at `src/test/data/b3pow_consensus_vectors.json`
+  (canonical) and `contrib/miner/b3miner-rtl/sim/vectors/`. Both have
+  generators. Edit the generator and re-derive.
+- **Secrets.** API keys, private keys, `.env` files, JWT signing keys,
+  ATECC608B provisioning keys. Use `.env.example` templates instead.
+  The CI lint job will reject commits that match common secret
+  patterns; do not try to work around it.
+- **Personal IDE configuration.** `.vscode/`, `.idea/`, `*.swp`. These
+  belong in your global `~/.gitignore`.
+- **Large opaque blobs.** Anything > 1 MB that isn't text needs an
+  explicit case in the PR description. Photographs of hardware live in
+  `contrib/miner/b3miner-hardware/pcb/` and are tolerated; CI logs and
+  recorded sessions do not.
+- **Datasets that the project does not maintain.** Reference vectors
+  for upstream-licensed primitives are fine; downloaded blockchains,
+  RPC dumps, or audit-time recordings are not.
+- **Auto-generated boilerplate from tools.** If your change includes
+  thousands of lines of "regenerate-on-build" output, separate it from
+  the source change and include the generator command in the commit
+  body.
+- **Copies of upstream code.** When pulling code from upstream Bitcoin
+  Core, BLAKE3, or wyhash, retain the original license header
+  unchanged and document the source in a top-of-file comment.
+
+When in doubt, ask in the PR before pushing the artifact.
+
+---
+
+## 10. Security disclosure
+
+Security issues are reported privately, not through GitHub issues.
+
+### 10.1 Reporting channels
+
+| Channel | Use |
+|---|---|
+| Email to `security@b3chain.org` (PGP-encrypted preferred) | The primary channel. The PGP key fingerprint is `(placeholder — to be published at launch, see security/SECURITY.md)`. |
+| GitHub private vulnerability report (Security tab → "Report a vulnerability") | Equivalent fallback if email is impractical. |
+
+Full policy in [`security/SECURITY.md`](security/SECURITY.md) (this is
+the GitHub-convention top-level SECURITY.md the security tab will
+link to).
+
+### 10.2 Responsible disclosure
+
+We use a **90-day responsible disclosure** timeline by default:
+
+- Day 0: report received, acknowledgement within 24 hours.
+- Days 0–7: triage and severity assessment (criteria in `security/SECURITY.md`).
+- Days 7–60 (severity-dependent): fix developed under embargo with
+  the reporter.
+- Days 60–90: coordinated release window.
+- Day 90: public disclosure, with or without reporter coordination if
+  the embargo expires.
+
+Critical vulnerabilities (e.g. consensus split, fund-loss) may justify
+faster disclosure or a longer embargo by mutual agreement. The
+reporter's preference is respected within the 90-day envelope.
+
+### 10.3 What NOT to do
+
+- Do not open a public GitHub issue describing an unpatched vulnerability.
+- Do not test exploits on mainnet or any third-party node you do not own.
+- Do not exfiltrate user data even where a vulnerability would
+  trivially allow it.
+
+### 10.4 Recognition
+
+Credit is offered in two forms: a CVE-style advisory mention at the
+fix's release (see `doc/release-notes/`) and inclusion in the bug
+bounty hall of fame
+([`security/bug-bounty.md`](security/bug-bounty.md)).
+
+### 10.5 Bounties
+
+A bug bounty programme is described in
+[`security/bug-bounty.md`](security/bug-bounty.md). It is a programme
+stub until mainnet launch, at which point a treasury-funded bounty
+becomes active for the categories defined there.
+
+---
+
+## 11. License
+
+B3Chain Core is released under the **MIT license**, inherited from
+Bitcoin Core. See [`COPYING`](COPYING) for the full text and
+<https://opensource.org/license/MIT> for the canonical license.
+
+By submitting a patch with a DCO sign-off, you agree that your
+contribution is licensed under the MIT terms. We will not accept
+contributions under a different license.
+
+Third-party dependencies retain their own licenses:
+
+- BLAKE3 reference C / assembly (`src/crypto/blake3/`) — CC0-1.0 or
+  Apache-2.0, per the BLAKE3 project.
+- LevelDB (`src/leveldb/`) — BSD-3-Clause.
+- minisketch (`src/minisketch/`) — MIT.
+- secp256k1 (`src/secp256k1/`) — MIT.
+
+Each subtree retains its original `LICENSE`/`COPYING` file unchanged.
+
+---
+
+## 12. Maintainers and review
+
+There is no privileged class of "B3Chain developers". The project is a
+meritocracy: trust is earned through review, testing, and merged
+contributions. A short list of repository maintainers — the people with
+merge access — is published in
+[`doc/MAINTAINERS.md`](doc/MAINTAINERS.md) (*placeholder — to be
+populated at launch*).
+
+Maintainer responsibilities:
+
+- Review and merge PRs against `b3chain-main`.
+- Drive the release cycle described in
+  [`doc/release-process.md`](doc/release-process.md).
+- Coordinate security disclosure (see section 10).
+- Maintain `doc/CHANGELOG.md` and the per-release notes under
+  `doc/release-notes/`.
+
+Becoming a maintainer is not a goal in itself. The route is:
+contribute substantively, review substantively, and demonstrate
+consistent good judgement over a period of months. There is no fixed
+threshold; current maintainers will propose candidates publicly and
+gather feedback before extending merge access.
+
+---
+
+## Appendix A — Quick reference
+
+| Task | Command |
+|---|---|
+| Build (Linux) | `mkdir build && cd build && cmake .. && cmake --build . -j$(nproc)` |
+| C++ unit tests | `ctest --output-on-failure` (from `build/`) |
+| Functional tests | `python3 ../test/functional/test_runner.py` |
+| B3PoW verifier (vectors) | `python3 contrib/testing/verify-b3pow.py` |
+| B3PoW verifier (live) | `python3 contrib/testing/verify-b3pow.py --rpc-port=18545` |
+| Regtest sim | `bash contrib/testing/regtest-simulation.sh` |
+| Lint Python | `test/lint/lint-all.py` |
+| Lint shell | `shellcheck contrib/**/*.sh` |
+| Sign off a commit | `git commit -s -m "..."` |
+| Re-sign a series | `git rebase --signoff <base>` |
+| GPG-sign a commit | `git commit -S -m "..."` |
+| Find good first issues | <https://github.com/b3chain/b3chain/issues?q=is%3Aopen+label%3A%22good+first+issue%22> |
+
+## Appendix B — Frequently-asked questions
+
+**Q. My PR's CI is failing in a job I didn't touch. Is that my problem?**
+
+Yes, until proven otherwise. Pull the latest `b3chain-main`, rebase,
+and re-push. If the failure persists, comment in the PR with the CI
+log link.
+
+**Q. Can I open a PR that just adds tests?**
+
+Yes, and we love these. Open as `test:` with a description of what
+gap is being closed.
+
+**Q. Can I open a PR that just fixes typos in documentation?**
+
+Yes, and we love these even more. Open as `doc:`.
+
+**Q. Can I open a PR that just deletes code?**
+
+Probably, if the code is dead and unreferenced. Demonstrate it is dead
+in the PR description (search results, build-after-delete, tests pass).
+Removing live code requires the same scrutiny as adding it.
+
+**Q. I want to port a Bitcoin Core PR. How do I do that?**
+
+Cherry-pick the upstream commits, resolve conflicts (especially around
+PoW-touching files), update the commit body with the upstream PR
+number, and open as a PR with subject `(cherry-pick from bitcoin#N) ...`.
+Include in the PR description the upstream URL and any deviations.
+
+**Q. The reference cpuminer is too slow. Can I add a Rust implementation?**
+
+If you want to: yes, but in your own fork first. The maintained
+reference implementations are the ones listed in
+[`contrib/miner/b3miner-rtl/SPEC.md`](contrib/miner/b3miner-rtl/SPEC.md)
+§11. Adding a new reference implementation to the in-tree set requires
+parity tests against the JSON consensus vectors and a maintainer's
+agreement that the project benefits from carrying it.
+
+---
+
+For anything not covered above, ask in a GitHub Discussion or open an
+issue. We would rather answer the question than have the work
+duplicated.
