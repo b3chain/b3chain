@@ -1,0 +1,14 @@
+# LaTeX build artefacts.
+# Mirrors doc/whitepaper/'s pattern: the PDF is built locally / in CI,
+# never committed.
+
+*.aux
+*.bbl
+*.blg
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.pdf

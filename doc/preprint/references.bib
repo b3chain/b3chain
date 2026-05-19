@@ -1,0 +1,329 @@
+% B3PoW-Scratch v1.1 -- IACR ePrint preprint bibliography.
+%
+% Every \cite{...} key used in B3POW-SCRATCH-PREPRINT.tex resolves to
+% an entry below. Entries flagged by a "TODO: confirm citation" line
+% in their `note` field are best-available placeholders that we expect
+% to validate (and likely tighten) before ePrint submission. Where a
+% key intentionally points at a file inside this repository we use a
+% @misc / @techreport entry with a `note = {...}` describing the path.
+
+% =========================================================================
+% Foundational primitives
+% =========================================================================
+
+@misc{nakamoto2008bitcoin,
+  author       = {Nakamoto, Satoshi},
+  title        = {{Bitcoin}: {A} Peer-to-Peer Electronic Cash System},
+  year         = {2008},
+  howpublished = {\url{https://bitcoin.org/bitcoin.pdf}},
+  note         = {Accessed 2026-05.}
+}
+
+@misc{oconnor2020blake3,
+  author       = {O'Connor, Jack and Aumasson, Jean-Philippe and
+                  Neves, Samuel and Wilcox-O'Hearn, Zooko},
+  title        = {{BLAKE3}: One Function, Fast Everywhere},
+  year         = {2020},
+  howpublished = {\url{https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf}},
+  note         = {BLAKE3 team specification, v20200110. Accessed 2026-05.}
+}
+
+@inproceedings{aumasson2013blake2,
+  author       = {Aumasson, Jean-Philippe and Neves, Samuel and
+                  Wilcox-O'Hearn, Zooko and Winnerlein, Christian},
+  title        = {{BLAKE2}: Simpler, Smaller, Fast as {MD5}},
+  booktitle    = {Applied Cryptography and Network Security (ACNS)},
+  year         = {2013},
+  pages        = {119--135},
+  publisher    = {Springer},
+  doi          = {10.1007/978-3-642-38980-1_8}
+}
+
+% =========================================================================
+% Memory-hard hashing / PoW lineage
+% =========================================================================
+
+@inproceedings{percival2009scrypt,
+  author       = {Percival, Colin},
+  title        = {Stronger Key Derivation via Sequential Memory-Hard Functions},
+  booktitle    = {BSDCan 2009},
+  year         = {2009},
+  url          = {https://www.tarsnap.com/scrypt/scrypt.pdf}
+}
+
+@inproceedings{biryukov2016argon2,
+  author       = {Biryukov, Alex and Dinu, Daniel and Khovratovich, Dmitry},
+  title        = {{Argon2}: New Generation of Memory-Hard Functions for
+                  Password Hashing and Other Applications},
+  booktitle    = {IEEE European Symposium on Security and Privacy (EuroS\&P)},
+  year         = {2016},
+  pages        = {292--302},
+  doi          = {10.1109/EuroSP.2016.31}
+}
+
+@techreport{rfc9106,
+  author       = {Biryukov, Alex and Dinu, Daniel and Khovratovich, Dmitry
+                  and Josefsson, Simon},
+  title        = {{Argon2} Memory-Hard Function for Password Hashing and
+                  Proof-of-Work Applications},
+  type         = {Request for Comments},
+  number       = {9106},
+  institution  = {Internet Engineering Task Force},
+  year         = {2021},
+  doi          = {10.17487/RFC9106},
+  url          = {https://www.rfc-editor.org/rfc/rfc9106}
+}
+
+@misc{tevador2019randomx,
+  author       = {{tevador}},
+  title        = {{RandomX}: a Proof-of-Work Algorithm Based on
+                  Random Code Execution},
+  year         = {2019},
+  howpublished = {\url{https://github.com/tevador/RandomX/blob/master/doc/specs.md}},
+  note         = {Project specification. Accessed 2026-05.}
+}
+
+@misc{programmaticpow2019,
+  author       = {{IfDefElse}},
+  title        = {{ProgPoW}: A Programmatic Proof-of-Work},
+  year         = {2019},
+  howpublished = {\url{https://github.com/ifdefelse/ProgPOW}},
+  note         = {Project repository and specification draft.
+                  TODO: confirm citation. ProgPoW has no peer-reviewed
+                  publication as of 2026-05; canonical references are
+                  the EIP-1057 discussion threads and the project
+                  README.}
+}
+
+@inproceedings{biryukov2017equihash,
+  author       = {Biryukov, Alex and Khovratovich, Dmitry},
+  title        = {{Equihash}: Asymmetric Proof-of-Work Based on the
+                  Generalized Birthday Problem},
+  booktitle    = {Network and Distributed System Security Symposium (NDSS)},
+  year         = {2016},
+  doi          = {10.14722/ndss.2016.23108}
+}
+
+@inproceedings{wagner2002gbp,
+  author       = {Wagner, David},
+  title        = {A Generalized Birthday Problem},
+  booktitle    = {Advances in Cryptology -- CRYPTO 2002},
+  series       = {Lecture Notes in Computer Science},
+  volume       = {2442},
+  year         = {2002},
+  pages        = {288--304},
+  publisher    = {Springer},
+  doi          = {10.1007/3-540-45708-9_19}
+}
+
+@misc{ethash,
+  author       = {Wood, Gavin and Buterin, Vitalik},
+  title        = {{Ethash}: The Ethereum Proof-of-Work Algorithm},
+  year         = {2015},
+  howpublished = {\url{https://ethereum.org/en/developers/docs/consensus-mechanisms/pow/mining-algorithms/ethash/}},
+  note         = {Project documentation; superseded by Proof-of-Stake on
+                  Ethereum mainnet in 2022, retained on forks
+                  (Ethereum Classic, etc.). Accessed 2026-05.
+                  TODO: confirm citation. Ethash has no canonical paper;
+                  the closest published references are the Ethereum
+                  Yellow Paper Appendix and Buterin's
+                  Hashimoto/Dagger blog posts.}
+}
+
+% =========================================================================
+% PoW attacks and analyses
+% =========================================================================
+
+@inproceedings{eyal2014selfish,
+  author       = {Eyal, Ittay and Sirer, Emin G\"{u}n},
+  title        = {Majority Is Not Enough: {Bitcoin} Mining Is Vulnerable},
+  booktitle    = {Financial Cryptography and Data Security (FC)},
+  series       = {Lecture Notes in Computer Science},
+  volume       = {8437},
+  year         = {2014},
+  pages        = {436--454},
+  publisher    = {Springer},
+  doi          = {10.1007/978-3-662-45472-5_28}
+}
+
+@inproceedings{bonneau2015sok,
+  author       = {Bonneau, Joseph and Miller, Andrew and Clark, Jeremy and
+                  Narayanan, Arvind and Kroll, Joshua A. and Felten,
+                  Edward W.},
+  title        = {{SoK}: Research Perspectives and Challenges for {Bitcoin}
+                  and Cryptocurrencies},
+  booktitle    = {IEEE Symposium on Security and Privacy (S\&P)},
+  year         = {2015},
+  pages        = {104--121},
+  doi          = {10.1109/SP.2015.14}
+}
+
+@inproceedings{sapirshtein2016selfish,
+  author       = {Sapirshtein, Ayelet and Sompolinsky, Yonatan and
+                  Zohar, Aviv},
+  title        = {Optimal Selfish Mining Strategies in {Bitcoin}},
+  booktitle    = {Financial Cryptography and Data Security (FC)},
+  series       = {Lecture Notes in Computer Science},
+  volume       = {9603},
+  year         = {2016},
+  pages        = {515--532},
+  publisher    = {Springer},
+  doi          = {10.1007/978-3-662-54970-4_30}
+}
+
+@misc{cve2018-17144,
+  author       = {{Bitcoin Core security team}},
+  title        = {{CVE-2018-17144}: Inflation Bug / Duplicate-Input
+                  Denial-of-Service in {Bitcoin Core} 0.14.0--0.16.2},
+  year         = {2018},
+  howpublished = {\url{https://bitcoincore.org/en/2018/09/20/notice/}},
+  note         = {Bitcoin Core disclosure of CVE-2018-17144,
+                  September 2018. Cited here as a documented prior of
+                  the verification-side ``validate cheap checks first''
+                  discipline. Accessed 2026-05.}
+}
+
+@misc{bip94,
+  author       = {{Murch} and {Zawy}},
+  title        = {{BIP-94}: Testnet 4 Timewarp Fix},
+  year         = {2024},
+  howpublished = {\url{https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki}},
+  note         = {Bitcoin Improvement Proposal 94. The same time-warp
+                  hardening pattern is what this work labels mitigation
+                  M-2 in~\cite{b3chain-51attack}. Accessed 2026-05.
+                  TODO: confirm authorship line; BIP-094's drafting
+                  history has multiple contributors.}
+}
+
+@misc{zawy2018lwma,
+  author       = {{Zawy12}},
+  title        = {{LWMA-3}: Linear Weighted Moving Average Difficulty
+                  Algorithm for Bitcoin-style Chains},
+  year         = {2018},
+  howpublished = {\url{https://github.com/zawy12/difficulty-algorithms/issues/3}},
+  note         = {Reference implementation and analysis. Adopted by
+                  several smaller Bitcoin-derived chains. Accessed
+                  2026-05. TODO: confirm citation. LWMA-3 has no
+                  peer-reviewed publication; the canonical reference is
+                  the project issue tracker and the in-repo C++ port
+                  at \texttt{src/pow/lwma3.cpp}.}
+}
+
+% =========================================================================
+% Pool / Stratum / mining-protocol references
+% =========================================================================
+
+@misc{stratumv2,
+  author       = {{Stratum V2 Working Group}},
+  title        = {{Stratum V2} Protocol Specification},
+  year         = {2024},
+  howpublished = {\url{https://stratumprotocol.org/specification/}},
+  note         = {Stratum V2 working-group specification. Accessed
+                  2026-05. TODO: confirm authorship before submission;
+                  the working group attributes the specification
+                  collectively rather than to named individuals.}
+}
+
+@misc{wyhash,
+  author       = {Yi, Wang},
+  title        = {{wyhash} and {wyrand}: The Fastest Reasonable Hash
+                  and Pseudo-Random Number Generator},
+  year         = {2019},
+  howpublished = {\url{https://github.com/wangyi-fudan/wyhash}},
+  note         = {Project repository. The secret table referenced as
+                  \texttt{ITER\_MUL[0..7]} draws its first four entries
+                  from \texttt{wyhash.\_wyp[]}. Accessed 2026-05.}
+}
+
+% =========================================================================
+% Hardware vendor data sheets
+% =========================================================================
+
+@misc{xilinx-ku5p,
+  author       = {{AMD Xilinx}},
+  title        = {{Kintex UltraScale+ FPGAs} Product Brief
+                  ({XCKU5P-2FFVB676E})},
+  year         = {2022},
+  howpublished = {\url{https://docs.amd.com/v/u/en-US/ds922-kintex-ultrascale-plus}},
+  note         = {Data sheet DS922. Accessed 2026-05.}
+}
+
+% =========================================================================
+% In-tree project documents (cited as @techreport for BibTeX hygiene)
+% =========================================================================
+
+@techreport{b3chain-spec,
+  author       = {{The B3Chain Project}},
+  title        = {{B3PoW-Scratch v1.1} -- Formal Specification ({KU5P} Profile)},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Project specification},
+  note         = {In repository at
+                  \texttt{contrib/miner/b3miner-rtl/SPEC.md}.
+                  Normative reference; this preprint is informative.}
+}
+
+@techreport{b3chain-51attack,
+  author       = {{The B3Chain Project}},
+  title        = {{B3PoW-Scratch v1.1} -- 51\% Attack Evaluation},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Security analysis},
+  note         = {In repository at
+                  \texttt{doc/security/B3POW-51-ATTACK-ANALYSIS.md}.
+                  Catalogues twelve attack vectors and the calibrated
+                  in-tree mitigations.}
+}
+
+@techreport{b3chain-auditscope,
+  author       = {{The B3Chain Project}},
+  title        = {{B3PoW-Scratch} External Audit Scope},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Audit RFP package},
+  note         = {In repository at \texttt{doc/audit/SCOPE.md}
+                  (with \texttt{THREAT-MODEL.md} and \texttt{RFP.md}).
+                  The audit is the gating step on mainnet launch.}
+}
+
+@techreport{b3chain-fpga,
+  author       = {{The B3Chain Project}},
+  title        = {{B3Miner-1 / KU5P} FPGA Feasibility Note},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Hardware analysis},
+  note         = {In repository at
+                  \texttt{doc/analysis/FPGA-FEASIBILITY.md}.
+                  Expands SPEC \S8.D into a per-resource budget.}
+}
+
+@techreport{b3chain-asic,
+  author       = {{The B3Chain Project}},
+  title        = {{B3PoW-Scratch} {ASIC} Economics},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Hardware economics analysis},
+  note         = {In repository at
+                  \texttt{doc/analysis/ASIC-ECONOMICS.md}.}
+}
+
+@techreport{b3chain-securitybudget,
+  author       = {{The B3Chain Project}},
+  title        = {{B3Chain} Long-Run Security Budget},
+  institution  = {b3chain},
+  year         = {2026},
+  type         = {Economics analysis},
+  note         = {In repository at
+                  \texttt{doc/economics/SECURITY-BUDGET.md}.}
+}
+
+@misc{b3chain-gpuminer,
+  author       = {{The B3Chain Project}},
+  title        = {{b3chain-gpuminer}: Historical Double-{BLAKE3}
+                  {GPU} Mining Kernel},
+  year         = {2026},
+  howpublished = {\url{https://github.com/b3chain/b3chain/tree/b3chain-main/contrib/miner/b3chain-gpuminer}},
+  note         = {Retained in-tree as a reference of an inefficient
+                  implementation under B3PoW-Scratch; targets the
+                  retired double-BLAKE3 PoW.}
+}

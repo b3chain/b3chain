@@ -1,0 +1,882 @@
+% B3PoW-Scratch v1.1 -- IACR ePrint preprint.
+%
+% Target style: Springer Lecture Notes in Computer Science (`llncs.cls`).
+% This file does NOT use llncs by default because `llncs.cls` is not part
+% of a standard TeX Live install -- it ships as a separate download from
+% Springer (https://www.springer.com/gp/computer-science/lncs/conference-
+% proceedings-guidelines). To keep the build reproducible on a vanilla
+% TeX Live 2023+, we fall back to the `article` class and re-implement
+% the small subset of LNCS conveniences we use (\institute, \keywords).
+%
+% To target LNCS for the actual ePrint submission:
+%
+%   1. Drop `llncs.cls` into this directory (or install it system-wide).
+%   2. Replace the `\documentclass{...}` line below with
+%        \documentclass[runningheads]{llncs}
+%   3. Drop the small "LNCS-shim" block (search for: LNCS-SHIM-BEGIN).
+%   4. Change the \bibliographystyle to `splncs04` (already commented in).
+%
+% Build:
+%   make           # -> B3POW-SCRATCH-PREPRINT.pdf  (latexmk -xelatex -bibtex)
+%   make clean
+%   make check     # lacheck + chktex, if installed.
+
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages (mirror the LNCS defaults where they overlap) ---------------
+% Targets XeLaTeX (Unicode-native); inputenc/fontenc deliberately omitted.
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{caption}
+
+% --- LNCS-SHIM-BEGIN ------------------------------------------------------
+% Re-implements just enough of llncs.cls's interface that the source below
+% reads as if it were LNCS. Delete this block when switching to llncs.
+% \institute{...} is a no-op in article mode; the affiliation is embedded
+% directly in \author{...} below. llncs.cls provides the real \institute.
+\providecommand{\institute}[1]{}
+\providecommand{\keywords}[1]{\par\medskip\noindent\textbf{Keywords:} #1.}
+% Theorem environments -- LNCS provides these unnumbered-by-default; we
+% number them within section for paper-readability.
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+% --- LNCS-SHIM-END --------------------------------------------------------
+
+% --- Listings: a Python-flavour skin used very sparingly ------------------
+\definecolor{lstbg}{gray}{0.97}
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+  backgroundcolor=\color{lstbg},
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  framerule=0.4pt,
+  framesep=4pt,
+  xleftmargin=0pt,
+  xrightmargin=0pt,
+  language=Python,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{black!55},
+  stringstyle=\color{black!70}
+}
+
+% --- Title block ----------------------------------------------------------
+% Under article mode (the default here) the affiliation is folded into
+% \author{}. Under llncs.cls the \institute{...} line below the document
+% start takes over; the no-op shim above keeps that line harmless in
+% article mode.
+\title{B3PoW-Scratch v1.1:\\
+       A Memory-Hard BLAKE3-Based Proof-of-Work\\
+       with On-Chip-Memory-Bounded Hardware Economy}
+\author{The B3Chain Project\thanks{Correspondence:
+        \href{mailto:paper@b3chain.org}{\texttt{paper@b3chain.org}}.
+        Authorship placeholder; final list to be confirmed at
+        ePrint submission.} \\[2pt]
+        \small Open-source project, \url{https://b3chain.org} \\
+        \small Repository: \url{https://github.com/b3chain/b3chain}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+% The next line is a no-op under article mode (see the shim) and the
+% real LNCS affiliation block under llncs.cls.
+\institute{Open-source project, \url{https://b3chain.org}.
+           Source repository at \url{https://github.com/b3chain/b3chain}.}
+
+% --- Abstract -------------------------------------------------------------
+\begin{abstract}
+We describe B3PoW-Scratch~v1.1, the memory-hard Proof-of-Work used by
+B3Chain, a conservative Bitcoin Core fork that keeps Bitcoin's UTXO
+model, monetary schedule, block-identity hash, and P2P protocol and
+replaces only the mining hash function. B3PoW-Scratch is built on
+BLAKE3 over a 1\,MiB scratchpad partitioned into eight parallel lanes
+and executes 2\,048 sequential data-dependent read--modify--write
+iterations per hash. The construction is calibrated, not theatrical:
+the design target is to make the most economical production miner a
+small on-chip-memory FPGA card rather than a custom ASIC or a
+commodity GPU. We make no claim of permanent ASIC resistance. We
+evaluate the construction against the catalogued PoW attack
+surface---preimage and collision, memory-hardness shortcuts, address
+uniformity, verification-DoS, 51\,\%~chain reorganisation, and
+time-warp---and against four hardware tiers (CPU, GPU, FPGA, ASIC).
+A four-implementation parity gate (Python, C++, TypeScript,
+SystemVerilog) enforces byte-equivalence across an in-tree consensus
+vector set, removing the most common silent-failure mode for new PoW
+launches.
+\end{abstract}
+
+\keywords{Proof of work \and memory-hard hashing \and BLAKE3
+          \and FPGA mining \and blockchain consensus}
+
+% --- 1. Introduction ------------------------------------------------------
+\section{Introduction}\label{sec:intro}
+
+A new Bitcoin-derived Proof-of-Work (PoW) blockchain that adopts
+Bitcoin's SHA-256d mining hash inherits, by construction, the global
+SHA-256d ASIC fleet on day one. At any plausible launch hashrate the
+idle capacity of that fleet exceeds the new chain's honest hashrate
+by many orders of magnitude, and a single pool operator can rewrite
+the chain at a marginal electricity cost. The SHA-256d
+\emph{carry-over problem} is the dominant failure mode for new
+Bitcoin-derived chains in their first months. Choosing a memory-hard
+or GPU-friendly algorithm avoids it but trades it for different
+failure modes: CPU/GPU-friendly designs invite botnet hashrate,
+designs that depend on exotic memory hierarchies are unverifiable on
+commodity nodes, and designs that are too hardware-agnostic recreate
+the SHA-256d race on a new vertex.
+
+B3PoW-Scratch~v1.1 takes a calibrated position on this trade-off
+curve. Its explicit design target is a small, low-power FPGA card
+with \emph{on-chip} memory~--- specifically, the Xilinx Kintex
+UltraScale+ XCKU5P~\cite{xilinx-ku5p}~--- as the most economical
+production miner. The chain is otherwise Bitcoin: 21\,M cap,
+10-minute target, 210\,k halving, all Bitcoin script opcodes,
+SHA-256d block identity, Bitcoin's wire format. Only the PoW hash
+function differs.
+
+\paragraph{Contributions.} This paper:
+\begin{itemize}\itemsep0.2em
+\item formalises B3PoW-Scratch~v1.1 as a sequential read--modify--write
+      memory-hard hash on a 1\,MiB scratchpad with eight parallel
+      lanes and 2\,048 iterations
+      (\S\ref{sec:algorithm});
+\item argues that the construction inherits BLAKE3's collision /
+      preimage resistance, exhibits a non-amortisable sequential
+      memory-bandwidth lower bound similar to that of
+      \texttt{scrypt}~\cite{percival2009scrypt} and
+      Argon2-d~\cite{biryukov2016argon2}, and is hardened against the
+      catalogued PoW attack surface (\S\ref{sec:security});
+\item evaluates hardware economy at four tiers (CPU, GPU, FPGA, ASIC)
+      and shows that the algorithm's combination of working-set size
+      and sequential dependency chain pins the economical operating
+      point to a small on-chip-memory FPGA at the launch hashrate
+      regime (\S\ref{sec:hardware});
+\item documents a four-implementation in-tree parity gate (Python,
+      C++, TypeScript, SystemVerilog) and the consensus-vector
+      regime that enforces byte-equivalence across them
+      (\S\ref{sec:impl}); and
+\item enumerates the open questions we are aware of, including those
+      that we explicitly defer to external review
+      (\S\ref{sec:openq}).
+\end{itemize}
+
+\paragraph{What we do not claim.} We do not claim a novel
+cryptographic primitive; BLAKE3 is used unmodified as the only
+non-linear mixing primitive. We do not claim permanent
+ASIC-resistance; \S\ref{sec:hardware} bounds the per-die advantage of
+a custom ASIC over the reference FPGA at single-digit-to-low-double-digit
+multipliers, not at \emph{infinity}. We do not claim a finished
+security analysis; the arguments here are informal, an external audit
+is scoped~\cite{b3chain-auditscope}, and this preprint exists in part
+to solicit reviewer attention.
+
+% --- 2. Related work ------------------------------------------------------
+\section{Background and Related Work}\label{sec:related}
+
+\paragraph{SHA-256d-based chains.}
+Bitcoin's SHA-256d~\cite{nakamoto2008bitcoin} is compute-bound and
+arithmetically simple, properties that made it ASIC-able within
+roughly three years of mainnet launch. The economic consequence is
+the carry-over problem stated above: any new chain that adopts the
+same algorithm inherits the existing fleet rather than recruiting
+hardware. Algorithm-rotated forks (Litecoin, Bitcoin~Gold, Bitcoin
+Cash variants) trade this for new equilibria with their own
+asymmetries.
+
+\paragraph{Memory-hard PoW lineage.}
+Scrypt~\cite{percival2009scrypt} introduced memory-hardness to
+crypto-economic key derivation and was adopted by Litecoin as PoW; in
+practice its small parameterised working set proved ASIC-able. The
+Argon2 family~\cite{biryukov2016argon2}, RFC~9106~\cite{rfc9106},
+introduced data-dependent (Argon2d), data-independent (Argon2i), and
+hybrid (Argon2id) variants targeted at password hashing; its
+throughput--verification trade-offs are wrong for PoW economics in
+isolation (verification cost scales with the memory parameter).
+RandomX~\cite{tevador2019randomx} targets the CPU as the
+economically optimum execution model via program generation and a
+256\,MB dataset; its verification cost is non-trivial and its
+ASIC-resistance argument is informal.
+ProgPoW~\cite{programmaticpow2019} targets GPU-economical operation
+via program generation; it was discussed for Ethereum but never
+deployed on the canonical chain. Equihash~\cite{biryukov2017equihash}
+applies Wagner's generalised birthday algorithm~\cite{wagner2002gbp}
+as a memory-asymmetric PoW; it was ASIC-ed at the lower memory
+parameter sets at which Zcash deployed it. Ethash and
+KawPow~\cite{ethash} are GPU-targeted PoWs built around a slowly
+growing DAG.
+
+\paragraph{BLAKE3 as the primitive.}
+BLAKE3~\cite{oconnor2020blake3} is a 256-bit cryptographic hash
+function descended from the BLAKE2 family~\cite{aumasson2013blake2},
+itself a SHA-3 finalist. Its inner round (the \texttt{g}-function)
+is hardware-friendly: a Xilinx 7-series or later instantiation of one
+\texttt{g} fits in roughly 600 LUTs, which is what made BLAKE3 a
+natural choice for an FPGA-targeted PoW.
+
+\paragraph{Verification-DoS and time-warp prior art.}
+Two known classes of attack on the validation side inform our design:
+verification-DoS, where an adversary submits headers crafted to be
+expensive to verify (the broader category that includes the
+fix-it-fast incident underlying CVE-2018-17144~\cite{cve2018-17144}
+in a related context); and time-warp, where an adversary manipulates
+header timestamps to depress difficulty within a retarget window
+(closed on Bitcoin mainnet by BIP-94~\cite{bip94}). Our verifier
+mitigations (\S\ref{sec:security}) borrow directly from these
+prior fixes. Selfish mining~\cite{eyal2014selfish} (and its
+broader analyses~\cite{bonneau2015sok,sapirshtein2016selfish})
+defines the lower attack-share threshold below which the canonical
+51\,\% formula understates risk.
+
+\paragraph{Position.} The axis along which B3PoW-Scratch differs
+from the prior memory-hard PoWs is the \emph{target execution
+model}: RandomX optimises for the CPU; ProgPoW and KawPow for the
+GPU; B3PoW-Scratch for a small FPGA whose entire scratchpad fits
+on-chip in BRAM. That choice shapes every other parameter
+(working-set size, lane structure, verification-cost ceiling). The
+construction is deliberately uninteresting cryptographically; its
+contribution is the calibration.
+
+% --- 3. Design goals & threat model ---------------------------------------
+\section{Design Goals and Threat Model}\label{sec:goals}
+
+\subsection{Design goals}\label{sec:goals-d}
+
+We state the design goals as quantitative targets so they are
+falsifiable:
+
+\begin{enumerate}\itemsep0.2em
+\item[\textbf{G1}] \emph{On-chip-memory-bound.} The working set fits
+      entirely in the on-chip memory (BRAM~+ URAM, no external DRAM)
+      of the reference target Xilinx XCKU5P~\cite{xilinx-ku5p}.
+      We choose 1\,MiB so that an 8-lane partition occupies
+      $\approx 35\%$ of the KU5P's 432 BRAM tiles, leaving room for
+      mixer pipelines, FIFOs, and control logic.
+\item[\textbf{G2}] \emph{Sequential RMW chain.} Each iteration's
+      address derivation, scratchpad read, lane mixing, and
+      scratchpad writeback depend on the previous iteration's lane
+      state. There is no Bitcoin-style midstate or parallel-nonce
+      shortcut inside a single hash.
+\item[\textbf{G3}] \emph{BLAKE3 primitive only.} The only non-linear
+      mixing primitive used is the standard BLAKE3 round function;
+      the construction's security reduces to BLAKE3's published
+      claims.
+\item[\textbf{G4}] \emph{Verification cost $<1\%$ of block interval.}
+      A single verification of one PoW hash on a 2026-era CPU core
+      must complete in well under 50\,ms; the 10-minute target
+      interval gives us margin to spare.
+\item[\textbf{G5}] \emph{Bounded ASIC advantage.} A custom ASIC that
+      implements B3PoW-Scratch will outperform the reference FPGA;
+      the design intent is to bound that advantage to single-digit /
+      low-double-digit multipliers, not the $10^6$ multiplier that
+      SHA-256d ASICs enjoy over CPUs. \S\ref{sec:hardware} makes the
+      bound quantitative.
+\end{enumerate}
+
+\subsection{Threat model}\label{sec:goals-t}
+
+We protect against:
+
+\begin{itemize}\itemsep0.2em
+\item \emph{An attacker with idle SHA-256d ASIC capacity.} Trivially
+      neutralised by the algorithm change: SHA-256d ASICs cannot
+      mine B3PoW-Scratch at any difficulty.
+\item \emph{An attacker with significant GPU capacity.}
+      \S\ref{sec:hardware} argues that GPU H/s\,/\,\$ on
+      B3PoW-Scratch is below CPU H/s\,/\,\$, eliminating most
+      rational GPU-attack scenarios.
+\item \emph{An attacker who builds a custom B3PoW-Scratch ASIC.}
+      \S\ref{sec:hardware} bounds the per-die advantage.
+\item \emph{A node-validator-DoS attacker} who crafts headers to
+      force expensive validation. Mitigated by a per-hash wall-clock
+      budget, a per-parent pad cache, and the headers-first sync
+      pattern inherited from Bitcoin Core
+      (\S\ref{sec:security-verifydos}).
+\item \emph{A 51\,\%-style chain-reorganisation attacker} at all
+      hashrate shares. Full quantitative treatment is in the
+      project's 51\,\%-attack analysis~\cite{b3chain-51attack};
+      \S\ref{sec:security-51} summarises the calibrated bounds.
+\end{itemize}
+
+We do \emph{not} protect against:
+
+\begin{itemize}\itemsep0.2em
+\item A state-level attacker with effectively unbounded capital
+      against a young low-hashrate chain. (True of every PoW chain.)
+\item A successful cryptanalytic break of BLAKE3. (Inherited
+      bound.)
+\item Compromised firmware on the miner hardware, which is
+      addressed by signed-manifest verification outside the
+      consensus layer.
+\end{itemize}
+
+% --- 4. Algorithm ---------------------------------------------------------
+\section{Algorithm}\label{sec:algorithm}
+
+This section is informative; the byte-exact normative
+reference is the project's \texttt{SPEC.md}~\cite{b3chain-spec}, and
+the executable reference is \texttt{ref/b3pow\_ref.py} in the
+b3chain repository. The four in-tree implementations
+(\S\ref{sec:impl}) are gated against a single consensus-vector set.
+
+\subsection{Parameters}\label{sec:algo-params}
+
+The construction is parameterised by the constants in
+Table~\ref{tab:params}, all of which are consensus-critical and
+encoded in \texttt{SPEC\_VERSION}~$=$~\texttt{0x00010101}.
+
+\begin{table}[t]
+\centering
+\caption{B3PoW-Scratch v1.1 parameters (KU5P profile). Source:
+         SPEC~\S3~\cite{b3chain-spec}.}
+\label{tab:params}
+\begin{tabular}{lll}
+\toprule
+Symbol & Value & Justification \\
+\midrule
+\texttt{SCRATCH\_BYTES}  & $1\,048\,576$        & 1\,MiB; fits in
+                                                 KU5P on-chip BRAM \\
+\texttt{LANES}           & $8$                  & one BRAM partition
+                                                 per lane \\
+\texttt{LANE\_BYTES}     & $131\,072$           & 128\,KiB per lane \\
+\texttt{BLOCK\_BYTES}    & $64$                 & BLAKE3 block size \\
+\texttt{LANE\_BLOCKS}    & $2\,048$             & 11-bit address window
+                                                 per lane \\
+\texttt{ITERATIONS}      & $2\,048$             & latency dominates
+                                                 init cost \\
+\texttt{INNER\_ROUNDS}   & $2$                  & reduced BLAKE3
+                                                 rounds per mix \\
+\texttt{BLAKE3\_ROUNDS}  & $7$                  & full BLAKE3 for
+                                                 init / seed / final \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 8 multiplicative-mixer constants
+$\texttt{ITER\_MUL}[0..7]\in\mathbb{Z}_{2^{64}}$ are pairwise distinct
+wyhash-vetted secrets~\cite{wyhash}; the v1.1.1 release
+(\texttt{SPEC\_VERSION = 0x00010101}) restored distinctness after a
+duplicate was discovered in v1.1.0 (finding F-1
+in~\cite{b3chain-51attack}; see~\S\ref{sec:security-uniformity}).
+
+\subsection{Scratchpad initialisation}\label{sec:algo-init}
+
+For a parent block hash $p\in\{0,1\}^{256}$ the scratchpad
+$P\in\{0,1\}^{8\,388\,608}$ is derived block-wise using
+BLAKE3-XOF~\cite{oconnor2020blake3} in extendable-output mode:
+$$
+P[64i, 64(i{+}1)) \;=\; \mathrm{BLAKE3\text{-}XOF}\!\bigl(p \,\Vert\,
+\mathrm{LE32}(i)\bigr)\quad \text{for } i\in[0,16\,384).
+$$
+$P$ depends only on $p$, so it is shared across all nonce attempts
+for a given parent. A 1\,MiB pad is roughly 100 BLAKE3 chunk
+compressions and dominates the per-parent cost (the per-nonce cost
+is the main loop).
+
+\subsection{Lane setup}\label{sec:algo-lanes}
+
+For a serialised header $H\in\{0,1\}^{640}$ (the standard 80-byte
+Bitcoin block header), the per-lane initial 256-bit state is:
+$$
+\textsc{lanes}[L] \;=\; \mathrm{BLAKE3}\!\bigl(\mathrm{BLAKE3}(H)
+\,\Vert\, \mathrm{LE32}(L)\bigr) \qquad L\in[0,8).
+$$
+
+\subsection{Address derivation}\label{sec:algo-addr}
+
+The per-lane scratchpad block address for iteration $r$ is computed
+from the lane state by a multiplicatively-keyed mix:
+
+\begin{algorithm}[t]
+\caption{\textsc{DeriveAddresses}; the per-iteration per-lane address
+function.}
+\label{alg:addr}
+\begin{algorithmic}[1]
+\Require lanes $\in (\{0,1\}^{256})^8$, iteration index
+         $r\in [0, 2\,048)$
+\Ensure addresses $\textsc{addr}[L]\in [0, 2\,048)$ for
+        $L\in[0,8)$
+\For{$L = 0, \ldots, 7$}
+  \State $\textsc{lo} \gets $ first 8 bytes of lanes$[L]$,
+         little-endian as $\mathbb{Z}_{2^{64}}$
+  \State $\textsc{hi} \gets $ next 8 bytes of lanes$[L]$,
+         little-endian as $\mathbb{Z}_{2^{64}}$
+  \State $\textsc{mul} \gets ((\textsc{hi} \oplus r) \cdot
+         \texttt{ITER\_MUL}[L]) \bmod 2^{64}$
+  \State $\textsc{mixed} \gets \textsc{lo} \oplus
+         \mathrm{rotr}_{64}(\textsc{mul}, 23)$
+  \State $\textsc{addr}[L] \gets \textsc{mixed} \bmod 2\,048$
+\EndFor
+\State \Return $\textsc{addr}$
+\end{algorithmic}
+\end{algorithm}
+
+The iteration index $r$ is XOR-mixed into \emph{the high half of} the
+lane state \emph{before} the multiplication, so that its bits
+diffuse through every output bit (multiplication mixes high and low
+halves of its operands). The post-rotate alternative leaves $r$ at
+bit position~41 of \textsc{mixed} where it never reaches the 11-bit
+address window.
+
+\subsection{Mix step}\label{sec:algo-mix}
+
+Each iteration applies a reduced-round BLAKE3 compression to the
+(lane-state, scratchpad-block) pair and a lane permutation
+$\sigma\colon L\mapsto (5L+1)\bmod 8$ to the resulting lane states.
+Let $g$ denote the BLAKE3 quarter-round mixer
+(\cite{oconnor2020blake3}, \S2.5) and $\pi$ the standard 16-word
+message permutation. The per-lane mix is then:
+
+\begin{algorithm}[t]
+\caption{\textsc{MixStep}; one iteration's lane-local mixing.
+\texttt{INNER\_ROUNDS}~$=2$.}
+\label{alg:mix}
+\begin{algorithmic}[1]
+\Require lanes $\in (\{0,1\}^{256})^8$,
+         blocks $\in (\{0,1\}^{512})^8$
+\Ensure $(\text{lanes}', \text{blocks}')$
+\For{$L = 0, \ldots, 7$}
+  \State $s \gets \text{lanes}[L] \,\Vert\, \texttt{IV}[0..3]
+         \,\Vert\, 0, 0, 64, 0$
+         \Comment{16 32-bit words}
+  \State $m \gets \text{blocks}[L]$ as 16 little-endian 32-bit words
+  \For{$j = 1, \ldots, \texttt{INNER\_ROUNDS}$}
+    \State apply $g$ to the 4 columns and 4 diagonals of $s$ using
+           $m$ as message
+    \State $m \gets \pi(m)$
+  \EndFor
+  \State $\text{lanes}'[L] \gets [s_i \oplus s_{i+8}]_{i=0}^{7}$
+  \State $\text{blocks}'[L] \gets \text{blocks}[L] \oplus
+         \mathrm{pack}_\text{LE}(m)$
+\EndFor
+\State $\text{lanes}' \gets [\text{lanes}'[\sigma(L)]]_{L=0}^{7}$
+\Comment{lane shuffle}
+\State \Return $(\text{lanes}', \text{blocks}')$
+\end{algorithmic}
+\end{algorithm}
+
+Two rounds is the minimum at which BLAKE3's $g$ yields full
+intra-state diffusion on the cv--message pair, and the lane shuffle
+$\sigma$ provides inter-lane diffusion within a small number of
+iterations (Lemma~\ref{lem:diffusion}).
+
+\subsection{Top-level pipeline}\label{sec:algo-top}
+
+\begin{algorithm}[t]
+\caption{\textsc{B3PoW-Scratch}; the top-level hash.}
+\label{alg:top}
+\begin{algorithmic}[1]
+\Require header $H\in\{0,1\}^{640}$, parent hash $p\in\{0,1\}^{256}$
+\Ensure 256-bit PoW hash
+\State seed $\gets \mathrm{BLAKE3}(H)$
+\State $P \gets \textsc{InitScratchpad}(p)$
+\Comment{cacheable per-parent}
+\State lanes $\gets \textsc{InitLanes}(\text{seed})$
+\For{$r = 0, \ldots, 2\,047$}
+  \State addr $\gets \textsc{DeriveAddresses}(\text{lanes}, r)$
+  \State blocks $\gets \textsc{Read}(P, \text{addr})$
+  \State $(\text{lanes}, \text{blocks}') \gets
+         \textsc{MixStep}(\text{lanes}, \text{blocks})$
+  \State $\textsc{Write}(P, \text{addr}, \text{blocks}')$
+\EndFor
+\State \Return $\mathrm{BLAKE3}(\text{lanes}[0] \Vert \cdots \Vert
+       \text{lanes}[7] \Vert H[76, 80))$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{PoW check}\label{sec:algo-check}
+
+The hash is accepted iff it satisfies the unsigned little-endian
+256-bit inequality
+\begin{equation}\label{eq:powcheck}
+\mathrm{int}_{\mathrm{LE}}\bigl(\textsc{B3PoW-Scratch}(H, p)\bigr)
+\;\le\; \tau(\texttt{nBits}),
+\end{equation}
+where $\tau$ is Bitcoin's compact-encoded target unchanged from
+\texttt{arith\_uint256::SetCompact}.
+
+\subsection{Per-hash dimensions}\label{sec:algo-dims}
+
+A single hash invokes BLAKE3 in three distinct modes: $16\,384$
+BLAKE3-XOF chunk compressions for the scratchpad init, $9$ full
+BLAKE3 hashes for the seed and lane setup, $16\,384$ reduced
+two-round compressions inside the inner loop, and one final
+BLAKE3. Memory traffic per hash is $\approx 8$\,MiB read and
+$\approx 8$\,MiB write~--- sequential within a lane, scattered
+across lanes by the address derivation.
+
+% --- 5. Security analysis -------------------------------------------------
+\section{Security Analysis}\label{sec:security}
+
+The arguments below are informal; the project's external audit
+scope~\cite{b3chain-auditscope} requests formal verification of each.
+
+\subsection{Preimage and collision resistance}\label{sec:security-pc}
+
+\begin{theorem}\label{thm:inherited}
+If BLAKE3 is collision-resistant with security level $\lambda_c$ and
+preimage-resistant with security level $\lambda_p$, then
+B3PoW-Scratch~v1.1 is collision-resistant with security $\lambda_c$
+and preimage-resistant with security $\lambda_p$.
+\end{theorem}
+
+\begin{proof}[Sketch]
+The output of \textsc{B3PoW-Scratch} is a single application of
+$\mathrm{BLAKE3}$ to a 260-byte input (the eight 32-byte lane states
+concatenated with the 4-byte nonce). Any collision (preimage) on
+B3PoW-Scratch yields a collision (preimage) on BLAKE3 applied to the
+260-byte lanes-and-nonce buffer~--- the inner loop influences only
+the value of that buffer, not the BLAKE3 evaluation performed on
+it. Standard claims for BLAKE3~\cite{oconnor2020blake3} give
+$\lambda_c = 128$ and $\lambda_p = 256$.
+\end{proof}
+
+\subsection{Memory-hardness lower bound}\label{sec:security-mh}
+
+\begin{proposition}\label{prop:mh}
+Any implementation of \textsc{B3PoW-Scratch} that follows the
+specification must perform read and write traffic of magnitude
+$\Theta(\texttt{ITERATIONS}\cdot\texttt{LANES}\cdot
+\texttt{BLOCK\_BYTES})$ to its scratchpad, or pay a multiplicative
+recompute penalty roughly proportional to the size of the omitted
+working set.
+\end{proposition}
+
+\begin{proof}[Sketch]
+The address derivation at iteration $r$ depends on the lane state at
+iteration $r$. The lane state at iteration $r{+}1$ depends on the
+block read at iteration $r$, and that block depends on the writeback
+of every earlier iteration whose derived address coincides with
+$\textsc{addr}_r[L]$. An attacker that stores $M < \texttt{SCRATCH\_BYTES}$
+bytes of pad and recomputes the missing blocks on demand must, for
+every cache miss, redo the work of every prior iteration in that
+lane that participated in the missing block's writeback chain. The
+fraction of misses is $1 - M / \texttt{SCRATCH\_BYTES}$ in
+expectation under address uniformity (\S\ref{sec:security-uniformity}),
+giving a multiplicative penalty roughly proportional to
+$\texttt{SCRATCH\_BYTES} / M$. This is the same fundamental argument
+used by scrypt~\cite{percival2009scrypt} and Argon2d~\cite{biryukov2016argon2},
+specialised to a fixed-size on-chip-fitting pad and eight-lane
+parallelism. The bound is in the same family as Argon2's but is
+weaker in absolute terms (full Argon2 is parameterised on much
+larger working sets, at correspondingly worse verification cost).
+\end{proof}
+
+\subsection{Verification-DoS resistance}\label{sec:security-verifydos}
+
+Verification of one PoW hash requires the full $\approx 16$\,MiB
+memory traffic of the algorithm. We bound the attack surface in
+three layers, in part following the CVE-2018-17144 design
+discipline~\cite{cve2018-17144} of validating cheap checks first:
+
+\begin{itemize}\itemsep0.2em
+\item \emph{Headers-first sync.} The node validates PoW on a header
+      before requesting the block body, exactly as in
+      Bitcoin Core.
+\item \emph{Per-parent pad cache.} The 1\,MiB pad depends only on
+      $p$; an LRU keyed on $p$ amortises init across sibling
+      headers. The cache stores the pristine init-only pad and
+      hands out a fresh copy per call, because the inner loop
+      mutates the pad.
+\item \emph{Per-hash wall-clock budget.} The consensus
+      \texttt{b3pow\_verify\_budget\_ms = 50} bounds the work
+      per header; headers that exhaust it are routed to peer
+      scoring as \texttt{BLOCK\_POW\_BUDGET}.
+\end{itemize}
+
+The combination yields a target p95 verification cost well under 50\,ms
+on a 2026-era CPU core, satisfying~G4. We have not yet measured the
+final p95; the bench harness in the repository
+(\texttt{contrib/testing/bench/}) is the scaffold.
+
+\subsection{Address uniformity}\label{sec:security-uniformity}
+
+The memory-hardness argument (Proposition~\ref{prop:mh}) requires
+that the per-lane address sequence is statistically uniform over
+$[0, 2\,048)$. We rely on three properties:
+
+\begin{enumerate}\itemsep0.2em
+\item the wyhash secret-table multipliers~\cite{wyhash} pass the
+      standard PRNG suites for full 64-bit avalanche;
+\item the multiply--rotate--XOR pattern in
+      Algorithm~\ref{alg:addr} is a standard wyhash-style mixing
+      kernel and preserves uniformity from any high-entropy
+      lane-state distribution; and
+\item a per-lane $\chi^2$ test on $2^{20}$ samples per lane is wired
+      into the project's continuous-integration gate
+      (\texttt{ref/tests/test\_address\_uniformity.py}).
+\end{enumerate}
+
+The v1.1.1 release (\texttt{SPEC\_VERSION = 0x00010101}) restored
+distinctness of \texttt{ITER\_MUL}[7] after a duplicate of
+\texttt{ITER\_MUL}[1] was discovered in v1.1.0; with the duplicate
+in place lane~7's address derivation collapsed to lane~1's and
+created a correlated-write pattern in the pad (finding F-1
+in~\cite{b3chain-51attack}).
+
+\subsection{Inter-lane diffusion}\label{sec:security-diff}
+
+\begin{lemma}\label{lem:diffusion}
+Under the lane permutation $\sigma\colon L\mapsto (5L+1)\bmod 8$
+(an 8-cycle in $S_8$), every output lane state in iteration $r$
+depends on every input lane state in iteration $r-8$. Combined
+with the full intra-lane diffusion of $\texttt{INNER\_ROUNDS}=2$
+BLAKE3 rounds on the cv--message pair, the algorithm achieves full
+output-on-input diffusion within eight outer iterations, and
+maintains it for the remaining 2\,040.
+\end{lemma}
+
+\begin{proof}[Sketch]
+$\sigma$ decomposes as the single 8-cycle $(0\;1\;6\;7\;4\;5\;2\;3)$,
+so $r$ applications of $\sigma$ move every lane by $r$ positions
+along the cycle. After eight applications every position has been
+visited; combined with BLAKE3's per-lane diffusion bound, this
+yields full output-on-input dependence at iteration~8. The argument
+generalises to algebraic-degree bounds on $\textsc{MixStep}
+\circ \sigma$; a formal proof in the indifferentiability framework
+is on the audit scope~\cite{b3chain-auditscope}.
+\end{proof}
+
+\subsection{51\,\% attack cost}\label{sec:security-51}
+
+The standard 51\,\%~chain-reorganisation cost~\cite{nakamoto2008bitcoin}
+is roughly $H_\text{atk}\cdot t\cdot c_\text{hash}$ where $c_\text{hash}$
+is the operating cost of the cheapest unit of hashrate. On
+B3PoW-Scratch, that cheapest unit is the reference FPGA card; the
+attacker pays the same per-unit cost as the honest side. Selfish-mining
+analyses~\cite{eyal2014selfish,bonneau2015sok,sapirshtein2016selfish}
+lower the practical threshold below 50\,\% to $\approx 25$--$33\%$
+of network hashrate, depending on the propagation advantage
+parameter~$\gamma$. The project's 51\,\%-attack
+analysis~\cite{b3chain-51attack} catalogues twelve attack vectors,
+the calibrated mitigations
+(LWMA-3~\cite{zawy2018lwma} difficulty, BIP-94~\cite{bip94} timewarp
+enforcement, a consensus \texttt{max\_reorg\_depth} cap, a depth-aware
+ban-score in the headers handler, and a two-tier pinned LRU pad
+cache), and the per-scenario costs across launch, growth, and
+maturity hashrate regimes. We summarise only the conclusion: under
+the stated mitigations the dominant residual exposure is the
+bootstrap-phase low-hashrate window, and the asymptotic exposure is
+the (open-ended) question of an ASIC monopolist.
+
+\subsection{Long-range and time-warp}\label{sec:security-lrtw}
+
+The chain inherits Bitcoin's headers-first sync, sub-second clock
+checks, and most-cumulative-work fork-choice rule, so long-range
+attacks are bounded by the same arguments as in
+Bitcoin~\cite{nakamoto2008bitcoin}. Time-warp is closed on the
+mainnet difficulty algorithm by enforcing
+BIP-94~\cite{bip94}; the implementation is in
+\texttt{src/kernel/chainparams.cpp} of the b3chain repository and
+discussed in the 51\,\%-attack analysis as
+mitigation~M-2~\cite{b3chain-51attack}.
+
+% --- 6. Hardware analysis -------------------------------------------------
+\section{Hardware Analysis}\label{sec:hardware}
+
+The full quantitative treatment is in
+\texttt{doc/analysis/FPGA-FEASIBILITY.md} and
+\texttt{doc/analysis/ASIC-ECONOMICS.md} in the
+repository~\cite{b3chain-fpga,b3chain-asic}; this section gives the
+back-of-envelope reasoning that motivates the parameter choices in
+Table~\ref{tab:params}.
+
+\paragraph{CPU.}
+A reference Python implementation runs at single-digit hashes per
+second on a 2026-era Zen~4 core; an optimised C++ AVX-512
+implementation is expected in the low-hundreds-H/s range. Neither
+is economical at any electricity price.
+
+\paragraph{GPU.}
+A modern consumer GPU (e.g.~NVIDIA RTX 4090) has $\sim 128$\,KiB
+per-SM L1 cache and a comparable per-warp L2 working set; the
+1\,MiB B3PoW-Scratch scratchpad spills to higher cache levels per
+nonce. Worse, the sequential RMW chain means nonce $n$ and nonce
+$n{+}1$ cannot share work after $\textsc{InitLanes}$; the GPU's only
+path to throughput~--- many parallel nonces in flight~--- is exactly
+the path the algorithm forecloses. The expected operating point is
+tens to low-hundreds of H/s at hundreds of watts, i.e.~below the
+CPU H/s\,/\,\$ envelope. The project ships no GPU miner; the
+historical kernel~\cite{b3chain-gpuminer} targets a retired
+double-BLAKE3 PoW and is retained only as a reference of an
+inefficient implementation.
+
+\paragraph{FPGA.}
+The reference target is the Xilinx Kintex UltraScale+
+XCKU5P~\cite{xilinx-ku5p}. Resource accounting at the algorithm
+level is summarised in Table~\ref{tab:fpga}; the dominant resource
+is BRAM (one partition per lane), and the LUT and DSP budgets are
+modest. At 250\,MHz and one iteration per cycle per pipeline, one
+pipeline produces $\approx 1$\,MH/s
+($\texttt{LANES} \cdot 250\cdot 10^6 / \texttt{ITERATIONS}$); the
+BRAM budget supports eight pipelines, for a target of
+$\approx 8$\,MH/s per KU5P card at $\approx 10$\,W typical. Numbers
+are pre-measurement.
+
+\begin{table}[t]
+\centering
+\caption{Reference KU5P resource budget. Source:
+         FPGA feasibility note~\cite{b3chain-fpga}, SPEC~\S3
+         and~\S8.D~\cite{b3chain-spec}.}
+\label{tab:fpga}
+\begin{tabular}{lll}
+\toprule
+Resource          & Available & Used by B3PoW-Scratch \\
+\midrule
+BRAM (36\,Kb tiles) & 432    & $\approx 150$ (scratchpad partitions) \\
+LUTs                & 216k   & $\approx 10$--$30$k (mix pipelines + glue) \\
+DSP48E2             & 1\,824 & $8$--$16$ (per-lane $64\times 64$ multiplier) \\
+GTH transceivers    & 16     & 0 (Stratum hosted by ESP32-S3) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{ASIC.}
+A custom B3PoW-Scratch ASIC can: pack the scratchpad in dense SRAM
+of comparable density to the FPGA's BRAM, eliminate the FPGA's LUT
+fabric overhead, run the inner loop at $\sim 1$\,GHz instead of
+$\sim 250$\,MHz, and pipeline more lanes in parallel. An optimistic
+scaling argument puts a 7\,nm tape-out at roughly $10$--$30\times$
+the H/s\,/\,W of the reference FPGA. Crucially, the per-die cost is
+dominated by SRAM area, which is comparable across modern fabs;
+combined with multi-million-USD NRE, this caps the economical
+operating point at network revenues well above the launch hashrate
+regime. The full crossover analysis (NRE \emph{vs} network reward
+\emph{vs} mass-production die cost) is in the project's ASIC
+economics note~\cite{b3chain-asic}; the conclusion is that an ASIC
+is possible at sufficient network value, not that it is impossible.
+
+\paragraph{Ranking.}
+Table~\ref{tab:rank} summarises the hardware ranking in
+order-of-magnitude H/s\,/\,\$ relative to the reference FPGA.
+Numbers are pre-measurement; the in-tree benchmark harness will
+publish measured values in
+\texttt{contrib/testing/bench/results/r0/}.
+
+\begin{table}[t]
+\centering
+\caption{Order-of-magnitude hardware ranking. Estimates pending
+         the round-0 bench results.}
+\label{tab:rank}
+\begin{tabular}{llll}
+\toprule
+Tier & Hardware                & H/s/\$ (rel.) & Notes \\
+\midrule
+1 & Custom 7\,nm ASIC          & $\sim 5$--$30\times$ & Hypothetical;
+                                                        bounded by
+                                                        SRAM cost \\
+2 & B3Miner-1 (KU5P FPGA)      & $1\times$ (ref.)    & Launch miner \\
+3 & High-end AVX-512 CPU       & $\sim 10^{-3}$--$10^{-2}\times$ & --- \\
+4 & High-end consumer GPU      & $<$ CPU H/s/\$       & sequential
+                                                        RMW chain
+                                                        defeats SIMD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% --- 7. Implementation & parity -------------------------------------------
+\section{Implementation and Parity Testing}\label{sec:impl}
+
+The most common silent-failure mode for new PoW launches is a
+mismatch between the formal spec and a single production
+implementation. We address this with four in-tree implementations
+and a single set of consensus vectors that all four are
+continuous-integration-gated to reproduce byte-for-byte:
+
+\begin{itemize}\itemsep0.2em
+\item \emph{Python reference} (\texttt{contrib/miner/b3miner-rtl/ref/b3pow\_ref.py}),
+      deliberately verbose; the executable spec.
+\item \emph{C++ consensus} (\texttt{src/crypto/b3pow\_scratch.cpp}),
+      the production validator inside the node binary.
+\item \emph{TypeScript pool validator}
+      (\texttt{contrib/testnet/pool/src/lib/b3pow-scratch.ts}),
+      used by the reference Stratum pool.
+\item \emph{SystemVerilog RTL}
+      (\texttt{contrib/miner/b3miner-rtl/rtl/}), the FPGA pipeline.
+\end{itemize}
+
+The single source of truth is
+\texttt{src/test/data/b3pow\_consensus\_vectors.json}, generated by
+\texttt{ref/gen\_vectors.py}, including: minimum-difficulty headers,
+boundary-target tests, non-trivial parent-hash tests (so the pad
+init is exercised), and ``cache-pair'' tests (two nonces against
+the same parent, to exercise the pad-cache copy semantics). CI
+runs all four implementations against the vectors; divergence fails
+the gate.
+
+A modest amount of differential fuzzing against the Python
+reference, with the C++ port as the production target, is in scope
+for the external audit~\cite{b3chain-auditscope}.
+
+% --- 8. Open questions ----------------------------------------------------
+\section{Open Questions}\label{sec:openq}
+
+\paragraph{Long-run security budget post-subsidy decay.} The
+block-subsidy schedule is unchanged from Bitcoin; the long-run
+security model after the subsidy halvings drop below the
+fee-market-supported budget is the same open question for B3Chain
+as it is for Bitcoin and is treated in the project's economics
+notes~\cite{b3chain-securitybudget}.
+
+\paragraph{Algorithm-parameter refresh.} We do not currently plan
+parameter refreshes on a fixed cadence; any future change to
+\texttt{SCRATCH\_BYTES}, \texttt{ITERATIONS}, or \texttt{LANES} is
+a hard fork. A KU15P-targeted v1.2 variant with a 2\,MiB scratchpad
+is reserved in the spec but not scheduled.
+
+\paragraph{Stratum~V2 with Noise XX.} Pool-level identity hardening
+via Stratum~V2~\cite{stratumv2} with Noise XX transport encryption is
+in scope of the external audit. The reference Stratum~V2 pool
+implementation is in
+\texttt{contrib/testnet/pool/src/sv2/}~\cite{b3chain-spec}.
+
+\paragraph{Independent hardware feasibility.} We would value
+independent review from third-party FPGA and ASIC design houses on
+the resource budget in Table~\ref{tab:fpga} and on the
+break-even analysis in~\cite{b3chain-asic}.
+
+% --- 9. Conclusion --------------------------------------------------------
+\section{Conclusion}\label{sec:conclusion}
+
+We described B3PoW-Scratch v1.1, a memory-hard Proof-of-Work built
+on BLAKE3 over a 1\,MiB on-chip-memory-bounded scratchpad with eight
+parallel lanes and 2\,048 sequential RMW iterations per hash. The
+construction is calibrated to make a small on-chip-memory FPGA card
+the most economical production miner at the launch-hashrate regime,
+\emph{not} to claim permanent ASIC resistance. We argued
+preimage and collision resistance inherit from BLAKE3, the
+memory-hardness lower bound is in the same family as that of scrypt
+and Argon2d (and weaker in absolute terms), the verification cost
+is bounded by a per-hash wall-clock budget combined with a
+per-parent pad cache, and the catalogued PoW attack surface
+(time-warp, selfish mining, verification-DoS, low-hashrate
+bootstrap) is mitigated by a combination of inherited Bitcoin Core
+discipline and B3Chain-specific consensus rules. A four-implementation
+in-tree parity gate removes the most common silent-failure mode for
+new PoW launches. The construction is otherwise Bitcoin: the
+remainder of the consensus surface, the wire protocol, and the
+monetary policy are unchanged.
+
+% --- Bibliography ---------------------------------------------------------
+% To match LNCS style at submission time, replace the next line with:
+%   \bibliographystyle{splncs04}
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
