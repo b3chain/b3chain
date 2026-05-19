@@ -45,15 +45,19 @@ incident does not page the operator hundreds of times.
 Execution model (Tier 3 — verify-before-done audit)
 ---------------------------------------------------
 
-TRIGGER:  long-running daemon (`while not _stop`).  Intended to run
+TRIGGER:  long-running daemon (`_Watcher.run()`'s
+          `while not _stop_event.is_set():` body).  Intended to run
           under systemd or a process supervisor; see
           [`doc/security/51-MONITORING-OPS.md`](../../doc/security/51-MONITORING-OPS.md).
 
-LOOP:     `_poll_loop()` below.  One iteration: poll RPC -> compute
-          alerts -> emit -> sleep --interval seconds.  Sleeps
-          --interval, NOT --interval since last cycle, so a slow RPC
-          doesn't burn CPU; sleeps are interruptible by SIGTERM /
-          SIGINT via `_stop_event`.
+LOOP:     `_Watcher.run()` -> `_Watcher.step()`.  `run()` is the
+          explicit `while not _stop_event.is_set(): step();
+          _stop_event.wait(interval)` body; `step()` is one cycle:
+          poll RPC -> compute alerts -> emit -> return.  The sleep
+          uses `Event.wait(interval)` so SIGTERM / SIGINT returns
+          early instead of waiting the full --interval seconds.
+          Sleeps are --interval, NOT --interval since last cycle, so
+          a slow RPC doesn't burn CPU.
 
 BYPASS:   - RPC down                  -> `RpcUnavailable` -> emit
                                          `rpc_down` alert (dedup'd),
