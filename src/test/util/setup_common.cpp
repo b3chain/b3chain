@@ -39,6 +39,7 @@
 #include <streams.h>
 #include <test/util/coverage.h>
 #include <test/util/net.h>
+#include <test/util/pow.h>
 #include <test/util/random.h>
 #include <test/util/transaction_utils.h>
 #include <test/util/txmempool.h>
@@ -410,7 +411,7 @@ CBlock TestChain100Setup::CreateBlock(
     }
     RegenerateCommitments(block, *Assert(m_node.chainman));
 
-    while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, m_node.chainman->GetConsensus())) ++block.nNonce;
+    b3test::MineBlockToTarget(block, m_node.chainman->GetConsensus());
 
     return block;
 }

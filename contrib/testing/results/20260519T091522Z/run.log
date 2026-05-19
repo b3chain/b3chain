@@ -1,0 +1,57 @@
+
+========== [cpp_pow] ctest_pow_tests ==========
+C++ pow_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=pow_tests --log_level=test_suite --color_output=no
+[cpp_pow] ctest_pow_tests -> FAIL (rc=201, 173 ms)
+
+========== [cpp_b3pow_scratch] ctest_b3pow_scratch_tests ==========
+C++ b3pow_scratch_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_scratch_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_scratch] ctest_b3pow_scratch_tests -> FAIL (rc=201, 196 ms)
+
+========== [cpp_b3pow_cache] ctest_b3pow_cache_tests ==========
+C++ b3pow_cache_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_cache_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_cache] ctest_b3pow_cache_tests -> PASS (rc=0, 219 ms)
+
+========== [cpp_crypto] ctest_crypto_tests ==========
+C++ crypto_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=crypto_tests --log_level=test_suite --color_output=no
+[cpp_crypto] ctest_crypto_tests -> PASS (rc=0, 638 ms)
+
+========== [cpp_validation] ctest_validation_tests ==========
+C++ validation_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=validation_tests --log_level=test_suite --color_output=no
+[cpp_validation] ctest_validation_tests -> PASS (rc=0, 217 ms)
+
+========== [phase11_master] phase11_run_all ==========
+Phase 11 master audit (run-all.sh)
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/run-all.sh
+[phase11_master] phase11_run_all -> FAIL (rc=1, 7 ms)
+
+========== [verify_b3pow] verify_b3pow_static ==========
+B3PoW reference verifier (offline vector check)
+command: python3 /mnt/d/b3chain/b3chain/contrib/testing/verify-b3pow.py
+[verify_b3pow] verify_b3pow_static -> PASS (rc=0, 2882 ms)
+
+========== [feature_b3pow] feature_b3pow ==========
+Functional test feature_b3pow.py
+command: python3 /mnt/d/b3chain/b3chain/test/functional/feature_b3pow.py
+[feature_b3pow] feature_b3pow -> PASS (rc=0, 708 ms)
+
+========== [stratum_pool] audit_stratum_pool ==========
+Stratum pool audit
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/audit-stratum-pool.sh
+[stratum_pool] audit_stratum_pool -> FAIL (rc=1, 1563 ms)
+
+========== [stratum_v2] audit_stratum_v2 ==========
+Stratum V2 audit
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/audit-stratum-v2.sh
+[stratum_v2] audit_stratum_v2 -> FAIL (rc=1, 139 ms)
+
+========== [bitcoin_inh] audit_bitcoin_inheritance ==========
+Bitcoin inheritance audit
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/audit-bitcoin-inheritance.sh
+[bitcoin_inh] audit_bitcoin_inheritance -> PASS (rc=0, 7534117 ms)
+/mnt/d/b3chain/b3chain/contrib/testing/tools/run-full-corpus.sh: line 128: syntax error near unexpected token `('
+/mnt/d/b3chain/b3chain/contrib/testing/tools/run-full-corpus.sh: line 128: `run "phase11_master" "phase11_run_all" "Phase 11 master audit (run-all.sh)" -- bash "$REPO_ROOT/contrib/testing/audit/run-all.sh"'

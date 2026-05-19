@@ -5,6 +5,13 @@ SIMD code paths and portable C code paths for the same algorithm must
 produce **byte-identical** output, and a single off-by-one in lane
 loading silently corrupts the chain forever.
 
+> This audit targets the BLAKE3 *primitive*, which is the inner round
+> function used inside B3PoW-Scratch v1.1 (the chain's actual PoW;
+> see [`SPEC.md`](../../../miner/b3miner-rtl/SPEC.md)). The
+> consensus pinning for B3PoW-Scratch itself lives in
+> [`b3pow_consensus_vectors.json`](../../../../src/test/data/b3pow_consensus_vectors.json)
+> and is exercised by `verify-b3pow.py`.
+
 ## The theory
 
 The official BLAKE3 C library has multiple compression-loop

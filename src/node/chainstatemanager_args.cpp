@@ -45,6 +45,13 @@ util::Result<void> ApplyArgsManOptions(const ArgsManager& args, ChainstateManage
         }
     }
 
+    // b3chain M-9 / V-5: emergency-checkpoint stub.  No checkpoints
+    // ship with the binary; this flag is OFF by default.  See
+    // doc/security/RESPONSE-RUNBOOK-51ATTACK.md for when to use it.
+    if (auto value{args.GetArg("-assumevalidcheckpoints")}) {
+        opts.emergency_checkpoints_path = *value;
+    }
+
     if (auto value{args.GetIntArg("-maxtipage")}) opts.max_tip_age = std::chrono::seconds{*value};
 
     ReadDatabaseArgs(args, opts.coins_db);

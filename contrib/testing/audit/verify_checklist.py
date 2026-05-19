@@ -63,8 +63,10 @@ def main() -> int:
         problems.append("missing summary table (no '| Category |' header)")
 
     rows = {}
+    # Accepts IDs like `H-1`, ID ranges like `C-1..C-4`, and the B3PoW
+    # sub-IDs introduced in v1.1: `H-1.1`, `H-1.2`, `H-1.3`.
     row_re = re.compile(
-        r"^\|\s*(?P<id>[A-Z]-\d+(?:\.\.[A-Z]?-?\d+)?)\s*\|.*?\|\s*"
+        r"^\|\s*(?P<id>[A-Z]-\d+(?:\.\d+)?(?:\.\.[A-Z]?-?\d+(?:\.\d+)?)?)\s*\|.*?\|\s*"
         r"`?(?P<status>\[[x!\?\- ]\])`?",
         re.MULTILINE,
     )

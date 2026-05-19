@@ -4,8 +4,11 @@
 
 #include <chain.h>
 #include <chainparams.h>
+#include <crypto/b3pow_cache.h>
+#include <crypto/b3pow_scratch.h>
 #include <pow.h>
 #include <primitives/block.h>
+#include <streams.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
@@ -13,8 +16,12 @@
 #include <util/check.h>
 #include <util/overflow.h>
 
+#include <array>
+#include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -121,4 +128,103 @@ FUZZ_TARGET(pow_transition, .init = initialize_pow)
     auto last_block{blocks.back().get()};
     unsigned int new_nbits{GetNextWorkRequired(last_block, nullptr, consensus_params)};
     Assert(PermittedDifficultyTransition(consensus_params, last_block->nHeight + 1, last_block->nBits, new_nbits));
+}
+
+// ---------------------------------------------------------------------------
+// b3pow_random_header
+// ---------------------------------------------------------------------------
+// Fuzz the B3PoW-Scratch verifier with random (header, prev_block_hash)
+// inputs.  The point is to exercise:
+//
+//   1. The 80-byte header is parsed deterministically and never reads
+//      out-of-bounds (we feed exactly 80 bytes).
+//   2. The cache hit/miss + LRU eviction paths don't crash under
+//      random keys.
+//   3. The wall-clock budget path is exercised both above and below
+//      the per-hash cost, so BudgetExceeded and Pass/Fail are all
+//      reachable.
+//   4. EnableFuzzDeterminism() short-circuits to the cheap oracle in
+//      CheckBlockHeaderPoW -- so this fuzz target finishes a hash in
+//      microseconds, not the ~6 ms real B3PoW would take.  The
+//      `BSAN`/`MSAN`/`ASAN` builds rely on this to stay tractable.
+//
+// We deliberately do NOT shell out to the Python reference in the
+// fuzz harness itself; that integration is wired up as an optional CI
+// job (see plan Part E and `tools/ci/b3pow_python_oracle.py`) which
+// records discrepancies as fuzz inputs for replay here.
+// ---------------------------------------------------------------------------
+FUZZ_TARGET(b3pow_random_header, .init = initialize_pow)
+{
+    FuzzedDataProvider fdp(buffer.data(), buffer.size());
+
+    // 1) Fill an 80-byte header from fuzz input, padding with zeros if
+    //    we ran short.  Treat the raw bytes as the wire serialisation;
+    //    the verifier doesn't care whether the parents/merkle roots
+    //    are well-formed -- only the hash matters.
+    std::array<uint8_t, b3pow::HEADER_BYTES> raw{};
+    const auto sample = fdp.ConsumeBytes<uint8_t>(b3pow::HEADER_BYTES);
+    std::memcpy(raw.data(), sample.data(),
+                std::min(sample.size(), raw.size()));
+
+    // 2) Random prev_block_hash, 32 bytes (drained from fuzz input).
+    uint256 prev_hash;
+    const auto prev_bytes = fdp.ConsumeBytes<uint8_t>(32);
+    if (!prev_bytes.empty()) {
+        std::memcpy(prev_hash.data(), prev_bytes.data(),
+                    std::min(prev_bytes.size(), size_t{32}));
+    }
+
+    // 3) Reconstruct the matching CBlockHeader.  We don't validate the
+    //    deserialisation here (random bytes are valid for the fixed
+    //    80-byte header layout); we just need a CBlockHeader for the
+    //    GetPoWHash() and CheckBlockHeaderPoW() entry points.
+    CBlockHeader header;
+    {
+        DataStream ds{raw};
+        try {
+            ds >> header;
+        } catch (...) {
+            return; // malformed wire bytes; nothing to fuzz
+        }
+    }
+
+    // 4) Exercise the raw b3pow::Hash() API with a random budget.
+    //    Budgets are clamped to a small range so that BudgetExceeded
+    //    is reachable inside fuzz determinism (which short-circuits
+    //    inside CheckBlockHeaderPoW only -- b3pow::Hash itself still
+    //    runs the real loop).
+    {
+        const auto ms = fdp.ConsumeIntegralInRange<int64_t>(0, 200);
+        std::chrono::milliseconds budget{ms};
+        bool exceeded = false;
+        (void)b3pow::Hash(std::span<const uint8_t>{raw}, prev_hash,
+                          budget, exceeded);
+    }
+
+    // 5) Exercise the cached path: insert a small cache, hit it twice
+    //    with the same prev_hash, then with a different one to force
+    //    eviction.
+    {
+        b3pow::Cache cache(/*depth=*/2);
+        auto pad = cache.GetOrBuild(prev_hash);
+        if (pad) {
+            bool exceeded = false;
+            (void)b3pow::Hash(std::span<const uint8_t>{raw}, prev_hash,
+                              pad, std::chrono::milliseconds{0},
+                              exceeded);
+            // Force a second insert to drive LRU.
+            uint256 alt = prev_hash;
+            alt.data()[31] ^= 0xff;
+            (void)cache.GetOrBuild(alt);
+        }
+    }
+
+    // 6) Exercise CheckBlockHeaderPoW end-to-end.  Use a small budget
+    //    so all three PoWResult buckets are reachable.
+    {
+        const Consensus::Params& cparams = Params().GetConsensus();
+        b3pow::Cache cache(/*depth=*/1);
+        const unsigned int nbits = fdp.ConsumeIntegral<unsigned int>();
+        (void)CheckBlockHeaderPoW(header, prev_hash, nbits, cparams, cache);
+    }
 }

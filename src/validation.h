@@ -11,6 +11,7 @@
 #include <chain.h>
 #include <checkqueue.h>
 #include <consensus/amount.h>
+#include <crypto/b3pow_cache.h>
 #include <cuckoocache.h>
 #include <deploymentstatus.h>
 #include <kernel/chain.h>
@@ -18,6 +19,7 @@
 #include <kernel/chainstatemanager_opts.h>
 #include <kernel/cs_main.h> // IWYU pragma: export
 #include <node/blockstorage.h>
+#include <node/emergency_checkpoints.h>
 #include <policy/feerate.h>
 #include <policy/packages.h>
 #include <policy/policy.h>
@@ -384,7 +386,13 @@ public:
 /** Functions for validating blocks and updating the block tree */
 
 /** Context-independent validity checks */
-bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true, bool fCheckMerkleRoot = true);
+bool CheckBlock(const CBlock& block,
+                BlockValidationState& state,
+                const Consensus::Params& consensusParams,
+                const uint256& prev_block_hash,
+                b3pow::Cache& b3pow_cache,
+                bool fCheckPOW = true,
+                bool fCheckMerkleRoot = true);
 
 /**
  * Verify a block, including transactions.
@@ -1037,6 +1045,19 @@ public:
     node::BlockManager m_blockman;
 
     ValidationCache m_validation_cache;
+
+    /** b3chain: B3PoW-Scratch scratchpad cache.  Shared across all
+     *  Chainstate instances (warm/cold) and across all RPC/net worker
+     *  threads -- the cache is internally synchronised.  Sized from
+     *  `consensus.b3pow_cache_depth` at construction (8 entries for
+     *  mainnet/testnet, 1 for regtest after M-6 / F-5 fix). */
+    mutable b3pow::Cache m_b3pow_cache;
+
+    /** b3chain M-9 / V-5: optional emergency-checkpoint set loaded via
+     *  -assumevalidcheckpoints=<path>.  Empty by default; the binary
+     *  ships zero checkpoints.  See doc/security/RESPONSE-RUNBOOK-51ATTACK.md
+     *  for the operational procedure.  See src/node/emergency_checkpoints.h. */
+    node::EmergencyCheckpoints m_emergency_checkpoints;
 
     /**
      * Whether initial block download has ended and IsInitialBlockDownload

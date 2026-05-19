@@ -100,9 +100,22 @@ public:
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
-        consensus.enforce_BIP94 = false;
+        // b3chain F-2 fix (M-2): BIP94 timewarp mitigation is enabled
+        // pre-genesis on mainnet.  See doc/security/B3POW-51-ATTACK-ANALYSIS.md V-3.
+        consensus.enforce_BIP94 = true;
         consensus.fPowNoRetargeting = false;
         consensus.nEarlyDifficultyGuardHeight = 10000; // b3chain: bootstrap difficulty guard
+        // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
+        consensus.b3pow_verify_budget_ms = 50;
+        // b3chain M-6 (F-5 fix): 8-entry total capacity (5 LRU + 3 pinned).
+        // 8 MB resident.  See src/crypto/b3pow_cache.h and V-7 in
+        // doc/security/B3POW-51-ATTACK-ANALYSIS.md.
+        consensus.b3pow_cache_depth = 8;
+        // b3chain M-3 (V-4): LWMA-3 difficulty adjustment.  See src/pow/lwma3.h.
+        consensus.use_lwma3 = true;
+        // b3chain M-4 (F-3): cap reorg depth to bound the blast radius
+        // of any 51% attack.  200 blocks ~ 33 hours at 600s spacing.
+        consensus.max_reorg_depth = 200;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -187,9 +200,17 @@ public:
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
-        consensus.enforce_BIP94 = false;
+        // b3chain F-2 fix (M-2): BIP94 timewarp mitigation enabled on testnet.
+        consensus.enforce_BIP94 = true;
         consensus.fPowNoRetargeting = false;
         consensus.nEarlyDifficultyGuardHeight = 10000; // b3chain: bootstrap difficulty guard
+        // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
+        consensus.b3pow_verify_budget_ms = 50;
+        // b3chain M-6 (F-5 fix): 8-entry total (5 LRU + 3 pinned).
+        consensus.b3pow_cache_depth = 8;
+        // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
+        consensus.use_lwma3 = true;
+        consensus.max_reorg_depth = 200;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -272,9 +293,17 @@ public:
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
+        // Testnet4 already enables BIP94 in upstream Bitcoin (block-storm rule).
         consensus.enforce_BIP94 = true;
         consensus.fPowNoRetargeting = false;
         consensus.nEarlyDifficultyGuardHeight = 10000; // b3chain: bootstrap difficulty guard
+        // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
+        consensus.b3pow_verify_budget_ms = 50;
+        // b3chain M-6 (F-5 fix): 8-entry total (5 LRU + 3 pinned).
+        consensus.b3pow_cache_depth = 8;
+        // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
+        consensus.use_lwma3 = true;
+        consensus.max_reorg_depth = 200;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -386,10 +415,18 @@ public:
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
-        consensus.enforce_BIP94 = false;
+        // b3chain F-2 fix (M-2): BIP94 timewarp mitigation enabled on signet.
+        consensus.enforce_BIP94 = true;
         consensus.fPowNoRetargeting = false;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
+        consensus.b3pow_verify_budget_ms = 50;
+        // b3chain M-6 (F-5 fix): 8-entry total (5 LRU + 3 pinned).
+        consensus.b3pow_cache_depth = 8;
+        // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
+        consensus.use_lwma3 = true;
+        consensus.max_reorg_depth = 200;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -460,6 +497,11 @@ public:
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.enforce_BIP94 = opts.enforce_bip94;
         consensus.fPowNoRetargeting = true;
+        // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
+        // Regtest gets a generous budget and a tiny cache so functional
+        // tests aren't sensitive to CI-runner CPU jitter.
+        consensus.b3pow_verify_budget_ms = 1000;
+        consensus.b3pow_cache_depth = 1;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;

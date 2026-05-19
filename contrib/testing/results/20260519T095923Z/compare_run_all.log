@@ -1,0 +1,69 @@
+
+[1mB3Chain comparative suite (BLAKE3 vs SHA-256)[0m
+results: /mnt/d/b3chain/b3chain/contrib/testing/compare/results/
+
+[1m>>> throughput[0m
+
+Measuring hash throughput (input=80B, duration=3.0s)
+
+  sha256     threads=1   ->      3,979,264 h/s (   251.3 ns/hash)
+  sha256     threads=32  ->      8,616,960 h/s (   116.1 ns/hash)
+  sha256d    threads=1   ->      2,121,045 h/s (   471.5 ns/hash)
+  sha256d    threads=32  ->      3,518,123 h/s (   284.2 ns/hash)
+  blake3     threads=1   ->      3,063,467 h/s (   326.4 ns/hash)
+  blake3     threads=32  ->      5,368,491 h/s (   186.3 ns/hash)
+  blake3d    threads=1   ->      1,814,869 h/s (   551.0 ns/hash)
+  blake3d    threads=32  ->      4,020,907 h/s (   248.7 ns/hash)
+
+  wrote /mnt/d/b3chain/b3chain/contrib/testing/compare/results/pow-throughput-20260519T121439z0000.json
+
+| algorithm | threads | MH/s | ns/hash | vs sha256d (1T) |
+|---|---|---|---|---|
+| sha256 | 1 | 3.98 | 251.3 | 1.88x |
+| sha256 | 32 | 8.62 | 116.1 | 4.06x |
+| sha256d | 1 | 2.12 | 471.5 | 1.00x |
+| sha256d | 32 | 3.52 | 284.2 | 1.66x |
+| blake3 | 1 | 3.06 | 326.4 | 1.44x |
+| blake3 | 32 | 5.37 | 186.3 | 2.53x |
+| blake3d | 1 | 1.81 | 551.0 | 0.86x |
+| blake3d | 32 | 4.02 | 248.7 | 1.90x |
+
+BLAKE3d vs SHA-256d (1 thread):  0.86x
+BLAKE3d vs SHA-256d (32 threads): 1.14x
+  [32mok[0m
+
+[1m>>> block-validation[0m
+  skipping bitcoind: binary not found (set $BITCOIND env var)
+  skipping b3chaind: binary not found (set $B3CHAIND env var)
+
+no daemon successfully measured. Build bitcoind and b3chaind, or set $BITCOIND / $B3CHAIND.
+  [32mok[0m
+
+[1m>>> length-extension[0m
+Length-extension demo: SHA-256 (vulnerable) vs BLAKE3 (immune)
+
+[1] SHA-256  H(secret || msg) MAC
+    secret length:  16 bytes (known to attacker, value secret)
+    message:        b'amount=100&to=alice'
+    appended:       b'&to=mallory&override=true'
+    attack time:    104.5 us
+    forged tag:     82f688f4739cf2128ae7a25eab6a4e5a561d9e366cea5f7d1ae3466c8ae17ed5
+    verifier says:  ACCEPTED (forgery succeeded)
+
+[2] BLAKE3  H(secret || msg) MAC
+    attack time:    0.8 us
+    verifier says:  rejected (expected)
+
+  wrote /mnt/d/b3chain/b3chain/contrib/testing/compare/results/length-extension-20260519T121515z0000.json
+
+| algorithm | attack succeeded? | time |
+|---|---|---|
+| sha256 | YES (forgery) | 104.5 us |
+| blake3 | no | 0.8 us |
+
+
+Takeaway: a naive `tag = H(secret || message)` MAC is forgeable for any Merkle-Damgard hash including SHA-256. BLAKE3's tree construction (plus its dedicated keyed_hash mode) makes the same attack fail by construction. Bitcoin's use of H(H(x)) for block / tx ids does not rely on the secret-prefix MAC pattern, so this demo is about general construction safety, not a Bitcoin vulnerability.
+  [32mok[0m
+
+
+[1m[32mAll comparisons completed.[0m

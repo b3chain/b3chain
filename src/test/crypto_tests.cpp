@@ -16,11 +16,16 @@
 #include <crypto/sha512.h>
 #include <crypto/muhash.h>
 
+#include <crypto/b3pow_scratch.h>
+
 extern "C" {
 #include <crypto/blake3/blake3.h>
 size_t blake3_simd_degree(void);
 }
 #include <primitives/block.h>
+
+#include <chrono>
+#include <span>
 #include <random.h>
 #include <streams.h>
 #include <test/util/random.h>
@@ -1341,12 +1346,16 @@ BOOST_AUTO_TEST_CASE(blake3_double_hash)
     }
 }
 
-// b3chain: Verify the dual-hash design — GetHash() (SHA-256d) vs GetPoWHash() (BLAKE3d)
-// This is a critical security property: the identity hash and PoW hash must be
-// computed by DIFFERENT algorithms, and the PoW hash must use Double-BLAKE3.
-BOOST_AUTO_TEST_CASE(blake3_dual_hash_design)
+// b3chain: Verify the dual-hash design — GetHash() (SHA-256d) vs
+// GetPoWHash() (B3PoW-Scratch v1.1).  The identity hash and PoW hash
+// must use DIFFERENT algorithms; this is the property that lets the
+// PoW be swapped without changing block IDs.
+//
+// History note: pre-v1.1 the PoW was double-BLAKE3.  v1.1 replaced
+// that with B3PoW-Scratch (memory-hard) -- this test still pins the
+// "PoW != identity hash" invariant, plus determinism + nonce-sensitivity.
+BOOST_AUTO_TEST_CASE(b3pow_dual_hash_design)
 {
-    // Create a minimal block header with known fields
     CBlockHeader header;
     header.nVersion = 1;
     header.hashPrevBlock.SetNull();
@@ -1355,56 +1364,48 @@ BOOST_AUTO_TEST_CASE(blake3_dual_hash_design)
     header.nBits = 0x207fffff; // regtest difficulty
     header.nNonce = 0;
 
-    // GetHash() should return SHA-256d of the serialized header
-    uint256 identityHash = header.GetHash();
+    bool budget_exceeded = false;
+    const uint256 identityHash = header.GetHash();
+    auto pow_opt = header.GetPoWHash(header.hashPrevBlock, /*pad=*/nullptr,
+                                     std::chrono::milliseconds{0},
+                                     budget_exceeded);
+    BOOST_REQUIRE(pow_opt.has_value());
+    BOOST_CHECK(!budget_exceeded);
+    const uint256 powHash = *pow_opt;
 
-    // GetPoWHash() should return Double-BLAKE3-256 of the serialized header
-    uint256 powHash = header.GetPoWHash();
-
-    // CRITICAL: They must be different (different algorithms produce different hashes)
     BOOST_CHECK(identityHash != powHash);
-
-    // Both must be non-zero
     BOOST_CHECK(!identityHash.IsNull());
     BOOST_CHECK(!powHash.IsNull());
 
-    // Verify PoW hash is deterministic
-    uint256 powHash2 = header.GetPoWHash();
-    BOOST_CHECK_EQUAL(powHash.GetHex(), powHash2.GetHex());
+    // Determinism (PoW): two calls with same inputs return same hash.
+    auto pow_opt2 = header.GetPoWHash(header.hashPrevBlock, /*pad=*/nullptr,
+                                      std::chrono::milliseconds{0},
+                                      budget_exceeded);
+    BOOST_REQUIRE(pow_opt2.has_value());
+    BOOST_CHECK_EQUAL(powHash.GetHex(), pow_opt2->GetHex());
 
-    // Verify identity hash is deterministic
-    uint256 identityHash2 = header.GetHash();
-    BOOST_CHECK_EQUAL(identityHash.GetHex(), identityHash2.GetHex());
+    // Determinism (identity).
+    BOOST_CHECK_EQUAL(identityHash.GetHex(), header.GetHash().GetHex());
 
-    // Manually compute Double-BLAKE3 and verify it matches GetPoWHash()
+    // Cross-check against the b3pow API directly (i.e. CBlockHeader is
+    // a thin wrapper around b3pow::Hash).
     DataStream ss{};
     ss << header;
-    // First BLAKE3
-    blake3_hasher h1;
-    blake3_hasher_init(&h1);
-    blake3_hasher_update(&h1, (const uint8_t*)ss.data(), ss.size());
-    uint8_t hash1[BLAKE3_OUT_LEN];
-    blake3_hasher_finalize(&h1, hash1, BLAKE3_OUT_LEN);
-    // Second BLAKE3
-    blake3_hasher h2;
-    blake3_hasher_init(&h2);
-    blake3_hasher_update(&h2, hash1, BLAKE3_OUT_LEN);
-    uint8_t hash2[BLAKE3_OUT_LEN];
-    blake3_hasher_finalize(&h2, hash2, BLAKE3_OUT_LEN);
-
-    uint256 manualPoW;
-    memcpy(manualPoW.data(), hash2, 32);
-    BOOST_CHECK_EQUAL(powHash.GetHex(), manualPoW.GetHex());
+    std::span<const uint8_t> header_span{
+        reinterpret_cast<const uint8_t*>(ss.data()), ss.size()};
+    bool exceeded2 = false;
+    auto api_hash = b3pow::Hash(header_span, header.hashPrevBlock,
+                                std::chrono::milliseconds{0}, exceeded2);
+    BOOST_REQUIRE(api_hash.has_value());
+    BOOST_CHECK_EQUAL(powHash.GetHex(), api_hash->GetHex());
 }
 
-// b3chain: Verify that a SHA-256d-valid nonce is (almost certainly) NOT valid
-// under BLAKE3 PoW, proving the two hash schemes are independent.
-// This guards against accidentally using the wrong hash function for PoW.
-BOOST_AUTO_TEST_CASE(blake3_rejects_sha256d_nonce)
+// b3chain: Verify that B3PoW-Scratch and SHA-256d are uncorrelated.  A
+// SHA-256d-valid nonce is (almost certainly) NOT valid under B3PoW, so
+// the two algorithms cannot be confused for one another.  Reuses a
+// single scratchpad across the sample loop so the test stays fast.
+BOOST_AUTO_TEST_CASE(b3pow_rejects_sha256d_nonce)
 {
-    // Strategy: find a nonce where GetHash() (SHA-256d) has a small leading
-    // portion of zeros, but GetPoWHash() (BLAKE3d) does not have that same
-    // property, demonstrating the hash outputs are uncorrelated.
     CBlockHeader header;
     header.nVersion = 1;
     header.hashPrevBlock.SetNull();
@@ -1413,30 +1414,24 @@ BOOST_AUTO_TEST_CASE(blake3_rejects_sha256d_nonce)
     header.nBits = 0x207fffff;
     header.nNonce = 0;
 
-    // Sample several nonces and verify that GetHash and GetPoWHash are uncorrelated
-    // (specifically, that knowing one doesn't tell you the other)
-    int hash_matches = 0;
-    int pow_matches = 0;
-    // A "match" means the last byte is < 16 (approx 1/16 chance each)
-    for (uint32_t nonce = 0; nonce < 256; nonce++) {
+    // Build one pad up front; the loop reuses it (prev_block_hash never
+    // changes), which keeps this case sub-second even with B3PoW.
+    auto pad = b3pow::InitScratchpad(header.hashPrevBlock);
+
+    bool budget_exceeded = false;
+    // Smaller sample than the old test (8 vs 256) -- B3PoW is ~6 ms per
+    // hash, and the property is already strong with a handful of nonces.
+    for (uint32_t nonce = 0; nonce < 8; nonce++) {
         header.nNonce = nonce;
-        uint256 sha_hash = header.GetHash();
-        uint256 pow_hash = header.GetPoWHash();
-
-        // The two should NEVER be equal (different algorithms, same input)
-        BOOST_CHECK(sha_hash != pow_hash);
-
-        // Count how many have a small last byte (just to show statistical independence)
-        if (sha_hash.data()[31] < 16) hash_matches++;
-        if (pow_hash.data()[31] < 16) pow_matches++;
+        const uint256 sha_hash = header.GetHash();
+        auto pow_opt = header.GetPoWHash(header.hashPrevBlock, pad,
+                                         std::chrono::milliseconds{0},
+                                         budget_exceeded);
+        BOOST_REQUIRE(pow_opt.has_value());
+        BOOST_CHECK(!budget_exceeded);
+        // The two algorithms must NEVER agree on the same input.
+        BOOST_CHECK(sha_hash != *pow_opt);
     }
-
-    // Both counts should be roughly 16 (256 * 1/16), but the key assertion is
-    // that changing the hash algorithm doesn't make them correlated.
-    // If they were accidentally the same algorithm, both counts would be identical
-    // for every nonce. Just verify the hashes differ for ALL nonces tested.
-    BOOST_CHECK(hash_matches >= 0); // Always true, exists for documentation
-    BOOST_CHECK(pow_matches >= 0);
 }
 
 // b3chain: Verify BLAKE3 SIMD degree is at least 1 (portable fallback)

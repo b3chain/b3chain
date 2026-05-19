@@ -22,7 +22,10 @@ echo
 # (script_path, audit_id)
 declare -a AUDITS=(
     "audit-supply-cap.py:C-1..C-4"
-    "audit-pow-isolation.py:H-1"
+    "audit-b3pow-isolation.py:H-1"
+    "audit-b3pow-budget.py:H-1.1"
+    "audit-b3pow-cache.py:H-1.2"
+    "audit-b3pow-headers-cap.py:H-1.3"
     "audit-network-isolation.py:N-1"
     "audit-address-rejection.py:W-1"
     "audit-simd-blake3.py:B-1"

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Vardiff } from "../src/stratum/difficulty";
 
 test("vardiff raises diff when shares come too fast", () => {
+    let now = 1_000_000;
     const v = new Vardiff({
         targetSeconds: 10,
         retuneSeconds: 30,
@@ -10,8 +11,7 @@ test("vardiff raises diff when shares come too fast", () => {
         maxDiff: 1_000_000,
         initialDiff: 100,
         maxStep: 4,
-    });
-    let now = 1_000_000;
+    }, now);
     // Submit 30 shares in 30 seconds (1/sec; way too fast vs target 10s).
     for (let i = 0; i < 30; i++) {
         v.onShareAccepted();
@@ -29,7 +29,7 @@ test("vardiff lowers diff when shares are too slow", () => {
         maxDiff: 1_000_000,
         initialDiff: 1000,
         maxStep: 4,
-    });
+    }, 1_000_000);
     // 1 share in 30 seconds (target 10s) -> diff should drop ~3x.
     v.onShareAccepted();
     const next = v.maybeRetune(1_000_000 + 30_000);
@@ -45,7 +45,7 @@ test("vardiff respects minDiff/maxDiff", () => {
         maxDiff: 200,
         initialDiff: 100,
         maxStep: 4,
-    });
+    }, 1_000_000);
     // Burst — should clip at max
     for (let i = 0; i < 1000; i++) v.onShareAccepted();
     const up = v.maybeRetune(1_000_000 + 30_000);
@@ -53,6 +53,7 @@ test("vardiff respects minDiff/maxDiff", () => {
 });
 
 test("vardiff converges within ~10 retunes from constant input", () => {
+    let t = 0;
     const v = new Vardiff({
         targetSeconds: 10,
         retuneSeconds: 30,
@@ -60,8 +61,7 @@ test("vardiff converges within ~10 retunes from constant input", () => {
         maxDiff: 10_000_000,
         initialDiff: 1,
         maxStep: 4,
-    });
-    let t = 0;
+    }, t);
     let lastDiff = v.diff;
     // Simulate a miner that produces a fixed hashrate so the actual share
     // rate = diff_constant / current_diff. Pick a constant such that the

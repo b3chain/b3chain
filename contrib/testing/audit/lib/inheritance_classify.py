@@ -36,8 +36,9 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 
 EXPECTED_DIVERGENCE_UNIT = {
-    # PoW algorithm: Bitcoin tests SHA-256d-as-PoW; B3Chain uses BLAKE3d.
-    "pow_tests": "PoW algo replaced with BLAKE3d (covered by audit-pow-isolation.py)",
+    # PoW algorithm: Bitcoin tests SHA-256d-as-PoW; B3Chain uses
+    # B3PoW-Scratch v1.1 (memory-hard BLAKE3 variant).
+    "pow_tests": "PoW algo replaced with B3PoW-Scratch v1.1 (covered by audit-b3pow-isolation.py)",
     # Address keys are technically still tested (key derivation works), but
     # any literal Bitcoin address vector is expected to fail decode on B3Chain.
     # We surface the test name; the runner will only count it as "diverged"

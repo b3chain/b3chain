@@ -12,6 +12,7 @@
 #include <node/miner.h>
 #include <pow.h>
 #include <test/util/blockfilter.h>
+#include <test/util/pow.h>
 #include <test/util/setup_common.h>
 #include <validation.h>
 
@@ -87,7 +88,7 @@ CBlock BuildChainTestingSetup::CreateBlock(const CBlockIndex* prev,
         block.hashMerkleRoot = BlockMerkleRoot(block);
     }
 
-    while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, m_node.chainman->GetConsensus())) ++block.nNonce;
+    b3test::MineBlockToTarget(block, m_node.chainman->GetConsensus());
 
     return block;
 }

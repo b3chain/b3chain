@@ -30,7 +30,10 @@ from pathlib import Path
 # HTML page basename (without .html).
 TUTORIAL_TO_PAGE = {
     "audit-supply-cap":         "audit-supply-cap",
-    "audit-pow-isolation":      "audit-pow-isolation",
+    # B3PoW-Scratch v1.1 rename: the tutorial moved to
+    # `audit-b3pow-isolation.md` but the website page kept its
+    # historical filename so external links resolve.
+    "audit-b3pow-isolation":    "audit-pow-isolation",
     "audit-network-isolation":  "audit-network-isolation",
     "audit-address-rejection":  "audit-address-rejection",
     "audit-simd-blake3":        "audit-simd-blake3",

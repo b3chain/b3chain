@@ -33,6 +33,16 @@ target/
 /.audit-stratum-pool-last-run/
 /.audit-stratum-v2-last-run/
 
+# Bitcoin-inheritance audit per-host logs (multi-MB ctest + functional
+# stdout dumps produced by contrib/testing/audit/audit-bitcoin-
+# inheritance.sh).  The summary JSON is committed under
+# contrib/testing/results/<utc-timestamp>/.
+/.inheritance-logs/
+
+# Per-script audit log directories created by individual Phase 11
+# audits when they need a scratch location.
+contrib/testing/audit/results/
+
 # Windows test UI / live mining dashboard (created by
 # contrib/miner/tests/run_tests_ui.bat).
 contrib/miner/tests/.venv/

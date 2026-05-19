@@ -87,6 +87,18 @@ public:
         //! Number of headers sent in one getheaders message result (this is
         //! a test-only option).
         uint32_t max_headers_result{MAX_HEADERS_RESULTS};
+        //! b3chain M-8 (V-10): if true, require that at least
+        //! `paranoid_headers_quorum` distinct peers have all delivered the
+        //! exact same tip header before we commit it to the block index
+        //! via ProcessNewBlockHeaders.  Defeats eclipse attacks that
+        //! feed a victim a fabricated header chain.  OFF by default; set
+        //! via `-paranoid-headers-sync`.  See
+        //! doc/security/B3POW-51-ATTACK-ANALYSIS.md V-10.
+        bool paranoid_headers_sync{false};
+        //! Quorum size for the above.  3 is the smallest value that
+        //! materially raises the cost of an eclipse (attacker needs to
+        //! displace 3 honest connections, not 1).
+        uint32_t paranoid_headers_quorum{3};
     };
 
     static std::unique_ptr<PeerManager> make(CConnman& connman, AddrMan& addrman,

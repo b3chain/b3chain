@@ -2400,7 +2400,20 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // is enforced in ContextualCheckBlockHeader(); we wouldn't want to
     // re-enforce that rule here (at least until we make it impossible for
     // the clock to go backward).
-    if (!CheckBlock(block, state, params.GetConsensus(), !fJustCheck, !fJustCheck)) {
+    // Compute hashPrevBlock here (moved up from below) -- B3PoW needs it
+    // for the pad-init / cache key.
+    uint256 hashPrevBlock = pindex->pprev == nullptr ? uint256() : pindex->pprev->GetBlockHash();
+
+    // b3chain: the genesis block is hard-coded in chainparams.cpp with
+    // a fixed nonce that pre-dates B3PoW-Scratch v1.1.  Re-mining it
+    // would change the chain ID; instead we accept the genesis as-is
+    // and only enforce PoW for height >= 1.  This matches the existing
+    // genesis skip just below (which skips coinbase processing).
+    const bool is_genesis = (block.GetHash() == params.GetConsensus().hashGenesisBlock);
+    if (!CheckBlock(block, state, params.GetConsensus(), hashPrevBlock,
+                    m_chainman.m_b3pow_cache,
+                    /*fCheckPOW=*/!fJustCheck && !is_genesis,
+                    !fJustCheck)) {
         if (state.GetResult() == BlockValidationResult::BLOCK_MUTATED) {
             // We don't write down blocks to disk if they may have been
             // corrupted, so this should be impossible unless we're having hardware
@@ -2412,7 +2425,6 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     }
 
     // verify that the view's current state corresponds to the previous block
-    uint256 hashPrevBlock = pindex->pprev == nullptr ? uint256() : pindex->pprev->GetBlockHash();
     assert(hashPrevBlock == view.GetBestBlock());
 
     m_chainman.num_blocks_total++;
@@ -2987,6 +2999,25 @@ void Chainstate::UpdateTip(const CBlockIndex* pindexNew)
     }
     UpdateTipLog(m_chainman, coins_tip, pindexNew, __func__, "",
                  util::Join(warning_messages, Untranslated(", ")).original);
+
+    // b3chain M-6 (F-5 fix): pin the pad for the new tip and its two
+    // ancestors into the b3pow cache so a header flood from a hostile
+    // peer cannot evict them.  See doc/security/B3POW-51-ATTACK-ANALYSIS.md
+    // V-7.  The pin count is bounded by
+    // b3pow::Cache::kDefaultPinnedCapacity (3); the cache demotes the
+    // oldest pinned entry on overflow, so we don't need to explicitly
+    // Unpin() the now-3rd-most-recent ancestor.
+    {
+        const CBlockIndex* w = pindexNew;
+        for (int i = 0; i < 3 && w != nullptr; ++i, w = w->pprev) {
+            // The b3pow scratchpad is keyed by prev_block_hash, i.e. the
+            // PARENT of the block being mined/verified.  So pinning the
+            // pad that mined `w` means pinning the hash of `w->pprev`.
+            if (w->pprev != nullptr) {
+                m_chainman.m_b3pow_cache.Pin(w->pprev->GetBlockHash());
+            }
+        }
+    }
 }
 
 /** Disconnect m_chain's tip.
@@ -3921,13 +3952,39 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
-static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
+static bool CheckBlockHeader(const CBlockHeader& block,
+                             BlockValidationState& state,
+                             const Consensus::Params& consensusParams,
+                             bool fCheckPOW,
+                             const uint256& prev_block_hash,
+                             b3pow::Cache& b3pow_cache,
+                             HeaderDepth header_depth = HeaderDepth::Tip)
 {
-    // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+    if (!fCheckPOW) return true;
 
-    return true;
+    // b3chain: B3PoW-Scratch v1.1 verification (Finding 4 mitigations).
+    //
+    // The pre-checks inside CheckBlockHeaderPoW (DeriveTarget) cheaply
+    // reject out-of-range nBits before we touch the 1 MB scratchpad.
+    // The B3PoW work itself is bounded by `b3pow_verify_budget_ms`
+    // (50 ms mainnet, 1000 ms regtest), further scaled down by
+    // `header_depth` (M-7 / V-9).  Overruns surface BLOCK_POW_BUDGET
+    // which net_processing routes to Misbehaving.
+    switch (CheckBlockHeaderPoW(block, prev_block_hash, block.nBits,
+                                consensusParams, b3pow_cache,
+                                header_depth)) {
+    case PoWResult::Pass:
+        return true;
+    case PoWResult::BudgetExceeded:
+        return state.Invalid(BlockValidationResult::BLOCK_POW_BUDGET,
+                             "b3pow-budget-exceeded",
+                             "B3PoW verifier exceeded wall-clock budget");
+    case PoWResult::Fail:
+    default:
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER,
+                             "high-hash",
+                             "proof of work failed");
+    }
 }
 
 static bool CheckMerkleRoot(const CBlock& block, BlockValidationState& state)
@@ -4011,7 +4068,13 @@ static bool CheckWitnessMalleation(const CBlock& block, bool expect_witness_comm
     return true;
 }
 
-bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW, bool fCheckMerkleRoot)
+bool CheckBlock(const CBlock& block,
+                BlockValidationState& state,
+                const Consensus::Params& consensusParams,
+                const uint256& prev_block_hash,
+                b3pow::Cache& b3pow_cache,
+                bool fCheckPOW,
+                bool fCheckMerkleRoot)
 {
     // These are checks that are independent of context.
 
@@ -4020,7 +4083,8 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
 
     // Check that the header is valid (particularly PoW).  This is mostly
     // redundant with the call in AcceptBlockHeader.
-    if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
+    if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW,
+                          prev_block_hash, b3pow_cache))
         return false;
 
     // Signet only: check block solution
@@ -4119,8 +4183,21 @@ std::vector<unsigned char> ChainstateManager::GenerateCoinbaseCommitment(CBlock&
 
 bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams)
 {
+    // b3chain (Finding 4 / D1 pre-check leg): this is the cheap
+    // pre-check called before any B3PoW work happens.  Running the
+    // full PoW hash here for 2000 headers would cost ~100 seconds and
+    // make the headers-sync fastpath unusable.
+    //
+    // Instead we verify only that each header's nBits decodes into a
+    // valid target inside powLimit.  An adversary can still fabricate
+    // 2000 headers with valid nBits but invalid PoW; those are caught
+    // later by CheckBlockHeader (with cache + per-batch cap) inside
+    // AcceptBlockHeader, and the peer is demoted via Misbehaving on
+    // the first failure.
     return std::all_of(headers.cbegin(), headers.cend(),
-            [&](const auto& header) { return CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams);});
+        [&](const auto& header) {
+            return DeriveTarget(header.nBits, consensusParams.powLimit).has_value();
+        });
 }
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
@@ -4303,12 +4380,10 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
             return true;
         }
 
-        if (!CheckBlockHeader(block, state, GetConsensus())) {
-            LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
-            return false;
-        }
-
-        // Get prev block index
+        // b3chain: resolve the parent FIRST (cheap hash-map lookup) so
+        // that a peer who spams unknown-parent headers cannot force us
+        // to spend ~50 ms per header on B3PoW before we reject it
+        // (Finding 4 / cheap-pre-check leg).
         CBlockIndex* pindexPrev = nullptr;
         BlockMap::iterator mi{m_blockman.m_block_index.find(block.hashPrevBlock)};
         if (mi == m_blockman.m_block_index.end()) {
@@ -4320,9 +4395,55 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
             LogDebug(BCLog::VALIDATION, "header %s has prev block invalid: %s\n", hash.ToString(), block.hashPrevBlock.ToString());
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
         }
+        // b3chain M-7 (V-9): pick a verifier budget appropriate for the
+        // depth of this header below the active tip.  Stale-fork
+        // headers cost the network less CPU per attacker header.  IBD
+        // always uses Tip (because the "active tip" is effectively the
+        // header we're processing).
+        HeaderDepth header_depth = HeaderDepth::Tip;
+        if (!IsInitialBlockDownload()) {
+            const CBlockIndex* tip = ActiveChain().Tip();
+            if (tip != nullptr) {
+                const int proposed_height = pindexPrev->nHeight + 1;
+                const int depth = tip->nHeight - proposed_height;
+                if (depth > 100)      header_depth = HeaderDepth::Deep;
+                else if (depth > 6)   header_depth = HeaderDepth::Recent;
+                else                  header_depth = HeaderDepth::Tip;
+            }
+        }
+
+        // Now run the expensive PoW check with the resolved parent.
+        if (!CheckBlockHeader(block, state, GetConsensus(),
+                              /*fCheckPOW=*/true,
+                              pindexPrev->GetBlockHash(),
+                              m_b3pow_cache,
+                              header_depth)) {
+            LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
+            return false;
+        }
         if (!ContextualCheckBlockHeader(block, state, m_blockman, *this, pindexPrev)) {
             LogDebug(BCLog::VALIDATION, "%s: Consensus::ContextualCheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
             return false;
+        }
+        // b3chain M-9 / V-5: emergency-checkpoint enforcement.  No-op
+        // when m_emergency_checkpoints is empty (the default).  Loaded
+        // checkpoints are operator-supplied; see
+        // doc/security/RESPONSE-RUNBOOK-51ATTACK.md.
+        if (!m_emergency_checkpoints.Empty()) {
+            const int proposed_height = pindexPrev->nHeight + 1;
+            if (!m_emergency_checkpoints.Matches(proposed_height, hash)) {
+                const auto expected = m_emergency_checkpoints.AtHeight(proposed_height);
+                LogError(
+                    "%s: block %s (height %d) violates emergency checkpoint "
+                    "(expected %s); rejecting as checkpoint-mismatch",
+                    __func__, hash.ToString(), proposed_height,
+                    expected ? expected->ToString() : std::string{"<none>"});
+                return state.Invalid(
+                    BlockValidationResult::BLOCK_CHECKPOINT,
+                    "checkpoint-mismatch",
+                    strprintf("expected hash at height %d differs",
+                              proposed_height));
+            }
         }
     }
     if (!min_pow_checked) {
@@ -4446,7 +4567,64 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
 
     const CChainParams& params{GetParams()};
 
-    if (!CheckBlock(block, state, params.GetConsensus()) ||
+    // b3chain M-4 (F-3 fix): cap reorg depth.
+    //
+    // Reject any candidate block that, if accepted, would force a
+    // reorganisation of more than `consensus.max_reorg_depth` blocks
+    // below the active tip.  Bounds the blast radius of a 51% reorg
+    // (see doc/security/B3POW-51-ATTACK-ANALYSIS.md V-5 and M-4).
+    //
+    // Bypass paths (explicitly enumerated, all checked):
+    //   1. max_reorg_depth == 0   -> cap disabled (regtest).
+    //   2. IBD                    -> cap relaxed to 10x to avoid
+    //                                tripping during chain catch-up.
+    //   3. assumevalid below this -> the block's pindex is an ancestor
+    //                                of assumevalid; we accept it because
+    //                                we're trusting the assumevalid hash.
+    //                                Handled implicitly by hashAssumeValid
+    //                                in ContextualCheckBlockHeader, but we
+    //                                also short-circuit here by checking
+    //                                pindex's nStatus.
+    //
+    // Logic: a reorg would happen iff the new block's parent is NOT on
+    // the active chain (or is on the active chain but ancestor-of-tip
+    // is more than max_reorg_depth behind tip).  The simpler proxy:
+    // pindex->nHeight + max_reorg_depth < ActiveHeight().  If true, the
+    // candidate's height is so far below tip that accepting it would
+    // require a reorg deeper than the cap.
+    //
+    // We deliberately apply this AFTER fAlreadyHave / fRequested gating
+    // so that previously-accepted blocks on the active chain are not
+    // re-rejected (they've already passed earlier checks).
+    const auto max_reorg_depth = params.GetConsensus().max_reorg_depth;
+    if (max_reorg_depth > 0 && !IsInitialBlockDownload()) {
+        const CBlockIndex* tip = ActiveTip();
+        if (tip != nullptr) {
+            // pindex is the new block we're considering accepting.  If
+            // pindex is NOT on the active chain (its ancestor chain
+            // diverges below tip - max_reorg_depth), reject.
+            const CBlockIndex* fork = ActiveChain().FindFork(pindex);
+            if (fork != nullptr &&
+                fork->nHeight + max_reorg_depth < tip->nHeight) {
+                LogError(
+                    "%s: block %s (height %d) would require a reorg of %d "
+                    "blocks (cap=%d), rejecting as deep-reorg-attempt",
+                    __func__, pindex->GetBlockHash().ToString(),
+                    pindex->nHeight, tip->nHeight - fork->nHeight,
+                    max_reorg_depth);
+                state.Invalid(BlockValidationResult::BLOCK_DEEP_REORG,
+                              "deep-reorg-attempt",
+                              strprintf("reorg depth %d > cap %d",
+                                        tip->nHeight - fork->nHeight,
+                                        max_reorg_depth));
+                return false;
+            }
+        }
+    }
+
+    const uint256 prev_block_hash_for_check = pindex->pprev ? pindex->pprev->GetBlockHash() : uint256();
+    if (!CheckBlock(block, state, params.GetConsensus(),
+                    prev_block_hash_for_check, m_b3pow_cache) ||
         !ContextualCheckBlock(block, state, *this, pindex->pprev)) {
         if (Assume(state.IsInvalid())) {
             ActiveChainstate().InvalidBlockFound(pindex, state);
@@ -4512,7 +4690,11 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
         // malleability that cause CheckBlock() to fail; see e.g. CVE-2012-2459 and
         // https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-February/016697.html.  Because CheckBlock() is
         // not very expensive, the anti-DoS benefits of caching failure (of a definitely-invalid block) are not substantial.
-        bool ret = CheckBlock(*block, state, GetConsensus());
+        // The parent block hash is naturally `block->hashPrevBlock` as
+        // claimed by the miner; CheckBlockHeaderPoW will reject the
+        // header if the actual PoW doesn't match.
+        bool ret = CheckBlock(*block, state, GetConsensus(),
+                              block->hashPrevBlock, m_b3pow_cache);
         if (ret) {
             // Store to disk
             ret = AcceptBlock(block, state, &pindex, force_processing, nullptr, new_block, min_pow_checked);
@@ -4579,7 +4761,10 @@ BlockValidationState TestBlockValidity(
     }
 
     // For signets CheckBlock() verifies the challenge iff fCheckPow is set.
-    if (!CheckBlock(block, state, chainstate.m_chainman.GetConsensus(), /*fCheckPow=*/check_pow, /*fCheckMerkleRoot=*/check_merkle_root)) {
+    if (!CheckBlock(block, state, chainstate.m_chainman.GetConsensus(),
+                    /*prev_block_hash=*/tip->GetBlockHash(),
+                    chainstate.m_chainman.m_b3pow_cache,
+                    /*fCheckPow=*/check_pow, /*fCheckMerkleRoot=*/check_merkle_root)) {
         // This should never happen, but belt-and-suspenders don't approve the
         // block if it does.
         if (state.IsValid()) NONFATAL_UNREACHABLE();
@@ -4746,7 +4931,10 @@ VerifyDBResult CVerifyDB::VerifyDB(
             return VerifyDBResult::CORRUPTED_BLOCK_DB;
         }
         // check level 1: verify block validity
-        if (nCheckLevel >= 1 && !CheckBlock(block, state, consensus_params)) {
+        const uint256 prev_hash_for_verifydb = pindex->pprev ? pindex->pprev->GetBlockHash() : uint256();
+        if (nCheckLevel >= 1 && !CheckBlock(block, state, consensus_params,
+                                            prev_hash_for_verifydb,
+                                            chainstate.m_chainman.m_b3pow_cache)) {
             LogPrintf("Verification error: found bad block at %d, hash=%s (%s)\n",
                       pindex->nHeight, pindex->GetBlockHash().ToString(), state.ToString());
             return VerifyDBResult::CORRUPTED_BLOCK_DB;
@@ -6271,8 +6459,34 @@ ChainstateManager::ChainstateManager(const util::SignalInterrupt& interrupt, Opt
       m_interrupt{interrupt},
       m_options{Flatten(std::move(options))},
       m_blockman{interrupt, std::move(blockman_options)},
-      m_validation_cache{m_options.script_execution_cache_bytes, m_options.signature_cache_bytes}
+      m_validation_cache{m_options.script_execution_cache_bytes, m_options.signature_cache_bytes},
+      m_b3pow_cache{
+          // Total resident capacity from consensus.b3pow_cache_depth.
+          static_cast<size_t>(
+              m_options.chainparams.GetConsensus().b3pow_cache_depth > 0
+                  ? m_options.chainparams.GetConsensus().b3pow_cache_depth
+                  : 1),
+          // b3chain M-6 (F-5 fix): reserve 3 slots for tip + 2 ancestors.
+          // Clamped to depth-1 internally so the LRU tier always has >=1
+          // slot.  See src/crypto/b3pow_cache.h.
+          b3pow::Cache::kDefaultPinnedCapacity}
 {
+    // b3chain M-9 / V-5: emergency-checkpoint stub.  Load if a path
+    // was provided via -assumevalidcheckpoints; the binary ships with
+    // ZERO checkpoints, so this is OFF by default.  Load failures
+    // are logged but non-fatal: the operator can correct the file
+    // and restart.  See src/node/emergency_checkpoints.h.
+    if (!m_options.emergency_checkpoints_path.empty()) {
+        std::string err;
+        if (!m_emergency_checkpoints.LoadFromFile(
+                m_options.emergency_checkpoints_path, err)) {
+            LogWarning(
+                "EmergencyCheckpoints: failed to load %s: %s.  Continuing without "
+                "checkpoints; correct the file and restart to enable.\n",
+                m_options.emergency_checkpoints_path, err);
+            m_emergency_checkpoints.Clear();
+        }
+    }
 }
 
 ChainstateManager::~ChainstateManager()

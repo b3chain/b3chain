@@ -7,6 +7,7 @@
 #include <consensus/params.h>
 #include <headerssync.h>
 #include <pow.h>
+#include <test/util/pow.h>
 #include <test/util/setup_common.h>
 #include <validation.h>
 #include <vector>
@@ -28,9 +29,7 @@ struct HeadersGeneratorSetup : public RegTestingSetup {
 
 void HeadersGeneratorSetup::FindProofOfWork(CBlockHeader& starting_header)
 {
-    while (!CheckProofOfWork(starting_header.GetPoWHash(), starting_header.nBits, Params().GetConsensus())) {
-        ++(starting_header.nNonce);
-    }
+    b3test::MineHeaderToTarget(starting_header, Params().GetConsensus());
 }
 
 void HeadersGeneratorSetup::GenerateHeaders(std::vector<CBlockHeader>& headers,

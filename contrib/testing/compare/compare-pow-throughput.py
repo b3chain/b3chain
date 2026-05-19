@@ -3,12 +3,18 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
-Hash throughput comparison: SHA-256 / SHA-256d  vs  BLAKE3 / BLAKE3d.
+Hash *primitive* throughput comparison: SHA-256 / SHA-256d vs BLAKE3 / BLAKE3d.
 
-For each algorithm, hash an 80-byte input (Bitcoin block-header size) in a
-tight loop for a fixed wall-time window, single-threaded then n-threaded.
-Records hashes/sec, ns/hash, and the speedup vs SHA-256d (the Bitcoin PoW
-reference).
+This measures the inner round-function throughput. It is NOT a
+measurement of the chain's actual PoW (B3PoW-Scratch v1.1), which is
+memory-hard - see
+[`compare-b3pow-vs-sha256d.md`](compare-b3pow-vs-sha256d.md) for the
+PoW-level comparison and
+[`SPEC.md`](../../miner/b3miner-rtl/SPEC.md) for the algorithm.
+
+For each algorithm, hash an 80-byte input (Bitcoin block-header size)
+in a tight loop for a fixed wall-time window, single-threaded then
+n-threaded. Records hashes/sec, ns/hash, and the speedup vs SHA-256d.
 
 Outputs:
   - markdown table on stdout

@@ -24,6 +24,7 @@
 #include <node/miner.h>
 #include <node/warnings.h>
 #include <policy/ephemeral_policy.h>
+#include <crypto/b3pow_scratch.h>
 #include <pow.h>
 #include <rpc/blockchain.h>
 #include <rpc/mining.h>
@@ -139,7 +140,19 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetPoWHash(), block.nBits, chainman.GetConsensus()) && !chainman.m_interrupt) {
+    // b3chain: B3PoW-Scratch v1.1 nonce loop.  We build the 1 MB
+    // scratchpad once (~5 ms) for `block.hashPrevBlock` and reuse it
+    // across all nonces in the search.  Budget is set to 0 to disable
+    // the verifier guard (mining is intentionally CPU-bound).
+    const auto pad = b3pow::InitScratchpad(block.hashPrevBlock);
+    bool budget_exceeded = false;
+    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !chainman.m_interrupt) {
+        auto pow_hash_opt = block.GetPoWHash(block.hashPrevBlock, pad,
+                                             std::chrono::milliseconds{0},
+                                             budget_exceeded);
+        if (pow_hash_opt && CheckProofOfWork(*pow_hash_opt, block.nBits, chainman.GetConsensus())) {
+            break;
+        }
         ++block.nNonce;
         --max_tries;
     }

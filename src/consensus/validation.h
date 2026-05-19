@@ -63,7 +63,43 @@ enum class BlockValidationResult {
     BLOCK_MISSING_PREV,      //!< We don't have the previous block the checked one is built on
     BLOCK_INVALID_PREV,      //!< A block this one builds on is invalid
     BLOCK_TIME_FUTURE,       //!< block timestamp was > 2 hours in the future (or our clock is bad)
-    BLOCK_HEADER_LOW_WORK    //!< the block header may be on a too-little-work chain
+    BLOCK_HEADER_LOW_WORK,   //!< the block header may be on a too-little-work chain
+    /**
+     * b3chain: B3PoW-Scratch v1.1 verifier exceeded its wall-clock
+     * budget while hashing this header.  The header has *not* been
+     * proven invalid (we never finished computing its pow_hash), but
+     * we treat it as such for consensus and additionally punish the
+     * peer that supplied it (see Finding 4 / D1 -- net_processing.cpp
+     * routes this to Misbehaving).
+     */
+    BLOCK_POW_BUDGET,
+    /**
+     * b3chain M-4 (F-3 fix): the block proposes a reorg of more than
+     * `consensus.max_reorg_depth` blocks below the active tip.
+     * Rejected to bound the blast radius of 51%-attack reorganisations
+     * (see doc/security/B3POW-51-ATTACK-ANALYSIS.md V-5).  Routed by
+     * net_processing.cpp to Misbehaving("deep-reorg-attempt").
+     *
+     * Bypass paths:
+     *   - IBD (`fIBD = true`): cap is effectively bypassed because we
+     *     are still catching up to the network's view of history.
+     *   - assumevalid: blocks at or below the assumevalid checkpoint
+     *     are unconditionally accepted, so the cap does not apply to
+     *     them.
+     *   - regtest (max_reorg_depth = 0): cap disabled to keep existing
+     *     functional tests unaffected.
+     */
+    BLOCK_DEEP_REORG,
+    /**
+     * b3chain M-9 / V-5: the block proposes a hash at a height covered
+     * by the operator-loaded emergency-checkpoint set that differs from
+     * the checkpointed hash.  Empty by default (binary ships zero
+     * checkpoints); only set when `-assumevalidcheckpoints=<path>` is
+     * passed.  See doc/security/RESPONSE-RUNBOOK-51ATTACK.md and
+     * src/node/emergency_checkpoints.h.  Routed by net_processing to
+     * Misbehaving("checkpoint-mismatch").
+     */
+    BLOCK_CHECKPOINT,
 };
 
 

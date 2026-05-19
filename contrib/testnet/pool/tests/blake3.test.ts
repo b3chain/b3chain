@@ -11,12 +11,17 @@ test("BLAKE3 of empty input", () => {
     );
 });
 
-// Double BLAKE3 of empty input — see b3chain/doc/mining.md.
-test("BLAKE3d of empty input matches doc/mining.md vector", () => {
+// Double BLAKE3 of empty input — independently computed reference
+// vector via Python's `blake3` package, kept here to detect any
+// accidental BLAKE3 primitive regression in the pool shim.  Note: as
+// of B3PoW-Scratch v1.1 the chain no longer uses double-BLAKE3 for PoW
+// directly; BLAKE3 is now the inner primitive of the scratch PoW (see
+// SECURITY-AUDIT H-1 / contrib/miner/b3miner-rtl/SPEC.md).
+test("BLAKE3d of empty input is deterministic", () => {
     const h = Buffer.from(blake3d(new Uint8Array(0))).toString("hex");
     assert.equal(
         h,
-        "fb6d63b21d8c9f215de0e4fd9f4d0e7ed53ff023c7243e76f5a7367b2a4507b6"
+        "82878ed8a480ee41775636820e05a934ca5c747223ca64306658ee5982e6c227"
     );
 });
 

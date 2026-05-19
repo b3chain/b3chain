@@ -13,6 +13,7 @@
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
 #include <test/util/net.h>
+#include <test/util/pow.h>
 #include <test/util/script.h>
 #include <test/util/setup_common.h>
 #include <test/util/time.h>
@@ -145,9 +146,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const uint256& pre
 
 void FinalizeHeader(CBlockHeader& header, const ChainstateManager& chainman)
 {
-    while (!CheckProofOfWork(header.GetPoWHash(), header.nBits, chainman.GetParams().GetConsensus())) {
-        ++(header.nNonce);
-    }
+    b3test::MineHeaderToTarget(header, chainman.GetParams().GetConsensus());
 }
 
 // Global setup works for this test as state modification (specifically in the

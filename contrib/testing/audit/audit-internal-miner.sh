@@ -5,7 +5,8 @@
 #
 # Phase 6.1 verifier — proves the internal miner (regtest/testnet
 # generatetoaddress / generatetodescriptor / generateblock) computes
-# proof-of-work using GetPoWHash() (BLAKE3d), not GetHash() (SHA-256d).
+# proof-of-work using GetPoWHash() (B3PoW-Scratch v1.1), not GetHash()
+# (SHA-256d).  See contrib/miner/b3miner-rtl/SPEC.md for the PoW spec.
 #
 # Runs every check from doc/PHASE-6-VERIFICATION.md, rewrites the status
 # column of that file in place, and exits non-zero on any failure.
@@ -103,24 +104,32 @@ do_static_checks() {
     echo "${C_BOLD}Static checks (source-only, no daemon)${C_NC}"
     echo
 
-    # M-1a: comment-step "use GetPoWHash()" maps to a concrete code line in
-    # the internal miner's nonce loop.
-    run_static "M-1a" "comment-mapping: GenerateBlock() loop calls CheckProofOfWork(block.GetPoWHash(), ...)" \
-        "grep -c 'CheckProofOfWork(block\\.GetPoWHash()' src/rpc/mining.cpp" \
+    # M-1a: comment-step "use GetPoWHash() with a B3PoW pad" maps to a
+    # concrete code line in the internal miner's nonce loop.  v1.1
+    # nonce loop calls block.GetPoWHash(block.hashPrevBlock, pad, ...).
+    run_static "M-1a" "comment-mapping: GenerateBlock() loop calls block.GetPoWHash(block.hashPrevBlock, pad, ...)" \
+        "grep -c 'block\\.GetPoWHash(block\\.hashPrevBlock' src/rpc/mining.cpp" \
+        eq 1
+
+    # M-1a.2: GenerateBlock() initialises the 1 MB scratchpad exactly
+    # once (outside the nonce loop) via b3pow::InitScratchpad.
+    run_static "M-1a.2" "comment-mapping: GenerateBlock() calls b3pow::InitScratchpad once" \
+        "grep -c 'b3pow::InitScratchpad' src/rpc/mining.cpp" \
         eq 1
 
     # M-1b: a while loop in GenerateBlock() increments block.nNonce until the
     # PoW check passes. We extract just the GenerateBlock function body and
-    # count the two characteristic lines (the while header and the ++nNonce).
+    # count the characteristic lines (the GetPoWHash call and the ++nNonce).
     run_static "M-1b" "loop-location: while-loop + ++nNonce inside GenerateBlock()" \
-        "awk '/^static bool GenerateBlock/,/^\\}/' src/rpc/mining.cpp | grep -cE 'while.*GetPoWHash|\\+\\+block\\.nNonce'" \
+        "awk '/^static bool GenerateBlock/,/^\\}/' src/rpc/mining.cpp | grep -cE 'GetPoWHash\\(block\\.hashPrevBlock|\\+\\+block\\.nNonce'" \
         ge 2
 
     # M-1c: every production CheckProofOfWork() call site outside pow.{cpp,h}
     # plumbing and outside test/ (synthetic-hash fuzz inputs) passes a value
-    # derived from GetPoWHash().
+    # derived from GetPoWHash().  *pow_hash_opt is the v1.1 idiom (the
+    # optional returned by GetPoWHash()).
     run_static "M-1c" "bypass-paths: 0 production call sites use a non-PoW hash" \
-        "grep -RnE 'CheckProofOfWork\\(' src/ --include='*.cpp' --include='*.h' | grep -vE '^src/(pow\\.(cpp|h)|test/)' | grep -vE 'GetPoWHash|pow_hash|powhash' | wc -l" \
+        "grep -RnE 'CheckProofOfWork\\(' src/ --include='*.cpp' --include='*.h' | grep -vE '^src/(pow\\.(cpp|h)|test/)' | grep -vE 'GetPoWHash|pow_hash|powhash|\\*pow_opt|\\*pow_hash_opt' | wc -l" \
         eq 0
 }
 
@@ -129,7 +138,7 @@ do_static_checks() {
 # ---------------------------------------------------------------------------
 do_e2e_check() {
     echo
-    echo "${C_BOLD}End-to-end check (live regtest node, BLAKE3 verification)${C_NC}"
+    echo "${C_BOLD}End-to-end check (live regtest node, B3PoW-Scratch verification)${C_NC}"
     echo
 
     if [ "$DRY_RUN" = 1 ]; then
@@ -164,9 +173,9 @@ do_e2e_check() {
 
     local logf="$TMPDIR_LOG/M-1d.log"
     LOGFILE["M-1d"]="$logf"
-    printf "${C_BOLD}[M-1d]${C_NC} internal-miner-e2e: spawn regtest, mine via 3 RPCs, verify BLAKE3d PoW per block\n"
+    printf "${C_BOLD}[M-1d]${C_NC} internal-miner-e2e: spawn regtest, mine via 3 RPCs, verify B3PoW-Scratch v1.1 per block\n"
 
-    if BINDIR="$(dirname "$b3chaind")" python3 "$SCRIPT_DIR/audit-internal-miner-e2e.py" >"$logf" 2>&1; then
+    if BINDIR="$(dirname "$b3chaind")" python3 "$SCRIPT_DIR/audit-b3pow-miner-e2e.py" >"$logf" 2>&1; then
         mark "M-1d" PASS "$(grep -E '^SUMMARY' "$logf" | tail -1 | sed 's/^SUMMARY: //')"
     else
         local rc=$?

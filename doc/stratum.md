@@ -110,7 +110,7 @@ Implementations **MUST** reproduce every value below bit-for-bit before
 being trusted with mainnet shares.
 
 All hashes are shown in **big-endian display format** (most significant
-byte first) — the same convention used by `bitcoin-cli`, block
+byte first) — the same convention used by `b3chain-cli`, block
 explorers, and the BLAKE3 reference implementation. Bytes in memory and
 on the wire are little-endian for header fields.
 

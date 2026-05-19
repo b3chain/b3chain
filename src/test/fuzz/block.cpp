@@ -7,6 +7,7 @@
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <core_memusage.h>
+#include <crypto/b3pow_cache.h>
 #include <primitives/block.h>
 #include <pubkey.h>
 #include <streams.h>
@@ -32,18 +33,23 @@ FUZZ_TARGET(block, .init = initialize_block)
         return;
     }
     const Consensus::Params& consensus_params = Params().GetConsensus();
+    // Fuzz-only B3PoW cache.  The real PoW check is bypassed via
+    // EnableFuzzDeterminism so this cache is never actually populated,
+    // but the API requires it.
+    b3pow::Cache b3pow_cache_fuzz{/*depth=*/1};
+    const uint256 prev_block_hash_for_fuzz = block.hashPrevBlock;
     BlockValidationState validation_state_pow_and_merkle;
-    const bool valid_incl_pow_and_merkle = CheckBlock(block, validation_state_pow_and_merkle, consensus_params, /* fCheckPOW= */ true, /* fCheckMerkleRoot= */ true);
+    const bool valid_incl_pow_and_merkle = CheckBlock(block, validation_state_pow_and_merkle, consensus_params, prev_block_hash_for_fuzz, b3pow_cache_fuzz, /* fCheckPOW= */ true, /* fCheckMerkleRoot= */ true);
     assert(validation_state_pow_and_merkle.IsValid() || validation_state_pow_and_merkle.IsInvalid() || validation_state_pow_and_merkle.IsError());
     (void)validation_state_pow_and_merkle.Error("");
     BlockValidationState validation_state_pow;
-    const bool valid_incl_pow = CheckBlock(block, validation_state_pow, consensus_params, /* fCheckPOW= */ true, /* fCheckMerkleRoot= */ false);
+    const bool valid_incl_pow = CheckBlock(block, validation_state_pow, consensus_params, prev_block_hash_for_fuzz, b3pow_cache_fuzz, /* fCheckPOW= */ true, /* fCheckMerkleRoot= */ false);
     assert(validation_state_pow.IsValid() || validation_state_pow.IsInvalid() || validation_state_pow.IsError());
     BlockValidationState validation_state_merkle;
-    const bool valid_incl_merkle = CheckBlock(block, validation_state_merkle, consensus_params, /* fCheckPOW= */ false, /* fCheckMerkleRoot= */ true);
+    const bool valid_incl_merkle = CheckBlock(block, validation_state_merkle, consensus_params, prev_block_hash_for_fuzz, b3pow_cache_fuzz, /* fCheckPOW= */ false, /* fCheckMerkleRoot= */ true);
     assert(validation_state_merkle.IsValid() || validation_state_merkle.IsInvalid() || validation_state_merkle.IsError());
     BlockValidationState validation_state_none;
-    const bool valid_incl_none = CheckBlock(block, validation_state_none, consensus_params, /* fCheckPOW= */ false, /* fCheckMerkleRoot= */ false);
+    const bool valid_incl_none = CheckBlock(block, validation_state_none, consensus_params, prev_block_hash_for_fuzz, b3pow_cache_fuzz, /* fCheckPOW= */ false, /* fCheckMerkleRoot= */ false);
     assert(validation_state_none.IsValid() || validation_state_none.IsInvalid() || validation_state_none.IsError());
     if (valid_incl_pow_and_merkle) {
         assert(valid_incl_pow && valid_incl_merkle && valid_incl_none);

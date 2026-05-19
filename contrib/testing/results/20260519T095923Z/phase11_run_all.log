@@ -1,0 +1,291 @@
+
+B3Chain Phase 11 Security Audit — running every check
+Binaries: /mnt/d/b3chain/b3chain/build/bin
+
+
+########  audit-supply-cap.py  (C-1..C-4)  ########
+[C-1..C-4] Supply cap and halving schedule
+========================================================================
+  PASS  [C-2] geometric sum at mainnet interval (210000) equals 20999999.97690000
+  PASS  [C-3] subsidy returns 0 at halving 64
+  PASS  [C-4] CalculateNextWorkRequired retains the 4x retarget bounds
+
+  Spawning regtest node and mining 600 blocks (4 halvings)...
+  PASS  [C-1] subsidy at height 1 (halving 0) = 50.00000000 B3C
+  PASS  [C-1] subsidy at height 151 (halving 1) = 25.00000000 B3C
+  PASS  [C-1] subsidy at height 301 (halving 2) = 12.50000000 B3C
+  PASS  [C-1] subsidy at height 451 (halving 3) = 6.25000000 B3C
+  PASS  [C-2] cumulative subsidy through height 600: 14015.62500000 B3C (matches analytic sum)
+  PASS  [C-1] subsidy halving schedule observed across 4 halvings on regtest
+------------------------------------------------------------------------
+  9/9 checks passed in 14.1s
+AUDIT RESULT: PASS  [C-1..C-4]
+
+########  audit-b3pow-isolation.py  (H-1)  ########
+[H-1] PoW / Block-ID isolation (B3PoW-Scratch v1.1)
+========================================================================
+  PASS  [H-1] 2 CheckProofOfWork call site(s) all use a PoW hash
+  PASS  [H-1] PoW path references b3pow_scratch (src/primitives/block.cpp, src/primitives/block.h)
+  PASS  [H-1] CBlockHeader::GetHash() declared
+  PASS  [H-1] CBlockHeader::GetPoWHash(prev_block_hash, pad, budget, out_exceeded) declared
+  PASS  [H-1.1] BLOCK_POW_BUDGET routes to Misbehaving("b3pow-budget-exceeded")
+  PASS  [H-1.2] ChainstateManager::m_b3pow_cache declared
+  PASS  [H-1.3] MAX_B3POW_VERIFY_PER_BATCH caps HEADERS batches
+
+  Spawning regtest node and verifying live block hash relationships...
+  PASS  [H-1] getblockhash() returns SHA-256d (block ID), not B3PoW
+  PASS  [H-1] block ID and B3PoW hash are different  id=28e21d7af0d8d178... pow=44aef0446b091f48...
+  PASS  [H-1] mined block's B3PoW hash <= target  pow_int <= target: True
+------------------------------------------------------------------------
+  10/10 checks passed in 1.3s
+AUDIT RESULT: PASS  [H-1]
+
+########  audit-b3pow-budget.py  (H-1.1)  ########
+[H-1.1] B3PoW-Scratch verifier budget enforcement
+========================================================================
+  PASS  [H-1.1] Consensus::Params declares b3pow_verify_budget_ms with positive default
+  PASS  [H-1.1] all chain consensus blocks set b3pow_verify_budget_ms > 0  assignments=['50', '50', '50', '50', '1000']
+  PASS  [H-1.1] pow.cpp threads params.b3pow_verify_budget_ms into the verifier
+  PASS  [H-1.1] validation.cpp returns BLOCK_POW_BUDGET on PoWResult::BudgetExceeded
+  PASS  [H-1.1] net_processing.cpp routes BLOCK_POW_BUDGET to Misbehaving("b3pow-budget-exceeded")
+  PASS  [H-1.1] pow_hash_budget_exceeded + CheckBlockHeaderPoW_budget_exceeded ctest PASS
+------------------------------------------------------------------------
+  6/6 checks passed in 0.2s
+AUDIT RESULT: PASS  [H-1.1]
+
+########  audit-b3pow-cache.py  (H-1.2)  ########
+[H-1.2] B3PoW-Scratch LRU scratchpad cache
+========================================================================
+  PASS  [H-1.2] Consensus::Params declares b3pow_cache_depth with positive default
+  PASS  [H-1.2] every chainparams sets b3pow_cache_depth > 0  assignments=['8', '8', '8', '8', '1']
+  PASS  [H-1.2] ChainstateManager declares b3pow::Cache m_b3pow_cache
+  PASS  [H-1.2] ChainstateManager constructs m_b3pow_cache from consensus.b3pow_cache_depth
+  PASS  [H-1.2] CBlockHeader::GetPoWHash(prev_block_hash, pad, ...) accepts a pad parameter
+  PASS  [H-1.2] b3pow_cache_tests ctest PASS
+------------------------------------------------------------------------
+  6/6 checks passed in 0.2s
+AUDIT RESULT: PASS  [H-1.2]
+
+########  audit-b3pow-headers-cap.py  (H-1.3)  ########
+[H-1.3] B3PoW-Scratch HEADERS verification cap
+========================================================================
+  PASS  [H-1.3] MAX_B3POW_VERIFY_PER_BATCH defined (= 256)
+  PASS  [H-1.3] MAX_B3POW_VERIFY_PER_BATCH is within safe range (1..512), got 256
+  PASS  [H-1.3] HEADERS batch is truncated to MAX_B3POW_VERIFY_PER_BATCH before verification
+  PASS  [H-1.3] LogDebug(BCLog::NET, "Truncating HEADERS batch ...") line present
+------------------------------------------------------------------------
+  4/4 checks passed in 0.0s
+AUDIT RESULT: PASS  [H-1.3]
+
+########  audit-network-isolation.py  (N-1)  ########
+[N-1] Network isolation (magic, DNS seeds)
+========================================================================
+  PASS  [N-1] found 4 explicit magic-start declarations
+  PASS  [N-1] magic b3c0010d != Bitcoin mainnet magic
+  PASS  [N-1] magic b3c0010d not a Bitcoin mainnet/regtest/signet magic
+  PASS  [N-1] magic b3c1020e != Bitcoin mainnet magic
+  PASS  [N-1] magic b3c1020e not a Bitcoin mainnet/regtest/signet magic
+  PASS  [N-1] magic 1c163f28 != Bitcoin mainnet magic
+  PASS  [N-1] magic 1c163f28 not a Bitcoin mainnet/regtest/signet magic
+  PASS  [N-1] magic b3c2030f != Bitcoin mainnet magic
+  PASS  [N-1] magic b3c2030f not a Bitcoin mainnet/regtest/signet magic
+  PASS  [N-1] no forbidden Bitcoin DNS seeds present
+  PASS  [N-1] mainnet calls vFixedSeeds.clear()
+  PASS  [N-1] mainnet calls vSeeds.clear()
+
+  Spawning regtest node and probing P2P port with Bitcoin magic...
+  PASS  [N-1] node disconnects/ignores Bitcoin mainnet magic on P2P port
+  PASS  [N-1] sanity: correct b3chain regtest magic gets a reply
+  PASS  [N-1] getnetworkinfo responds with networkactive flag
+------------------------------------------------------------------------
+  15/15 checks passed in 1.2s
+AUDIT RESULT: PASS  [N-1]
+
+########  audit-address-rejection.py  (W-1)  ########
+[W-1] Bitcoin address rejection
+========================================================================
+  Testing 36 Bitcoin addresses against b3chain validateaddress...
+  PASS  [W-1] sanity: own b3rt1 address validates true  b3rt1qn69t4kg3zq8tlrg0z2fqaad5qyaar3w4qrun2d
+  PASS  [W-1] own address uses b3rt1 prefix  b3rt1qn69t4kg3zq8tlrg0z2fqaad5qyaar3w4qrun2d
+  PASS  [W-1] every Bitcoin mainnet address is rejected by validateaddress
+  PASS  [W-1] 36/36 Bitcoin addresses rejected as invalid
+  PASS  [W-1] sendtoaddress to Bitcoin P2PKH raises error  Invalid B3Chain address: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+  PASS  [W-1] sendtoaddress to Bitcoin bech32 raises error  Invalid B3Chain address: 3MfN5to5K5be2RupWE8rjJHQ6V9L8ypWeh
+  PASS  [W-1] sendtoaddress to Bitcoin taproot raises error  Invalid B3Chain address: bc1qhd5zlfgyu5spgxr8t9p3jjz0c9j8s5sssrlfne
+  PASS  [W-1] xpub import raises an error (acceptable behaviour)  wpkh(): key 'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD
+------------------------------------------------------------------------
+  8/8 checks passed in 3.2s
+AUDIT RESULT: PASS  [W-1]
+
+########  audit-simd-blake3.py  (B-1)  ########
+[B-1] SIMD BLAKE3 vs portable-C reference (differential test)
+========================================================================
+  PASS  [B-1] BLAKE3 of empty input matches the spec constant
+  PASS  [B-1] 37 edge sizes match between SIMD and portable reference
+  Running 1000 random fuzz inputs (seed=0xb3c0010d)...
+    200/1000
+    400/1000
+    600/1000
+    800/1000
+    1000/1000
+  PASS  [B-1] 1000 random fuzz inputs match between SIMD and portable reference
+  PASS  [B-1] SIMD library is deterministic across repeated calls
+------------------------------------------------------------------------
+  4/4 checks passed in 38.4s
+AUDIT RESULT: PASS  [B-1]
+
+########  audit-rebranding.sh  (B-2)  ########
+[B-2] Rebranding regression audit
+========================================================================
+  PASS  no leftover 'Bitcoin Signed Message' string
+  PASS  no leftover 'bitcoin:' URI scheme literals
+
+  FAIL  no leftover bitcoind / bitcoin-cli in .md docs  (1 hits)
+         /mnt/d/b3chain/b3chain/contrib/testing/results/20260519T095415Z/phase11_run_all.log:144:         /mnt/d/b3chain/b3chain/doc/stratum.md:113:byte first) — the same convention used by `bitcoin-cli`, block
+  PASS  no 'Bitcoin' in RPC help strings (HelpExampleCli/HelpExampleRpc)
+  PASS  no 'Bitcoin' in Qt tr() strings (user-visible)
+
+  FAIL  no "Bitcoin Core" string outside attribution  (2 hits)
+         /mnt/d/b3chain/b3chain/contrib/testing/results/20260519T095415Z/phase11_run_all.log:148:  FAIL  no "Bitcoin Core" string outside attribution  (1 hits)
+         /mnt/d/b3chain/b3chain/contrib/testing/results/20260519T095415Z/phase11_run_all.log:149:         /mnt/d/b3chain/b3chain/contrib/testnet/explorer/install.sh:226:# picker, the footer, the donate/twitter buttons, the "Bitcoin Core"
+  SKIP  test reruns skipped (set RERUN_TESTS=1 to enable)
+------------------------------------------------------------------------
+  4/6 checks passed
+AUDIT RESULT: FAIL  [B-2]
+
+########  audit-hd-coin-type.py  (W-2)  ########
+[W-2] HD wallet BIP44 coin_type
+========================================================================
+  PASS  [W-2] walletutil.cpp uses coin_type 9333h on mainnet
+  PASS  [W-2] walletutil.cpp uses coin_type 1h on test chains
+  PASS  [W-2] gate is IsTestChain() (testnet/regtest detection)
+  PASS  [W-2] '9333h' literal appears exactly once in walletutil.cpp
+  PASS  [W-2] doc/b3chain-bip44.md mentions coin_type 9333
+  PASS  [W-2] doc/b3chain-bip44.md references SLIP-0044
+
+  Spawning regtest node and verifying default descriptor uses /1h/...
+  PASS  [W-2] regtest hdkeypath uses coin_type 1h  hdkeypath=m/84h/1h/0h/0/0
+  PASS  [W-2] at least one regtest descriptor contains /1h/
+  PASS  [W-2] no regtest descriptor contains /9333h/ (mainnet-only)
+------------------------------------------------------------------------
+  9/9 checks passed in 1.2s
+AUDIT RESULT: PASS  [W-2]
+
+########  audit-51-attack-sim.py  (A-1)  ########
+[A-1] 51% double-spend attack simulation
+========================================================================
+
+========================================================================
+  51% ATTACK SIMULATION (regtest, educational)
+========================================================================
+   ⓘ  A 51% attack works when an entity controls more proof-of-work
+   ⓘ  hashrate than the rest of the honest network combined. They mine
+   ⓘ  their own chain in private, then reveal it once it has more
+   ⓘ  cumulative work than the public chain.  Because nodes follow the
+   ⓘ  chain with the most work, the public chain is reorged out and any
+   ⓘ  transactions that were confirmed only on the public chain are
+   ⓘ  reversed.
+   ⓘ  
+   ⓘ  On regtest, "hashrate" doesn't really exist — every block is
+   ⓘ  instantly mined.  We simulate hashrate dominance by simply having
+   ⓘ  the attacker mine more blocks while their cluster is disconnected
+   ⓘ  from the honest cluster.
+
+[step 1] Spawning isolated honest + attacker clusters
+   ⓘ  The honest and attacker clusters share NO peers. This models the
+   ⓘ  attacker mining privately on their own farm with their own pool.
+     Alice (honest miner)  : b3rt1qgpyaq86dkyf70zvul3hkl4y6a4vxgm97tsqt64
+     Bob   (honest victim) : b3rt1q39wjaudcd9qd48hrqd5mz2fatkkz7fr88eqfz3
+     Mallory (attacker)    : b3rt1qn4uavc97q9tnulexetce77r34xqvmclzxylv8w
+
+[step 2] Both clusters mine 110 blocks (need spendable coinbase)
+                     honest cluster: height=110  tip=851b0cd9a6efe457...
+                   attacker cluster: height=110  tip=2a9aaf8dcbb60e44...
+   ⓘ  After this step, both clusters have valid 110-block chains, but
+   ⓘ  they differ at every block (different coinbases). Whichever
+   ⓘ  chain has more cumulative work will win when the clusters meet.
+
+[step 3] On the HONEST chain Alice pays Bob 25 B3C, miner mines 6 confirmations
+     honest payment txid     : 4a0653d32ff24132f3f78b3455dfe1b80fd33444c7d3ce32f311fcf296833140
+     Bob balance after 6 confirms: 25.0 B3C
+  PASS  [A-1] Bob's payment is confirmed >=6 times on the honest chain  confirmations=6
+   ⓘ  From Bob's point of view this transaction is "final" — it has
+   ⓘ  6 confirmations, which exchanges typically treat as safe
+   ⓘ  for medium-value payments. Bob releases the goods at this
+   ⓘ  point.  An attacker would now have minutes to seconds to
+   ⓘ  execute the reorg before Bob hears about it.
+
+[step 4] In SECRET the attacker mines 8 blocks (reach honest height + lead)
+     attacker self-pay txid  : 7a6289347c2623a2f9648568c71e504cd090633da61afb7d42d35687a2d62178
+                   attacker cluster: height=118  tip=299e8660f03a87a5...
+   ⓘ  The attacker has been mining privately. Their chain is one block
+   ⓘ  longer than the honest chain. Crucially, their version of
+   ⓘ  history does NOT include the payment to Bob. Instead it
+   ⓘ  includes a payment to a wallet under the attacker's control.
+
+[step 5] ATTACKER REVEALS the longer chain (connect honest <-> attacker)
+  PASS  [A-1] honest node reorged onto attacker chain (more PoW wins)
+
+[step 6] Verify Bob's payment is REVERSED
+  PASS  [A-1] Bob's transaction has 0 or negative confirmations after reorg  confirmations=0 (negative means conflicted)
+     Bob balance before reorg: 25.0 B3C
+     Bob balance after reorg : 0.0 B3C
+  PASS  [A-1] Bob's wallet balance decreased after the reorg  before=25.0  after=0.0
+
+========================================================================
+  RESULT: Bob has been double-spent
+========================================================================
+   ⓘ  A 51%-capable attacker reversed a 6-confirmation transaction.
+   ⓘ  On a real network this requires sustained majority hashrate
+   ⓘ  for the duration of the attack (~60 min for 6 confirmations on
+   ⓘ  a 10-min-target chain).
+   ⓘ  
+   ⓘ  DEFENCES:
+   ⓘ  - Wait for more confirmations for high-value transactions.
+   ⓘ  Probability of successful reorg drops exponentially with
+   ⓘ  each additional confirmation.
+   ⓘ  - Use third-party reorg detection (block explorers).
+   ⓘ  - For exchanges: increase confirmation requirements during
+   ⓘ  hashrate dips.
+   ⓘ  - For developers: design protocols that are reorg-aware
+   ⓘ  (e.g. coinbase maturity is 100 blocks for exactly this
+   ⓘ  reason).
+   ⓘ  
+   ⓘ  See doc/SECURITY-AUDIT.md and the live demo page on
+   ⓘ  b3chain.org/testing/51-attack.html for more details.
+
+Nakamoto reorg-success probability
+(probability that an attacker with hashrate q will catch
+ up after z honest confirmations)
+
+  q (attacker share) | z= 1 | z= 3 | z= 6 | z=10
+------------------------------------------------------------
+                 10% | 20.46% |  1.32% |  0.02% |  0.00%
+                 20% | 41.59% | 10.32% |  1.43% |  0.11%
+                 30% | 62.77% | 32.46% | 13.21% |  4.17%
+                 40% | 82.89% | 66.42% | 50.40% | 36.00%
+                 45% | 91.98% | 84.44% | 76.61% | 68.54%
+                 50% | 100.00% | 100.00% | 100.00% | 100.00%
+
+------------------------------------------------------------------------
+  4/4 checks passed in 13.4s
+AUDIT RESULT: PASS  [A-1]
+
+========================================================================
+  AUDIT SUMMARY
+========================================================================
+ID               SCRIPT                            RESULT
+---------------  --------------------------------  ------
+C-1..C-4         audit-supply-cap.py               PASS
+H-1              audit-b3pow-isolation.py          PASS
+H-1.1            audit-b3pow-budget.py             PASS
+H-1.2            audit-b3pow-cache.py              PASS
+H-1.3            audit-b3pow-headers-cap.py        PASS
+N-1              audit-network-isolation.py        PASS
+W-1              audit-address-rejection.py        PASS
+B-1              audit-simd-blake3.py              PASS
+B-2              audit-rebranding.sh               FAIL
+W-2              audit-hd-coin-type.py             PASS
+A-1              audit-51-attack-sim.py            PASS
+
+OVERALL: FAIL

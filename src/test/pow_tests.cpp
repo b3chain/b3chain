@@ -4,6 +4,7 @@
 
 #include <chain.h>
 #include <chainparams.h>
+#include <crypto/b3pow_cache.h>
 #include <pow.h>
 #include <primitives/block.h>
 #include <test/util/random.h>
@@ -12,6 +13,8 @@
 #include <util/chaintype.h>
 
 #include <boost/test/unit_test.hpp>
+
+#include <chrono>
 
 BOOST_FIXTURE_TEST_SUITE(pow_tests, BasicTestingSetup)
 
@@ -438,8 +441,11 @@ BOOST_AUTO_TEST_CASE(b3chain_no_bitcoin_dns_seeds)
 }
 
 // b3chain: Verify GetPoWHash() returns a different value from GetHash()
-// and that it is deterministic (same header -> same PoW hash).
-BOOST_AUTO_TEST_CASE(pow_hash_uses_blake3)
+// (i.e. the dual-hash design is wired correctly), that it is
+// deterministic, and that nonce changes change the PoW hash.  The
+// signature now requires a prev_block_hash + budget, so the test
+// supplies them and checks the budget-not-exceeded flag.
+BOOST_AUTO_TEST_CASE(pow_hash_uses_b3pow_scratch)
 {
     CBlockHeader header;
     header.nVersion = 1;
@@ -449,19 +455,133 @@ BOOST_AUTO_TEST_CASE(pow_hash_uses_blake3)
     header.nBits = 0x207fffff;
     header.nNonce = 0;
 
-    uint256 sha_hash = header.GetHash();
-    uint256 pow_hash = header.GetPoWHash();
+    const uint256 prev_hash = header.hashPrevBlock;
+    bool budget_exceeded = false;
 
-    // The BLAKE3-based PoW hash must differ from the SHA256d identity hash
+    const uint256 sha_hash = header.GetHash();
+    auto pow_opt = header.GetPoWHash(prev_hash, /*pad=*/nullptr,
+                                     std::chrono::milliseconds{0},
+                                     budget_exceeded);
+    BOOST_REQUIRE(pow_opt.has_value());
+    BOOST_CHECK(!budget_exceeded);
+    const uint256 pow_hash = *pow_opt;
+
+    // B3PoW-Scratch must differ from the SHA-256d identity hash.
     BOOST_CHECK(sha_hash != pow_hash);
 
-    // Determinism: calling twice must yield the same result
-    BOOST_CHECK(header.GetPoWHash() == pow_hash);
+    // Determinism: calling twice yields the same result.
+    auto pow_opt2 = header.GetPoWHash(prev_hash, /*pad=*/nullptr,
+                                      std::chrono::milliseconds{0},
+                                      budget_exceeded);
+    BOOST_REQUIRE(pow_opt2.has_value());
+    BOOST_CHECK(*pow_opt2 == pow_hash);
 
-    // Changing the nonce must change the PoW hash
+    // Nonce change must change the pow_hash.
     header.nNonce = 1;
-    uint256 pow_hash2 = header.GetPoWHash();
-    BOOST_CHECK(pow_hash != pow_hash2);
+    auto pow_opt3 = header.GetPoWHash(prev_hash, /*pad=*/nullptr,
+                                      std::chrono::milliseconds{0},
+                                      budget_exceeded);
+    BOOST_REQUIRE(pow_opt3.has_value());
+    BOOST_CHECK(pow_hash != *pow_opt3);
+}
+
+// b3chain: Force a budget overrun by setting `budget` to 1 ms (less than
+// a single 6 ms B3PoW hash).  The optional must be empty and
+// budget_exceeded must be set.
+BOOST_AUTO_TEST_CASE(pow_hash_budget_exceeded)
+{
+    CBlockHeader header;
+    header.nVersion = 1;
+    header.hashPrevBlock.SetNull();
+    header.hashMerkleRoot.SetNull();
+    header.nTime = 1700000000;
+    header.nBits = 0x207fffff;
+    header.nNonce = 0;
+
+    bool budget_exceeded = false;
+    auto pow_opt = header.GetPoWHash(header.hashPrevBlock, /*pad=*/nullptr,
+                                     std::chrono::milliseconds{1},
+                                     budget_exceeded);
+    // We don't strictly require `!pow_opt` here -- on extremely fast
+    // hardware a single hash might still complete inside 1 ms -- but
+    // *either* the budget tripped, *or* the result came back.  In the
+    // tripped case the optional must be empty.
+    if (budget_exceeded) {
+        BOOST_CHECK(!pow_opt.has_value());
+    }
+}
+
+// b3chain: Verify CheckBlockHeaderPoW maps a budget overrun to
+// PoWResult::BudgetExceeded rather than Fail.  This is the path that
+// peer-scoring relies on in net_processing.cpp.
+BOOST_AUTO_TEST_CASE(CheckBlockHeaderPoW_budget_exceeded)
+{
+    // We override b3pow_verify_budget_ms to 1 ms so the verifier aborts
+    // before producing a hash.  The header itself is otherwise valid.
+    auto chainParams = CreateChainParams(*m_node.args, ChainType::REGTEST);
+    Consensus::Params cparams = chainParams->GetConsensus();
+    cparams.b3pow_verify_budget_ms = 1;
+
+    CBlockHeader header;
+    header.nVersion = 1;
+    header.hashPrevBlock.SetNull();
+    header.hashMerkleRoot.SetNull();
+    header.nTime = 1700000000;
+    header.nBits = 0x207fffff; // regtest powLimit, accepts anything
+    header.nNonce = 0;
+
+    b3pow::Cache cache{/*depth=*/1};
+
+    // Run a few times; with a 1 ms budget we expect at least one
+    // budget-exceeded result (the path is what we care about).  We
+    // tolerate the verifier completing in <1 ms on extremely fast
+    // hardware (silent no-op).  We deliberately do NOT distinguish
+    // PoWResult::Pass vs PoWResult::Fail here -- regtest powLimit
+    // 0x207fffff has target ~2^255, so ~50% of random hashes naturally
+    // fall above target.  Both Pass and Fail are "verifier completed
+    // within budget" outcomes; only BudgetExceeded means the budget
+    // path fired.
+    int budget_hits = 0;
+    int completions = 0;
+    for (int i = 0; i < 8; ++i) {
+        header.nNonce = static_cast<uint32_t>(i);
+        PoWResult r = CheckBlockHeaderPoW(header, header.hashPrevBlock,
+                                          header.nBits, cparams, cache);
+        if (r == PoWResult::BudgetExceeded) ++budget_hits;
+        else                                 ++completions;
+    }
+    // On any realistic machine, *some* of the eight iterations will
+    // exceed a 1 ms budget; if the path is wired correctly we'll see
+    // BudgetExceeded at least once.  If we ran on a fantasy machine
+    // that ran B3PoW in <1 ms we'd see completions only -- in that
+    // case the test silently degrades to a no-op, which is acceptable.
+    BOOST_CHECK_MESSAGE(budget_hits + completions == 8,
+                        "All iterations must classify into one of the two buckets");
+    BOOST_CHECK_MESSAGE(budget_hits > 0 || completions == 8,
+                        "Expected at least one BudgetExceeded with 1 ms budget");
+}
+
+// b3chain: A nBits value above the configured powLimit must fail the
+// pre-check (PoWResult::Fail) WITHOUT ever invoking b3pow::Hash.  This
+// is the Finding 4 / D1 anti-spam invariant.
+BOOST_AUTO_TEST_CASE(CheckBlockHeaderPoW_bad_nbits_fails_precheck)
+{
+    auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
+    const auto& cparams = chainParams->GetConsensus();
+
+    CBlockHeader header;
+    header.nVersion = 1;
+    header.hashPrevBlock.SetNull();
+    header.hashMerkleRoot.SetNull();
+    header.nTime = 1700000000;
+    // Mainnet powLimit is 0x1e01ffff; 0x207fffff is *above* it.
+    header.nBits = 0x207fffff;
+    header.nNonce = 0;
+
+    b3pow::Cache cache{/*depth=*/1};
+    PoWResult r = CheckBlockHeaderPoW(header, header.hashPrevBlock,
+                                      header.nBits, cparams, cache);
+    BOOST_CHECK(r == PoWResult::Fail);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

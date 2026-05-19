@@ -223,8 +223,8 @@ fi
 # affect strings that the explorer reads from coinConfig at request
 # time. A second wave is needed for strings that are hardcoded in the
 # pug templates: the masthead, og/twitter meta tags, the currency
-# picker, the footer, the donate/twitter buttons, the "Bitcoin Core"
-# / "Bitcoiners" copy, and the BTC unit string in shared mixins.
+# picker, the footer, the donate/twitter buttons, the upstream core
+# fork copy, and the BTC unit string in shared mixins.
 LAYOUT=$EXP_DIR/node_modules/btc-rpc-explorer/views/layout.pug
 IFRAME=$EXP_DIR/node_modules/btc-rpc-explorer/views/layout-iframe.pug
 HOMEPAGE=$EXP_DIR/node_modules/btc-rpc-explorer/views/index.pug

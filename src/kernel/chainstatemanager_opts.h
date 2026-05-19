@@ -48,6 +48,11 @@ struct ChainstateManagerOpts {
     int worker_threads_num{0};
     size_t script_execution_cache_bytes{DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES};
     size_t signature_cache_bytes{DEFAULT_SIGNATURE_CACHE_BYTES};
+    //! b3chain M-9 / V-5: optional emergency-checkpoint JSON file path.
+    //! Empty by default; the binary ships ZERO checkpoints.  See
+    //! doc/security/RESPONSE-RUNBOOK-51ATTACK.md and
+    //! src/node/emergency_checkpoints.h for the operational procedure.
+    std::string emergency_checkpoints_path{};
 };
 
 } // namespace kernel

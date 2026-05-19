@@ -1,0 +1,50 @@
+
+========== [cpp_pow] ctest_pow_tests -> SKIP ==========
+Reason: test_bitcoin not built
+
+========== [cpp_b3pow_scratch] ctest_b3pow_scratch_tests -> SKIP ==========
+Reason: test_bitcoin not built
+
+========== [cpp_b3pow_cache] ctest_b3pow_cache_tests -> SKIP ==========
+Reason: test_bitcoin not built
+
+========== [cpp_crypto] ctest_crypto_tests -> SKIP ==========
+Reason: test_bitcoin not built
+
+========== [cpp_validation] ctest_validation_tests -> SKIP ==========
+Reason: test_bitcoin not built
+
+========== [phase11_master] phase11_run_all ==========
+Phase 11 master audit (run-all.sh)
+command: bash //contrib/testing/audit/run-all.sh
+[phase11_master] phase11_run_all -> FAIL (rc=127, 2 ms)
+
+========== [verify_b3pow] verify_b3pow_static ==========
+B3PoW reference verifier (offline vector check)
+command: python3 //contrib/testing/verify-b3pow.py
+[verify_b3pow] verify_b3pow_static -> FAIL (rc=2, 9 ms)
+
+========== [feature_b3pow] feature_b3pow -> SKIP ==========
+Reason: b3chaind not built
+
+========== [stratum_pool] audit_stratum_pool ==========
+Stratum pool audit
+command: bash //contrib/testing/audit/audit-stratum-pool.sh
+[stratum_pool] audit_stratum_pool -> FAIL (rc=127, 2 ms)
+
+========== [stratum_v2] audit_stratum_v2 ==========
+Stratum V2 audit
+command: bash //contrib/testing/audit/audit-stratum-v2.sh
+[stratum_v2] audit_stratum_v2 -> FAIL (rc=127, 5 ms)
+
+========== [bitcoin_inh] audit_bitcoin_inheritance ==========
+Bitcoin inheritance audit
+command: bash //contrib/testing/audit/audit-bitcoin-inheritance.sh
+[bitcoin_inh] audit_bitcoin_inheritance -> FAIL (rc=127, 2 ms)
+
+========== [compare_all] compare_run_all -> SKIP ==========
+Reason: run-all-compare.sh not present
+
+========================================================================
+  Corpus complete. Summary: /mnt/d/b3chain/b3chain/contrib/testing/results/20260519T095859Z/summary.json
+========================================================================

@@ -18,6 +18,7 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <chrono>
 #include <cstdint>
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams);
@@ -86,8 +87,8 @@ BOOST_AUTO_TEST_CASE(audit_total_supply_cap)
 // [H-1] Block ID vs PoW hash isolation.
 //
 // Two different methods on CBlockHeader: GetHash() (SHA-256d) and
-// GetPoWHash() (BLAKE3d). They must produce DIFFERENT digests for the same
-// header. Even on a zeroed-out header — the algorithms differ.
+// GetPoWHash() (B3PoW-Scratch v1.1). They must produce DIFFERENT digests
+// for the same header. Even on a zeroed-out header — the algorithms differ.
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(audit_block_id_and_pow_hash_differ)
@@ -100,17 +101,27 @@ BOOST_AUTO_TEST_CASE(audit_block_id_and_pow_hash_differ)
     h.nBits = 0x1e01ffff;
     h.nNonce = 0;
 
-    const uint256 id      = h.GetHash();
-    const uint256 pow     = h.GetPoWHash();
+    bool budget_exceeded = false;
+    const uint256 id = h.GetHash();
+    auto pow_opt = h.GetPoWHash(h.hashPrevBlock, /*pad=*/nullptr,
+                                std::chrono::milliseconds{0},
+                                budget_exceeded);
+    BOOST_REQUIRE(pow_opt.has_value());
+    BOOST_CHECK(!budget_exceeded);
+    const uint256 pow = *pow_opt;
     BOOST_CHECK_MESSAGE(id != pow,
         "GetHash() (SHA-256d, block ID) must differ from "
-        "GetPoWHash() (BLAKE3d, PoW). Both returned " << id.ToString());
+        "GetPoWHash() (B3PoW-Scratch, PoW). Both returned " << id.ToString());
 
     // Also: different headers produce different hashes (sanity of the
     // implementation, not just zero collisions).
     h.nNonce = 1;
-    BOOST_CHECK(h.GetHash()    != id);
-    BOOST_CHECK(h.GetPoWHash() != pow);
+    BOOST_CHECK(h.GetHash() != id);
+    auto pow_opt2 = h.GetPoWHash(h.hashPrevBlock, /*pad=*/nullptr,
+                                 std::chrono::milliseconds{0},
+                                 budget_exceeded);
+    BOOST_REQUIRE(pow_opt2.has_value());
+    BOOST_CHECK(*pow_opt2 != pow);
 }
 
 // ---------------------------------------------------------------------------

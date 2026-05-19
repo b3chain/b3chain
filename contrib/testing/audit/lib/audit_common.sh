@@ -53,7 +53,7 @@ audit_finish() {
 
 # Locate b3chain build directory (sets BINDIR if not already set)
 audit_find_bindir() {
-    if [ -n "$BINDIR" ] && [ -x "$BINDIR/b3chaind" ]; then
+    if [ -n "${BINDIR:-}" ] && [ -x "$BINDIR/b3chaind" ]; then
         return 0
     fi
     local script_dir

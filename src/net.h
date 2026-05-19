@@ -75,7 +75,10 @@ static const int MAX_FEELER_CONNECTIONS = 1;
 /** -listen default */
 static const bool DEFAULT_LISTEN = true;
 /** The maximum number of peer connections to maintain. */
-static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS = 125;
+// b3chain M-8 (V-10): raised from Bitcoin's 125 to 200 on mainnet/testnet
+// /signet to make eclipsing a node harder (more honest peers to displace).
+// See doc/security/B3POW-51-ATTACK-ANALYSIS.md V-10.
+static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS = 200;
 /** The default for -maxuploadtarget. 0 = Unlimited */
 static const std::string DEFAULT_MAX_UPLOAD_TARGET{"0M"};
 /** Default for blocks only*/

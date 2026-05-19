@@ -122,6 +122,35 @@ struct Params {
      *  During this early phase, if blocks take >2x the target, difficulty drops
      *  more aggressively per-block to help the chain bootstrap. 0 = disabled. */
     int nEarlyDifficultyGuardHeight{0};
+    /** b3chain: B3PoW-Scratch v1.1 verifier budget (Finding 4 / mitigation D1).
+     *  Maximum wall-clock time (ms) a single header's PoW verification is
+     *  allowed to consume.  Headers that exceed this budget are rejected
+     *  with BLOCK_POW_BUDGET and the originating peer is demoted via
+     *  Misbehaving (net_processing.cpp).  Regtest sets this very high so
+     *  CI doesn't flake under load. */
+    int64_t b3pow_verify_budget_ms{50};
+    /** b3chain: B3PoW-Scratch scratchpad LRU cache depth (Finding 4 / D2).
+     *  Number of distinct `prev_block_hash` -> 1 MB pad entries to keep
+     *  resident.  Total resident size = depth * 1 MB.  Regtest uses 1 to
+     *  keep peak RSS minimal during test orchestration. */
+    /** b3chain: `b3pow::Cache` total resident capacity (pads).  See
+     *  src/crypto/b3pow_cache.h.  Mitigation M-6 (F-5 fix) raised the
+     *  default from 4 → 8 on mainnet/testnet/signet to give the 2-tier
+     *  pinned LRU enough working set to fully absorb hostile header
+     *  floods (see doc/security/B3POW-51-ATTACK-ANALYSIS.md V-7). */
+    int64_t b3pow_cache_depth{8};
+    /** b3chain: use LWMA-3 difficulty adjustment instead of Bitcoin's
+     *  2016-block linear retarget (mitigation M-3 / V-4).  Permanently
+     *  enabled on mainnet/testnet/signet; disabled on regtest because
+     *  the functional tests rely on the legacy retarget timing.
+     *  See src/pow/lwma3.h. */
+    bool use_lwma3{false};
+    /** b3chain: hard cap on reorg depth (mitigation M-4 / F-3).  Blocks
+     *  proposing a reorg deeper than this many blocks below the active
+     *  tip are rejected as BLOCK_DEEP_REORG.  Set to 0 to disable
+     *  (regtest default).  Bypass paths (IBD, assumevalid) are
+     *  explicitly enumerated in validation.cpp. */
+    int max_reorg_depth{0};
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};

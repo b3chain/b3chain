@@ -6,6 +6,7 @@
 #include <node/miner.h>
 #include <net_processing.h>
 #include <pow.h>
+#include <test/util/pow.h>
 #include <test/util/setup_common.h>
 #include <validation.h>
 
@@ -21,7 +22,7 @@ static void mineBlock(const node::NodeContext& node, std::chrono::seconds block_
     auto curr_time = GetTime<std::chrono::seconds>();
     SetMockTime(block_time); // update time so the block is created with it
     CBlock block = node::BlockAssembler{node.chainman->ActiveChainstate(), nullptr, {}}.CreateNewBlock()->block;
-    while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, node.chainman->GetConsensus())) ++block.nNonce;
+    b3test::MineBlockToTarget(block, node.chainman->GetConsensus());
     block.fChecked = true; // little speedup
     SetMockTime(curr_time); // process block at current time
     Assert(node.chainman->ProcessNewBlock(std::make_shared<const CBlock>(block), /*force_processing=*/true, /*min_pow_checked=*/true, nullptr));

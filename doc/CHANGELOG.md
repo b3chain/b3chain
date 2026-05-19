@@ -1,12 +1,236 @@
 # B3Chain Project History
 
+## v1.1.1 — B3PoW-Scratch 51%-attack mitigations (current)
+
+`SPEC_VERSION = 0x00010101` (algorithm), `REG_ID_MAGIC = 0xB3110002`
+(RTL/firmware).  See
+[`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](security/B3POW-51-ATTACK-ANALYSIS.md)
+for the full threat model and
+[`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md)
+for incident response.
+
+### Algorithm-layer (F-1, F-4)
+
+- **F-1 — ITER_MUL[7] distinct constant.** `ITER_MUL[7]` was a
+  duplicate of `ITER_MUL[1]`; in lane 7 this collapsed the address
+  derivation to a 7-lane mixer.  Replaced with a new wyhash-vetted
+  64-bit constant `0x6E5C6F88AA5BDA77` in
+  [`src/crypto/b3pow_scratch.cpp`](../src/crypto/b3pow_scratch.cpp),
+  [`contrib/miner/b3miner-rtl/ref/b3pow_ref.py`](../contrib/miner/b3miner-rtl/ref/b3pow_ref.py),
+  and [`contrib/miner/b3miner-rtl/rtl/params_pkg.sv`](../contrib/miner/b3miner-rtl/rtl/params_pkg.sv).
+  Bumped `SPEC_VERSION` to `0x00010101` and `REG_ID_MAGIC` to
+  `0xB3110002`.  All `b3pow_consensus_vectors.json` entries
+  regenerated via `gen_vectors.py`.  This is a **pre-genesis** fix;
+  no live network impact.
+- **F-4 — Address uniformity test.** New
+  [`contrib/miner/b3miner-rtl/ref/tests/test_address_uniformity.py`](../contrib/miner/b3miner-rtl/ref/tests/test_address_uniformity.py)
+  runs a per-lane chi-squared test on the address derivation across
+  2²⁰ samples per lane.  Wired into
+  [`.github/workflows/b3miner-rtl.yml`](../.github/workflows/b3miner-rtl.yml)
+  so any future RTL change to the address mixer cannot regress
+  uniformity without CI catching it.  SPEC.md §8.F gives an informal
+  2-round full-diffusion proof of the `LANE_SHUFFLE = (5L + 1) mod 8`
+  permutation.
+
+### Consensus layer (M-2, M-3, M-4, M-8, F-2, F-3)
+
+- **M-2 / F-2 — BIP94 timewarp mitigation.** `consensus.enforce_BIP94 = true`
+  on mainnet/testnet/signet (Bitcoin Core's default is mainnet-off).
+  Caps the minimum timestamp at a difficulty boundary to
+  `parent->nTime - 600s`.  Closes the Murch-Zawy timewarp attack
+  vector V-3; quantified in [`audit-timewarp-sim.py`](../contrib/testing/audit/audit-timewarp-sim.py).
+- **M-3 — LWMA-3 difficulty algorithm.** Bitcoin's 2016-block linear
+  retarget is permanently replaced by **LWMA-3** (window=45,
+  solve-time clamp at 6× target spacing / -target_spacing/6) on
+  mainnet/testnet/signet.  Regtest retains the legacy retarget so
+  the upstream functional tests keep passing.  New
+  [`src/pow/lwma3.{h,cpp}`](../src/pow/lwma3.h);
+  dispatch from [`src/pow.cpp`](../src/pow.cpp).
+  Unit tests at [`src/test/lwma3_tests.cpp`](../src/test/lwma3_tests.cpp).
+  Closes V-4 (LWMA-3 retargets every block, so a hashrate collapse
+  recovers within ~45 blocks).
+- **M-4 / F-3 — Reorg-depth cap.** `consensus.max_reorg_depth = 200`
+  (~33 h at 600 s spacing).  Blocks proposing a reorg deeper than
+  this below the active tip are rejected with new validation result
+  `BlockValidationResult::BLOCK_DEEP_REORG`, routed to
+  `Misbehaving("deep-reorg-attempt")` in `net_processing.cpp`.
+  Bypassed during IBD and on regtest by explicit policy.
+- **M-8 — Emergency-checkpoint stub** (OFF by default, ships with
+  ZERO checkpoints).  New `-assumevalidcheckpoints=<path>` flag and
+  module [`src/node/emergency_checkpoints.{h,cpp}`](../src/node/emergency_checkpoints.h).
+  Loaded JSON `(height, hash)` entries reject any block with a
+  mismatching hash at that height via new
+  `BlockValidationResult::BLOCK_CHECKPOINT`.  Operational procedure
+  is in [`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md).
+
+### Cache and verifier hardening (M-5, M-6, M-7, F-5)
+
+- **M-6 / F-5 — 2-tier pinned LRU cache.**
+  [`b3pow::Cache`](../src/crypto/b3pow_cache.h) gains a pinned tier
+  (`kDefaultPinnedCapacity = 3`) so the tip + 2 ancestors cannot be
+  evicted by hostile peer churn.  `consensus.b3pow_cache_depth`
+  raised from 4 → 8 on mainnet/testnet/signet.
+  `Chainstate::UpdateTip` calls `m_b3pow_cache.Pin(...)` whenever the
+  active tip changes.  Audit:
+  [`audit-b3pow-cache-pinning.py`](../contrib/testing/audit/audit-b3pow-cache-pinning.py)
+  shows 0 tip evictions under a 10 000-header hostile flood (vs 1 250
+  under the pre-fix LRU).
+- **M-7 — Depth-asymmetric verifier budget.**
+  `CheckBlockHeaderPoW(..., HeaderDepth)` scales the verifier budget
+  by header depth below the active tip:
+  - tip ±6 → full budget (50 ms mainnet)
+  - 6 < depth ≤ 100 → 1⁄2 budget (25 ms mainnet)
+  - depth > 100 → 1⁄5 budget (10 ms mainnet)
+  Closes V-9 (CPU bleed via stale-fork header flood).
+- **M-5 — Depth-aware ban score** in `net_processing.cpp` HEADERS
+  handler: when the headers chain we just accepted is rooted ≥
+  `max_reorg_depth` below the active tip, the peer is
+  `Misbehaving("stale-tip-headers", gap=N cap=M)`.  Bypassed during
+  IBD.
+
+### Eclipse / Sybil hardening (M-9, M-10)
+
+- **M-9 — `DEFAULT_MAX_PEER_CONNECTIONS` raised 125 → 200** on
+  mainnet/testnet/signet.  See [`src/net.h`](../src/net.h).
+- **M-10 — `-paranoid-headers-sync` (OFF by default)** with
+  `-paranoid-headers-quorum=N` (default 3, clamped to [1, 16]):
+  defers commit of any tip-extending header until N distinct peers
+  have delivered the exact same final-header hash.  Defeats
+  fabricated-header eclipse attacks.  See
+  [`src/net_processing.{h,cpp}`](../src/net_processing.h),
+  [`src/node/peerman_args.cpp`](../src/node/peerman_args.cpp).
+
+### Simulators
+
+New analysis simulators under [`contrib/testing/audit/`](../contrib/testing/audit/):
+
+| Script | Audit row | Models |
+|---|---|---|
+| `audit-selfish-mining-sim.py` | A-2 | Eyal-Sirer (2014) selfish-mining state machine; threshold α* |
+| `audit-timewarp-sim.py` | A-3 | Murch-Zawy timewarp on 2016-block retarget; BIP94 on/off |
+| `audit-bootstrap-reorg-sim.py` | A-4 | Launch-phase reorg cost (capex/opex) at heights 100/500/1000/5000/10000 |
+| `audit-cache-eviction-dos.py` | A-5 | Plain LRU vs 2-tier pinned LRU under hostile header flood |
+| `audit-fpga-concentration-model.py` | A-6 | Gini coefficient of B3Miner-1 ownership at T+0/3/6/12 months |
+| `audit-b3pow-cache-pinning.py` | A-7 | M-6 structural + behavioural verification |
+
+`audit-51-attack-sim.py` (A-1) was extended to parameterise
+`ATTACKER_LEAD` and `HONEST_CONFIRMATIONS`, and to emit cost tables
+in CSV for `k ∈ [1, 12]` and `α ∈ [0.30, 0.60]`.
+
+### Docs
+
+- [`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](security/B3POW-51-ATTACK-ANALYSIS.md)
+  (new, ~13 k words) — full threat model.
+- [`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md)
+  (new) — incident-response playbook.
+- [`doc/SECURITY-AUDIT.md`](SECURITY-AUDIT.md) — audit rows A-2..A-7
+  added.
+- [`doc/SECURITY-INHERITANCE.md`](SECURITY-INHERITANCE.md) — BIP94,
+  LWMA-3, and `max_reorg_depth` rows added.
+- [`doc/SECURITY-ROADMAP.md`](SECURITY-ROADMAP.md) — items 4 and 7
+  updated; new item 9 (continuous 51%-attack monitoring).
+
+### Finding-to-fix-to-test map
+
+(Mitigation IDs match `doc/security/B3POW-51-ATTACK-ANALYSIS.md` §1.2 M-1..M-12.)
+
+| Finding | Severity | Fix (mitigation) | Test |
+|---|---|---|---|
+| **F-1** `ITER_MUL[1] == ITER_MUL[7]` | High (pre-genesis) | **M-1**: replace ITER_MUL[7] with `0x6E5C6F88AA5BDA77`; bump SPEC_VERSION → `0x00010101` and REG_ID_MAGIC → `0xB3110002` | `contrib/miner/b3miner-rtl/ref/tests/test_b3pow_ref.py` (23 PASS, including pairwise-distinct assertion); regenerated `src/test/data/b3pow_consensus_vectors.json` exercised by `b3pow_scratch_tests.cpp` |
+| **F-2** `enforce_BIP94 = false` on mainnet | High | **M-2**: set `enforce_BIP94 = true` on mainnet/testnet/signet | `contrib/testing/audit/audit-timewarp-sim.py` (A-3 PASS, 10-window sweep); functional smoke `test/functional/feature_timewarp_bip94.py` |
+| **F-3** No reorg-depth cap | High | **M-4**: `consensus.max_reorg_depth = 200`; new `BLOCK_DEEP_REORG` + `Misbehaving("deep-reorg-attempt")`; **M-5** depth-aware ban-score in HEADERS handler | `contrib/testing/audit/audit-bootstrap-reorg-sim.py` (A-4 PASS, 5/5 height scenarios); functional `test/functional/feature_reorg_depth_cap.py`; validation reject site `BLOCK_DEEP_REORG` in `src/validation.cpp::AcceptBlock` |
+| **F-4** SPEC §8.E uniformity gate missing | Medium (pre-genesis) | **M-11** uniformity CI gate + **M-12** SPEC §8.F diffusion sketch | `contrib/miner/b3miner-rtl/ref/tests/test_address_uniformity.py` (1 PASS, 33 s, p > 1e-5 Bonferroni); wired in `.github/workflows/b3miner-rtl.yml` |
+| **F-5** Cache evictable under hostile header flood | Medium | **M-6**: 2-tier pinned LRU (3 pinned slots); raise `b3pow_cache_depth` 4 → 8; pin tip + 2 ancestors on every `UpdateTip` | `src/test/b3pow_cache_tests.cpp` (4 new cases: `pin_protects_from_eviction`, `pin_capacity_overflow_demotes_oldest`, `pinned_capacity_clamped_below_depth`, `unpin_allows_eviction`); `contrib/testing/audit/audit-b3pow-cache-pinning.py` (A-7 PASS, 0 / 10 000 tip evictions); `contrib/testing/audit/audit-cache-eviction-dos.py` (A-5 PASS, 3/3 checks) |
+| **F-6** `powLimit = 0x1e01ffff` (~10× wider than Bitcoin's) | Low–Medium | **M-3**: LWMA-3 retargets every block, so a momentary hashrate dip cannot land a 2016-block minimum-difficulty window an attacker can exploit (closes the exploit window F-6 describes).  The wide powLimit itself is preserved by design (compensates for B3PoW being ~10× faster per pad than SHA-256d).  Defence in depth: **M-7** depth-asymmetric verifier budget bounds the CPU cost of any deep-fork header sequence built at minimum difficulty | `src/test/lwma3_tests.cpp` (5 cases, including +10× / -10× hashrate shocks); `test/functional/feature_lwma3.py` (dispatch smoke); `contrib/testing/audit/audit-bootstrap-reorg-sim.py` exposes the minimum-difficulty cost frontier |
+
+### Verifier budget (also added but not finding-driven)
+
+| Mitigation | What it does | Test |
+|---|---|---|
+| **M-7** | `CheckBlockHeaderPoW(..., HeaderDepth)` scales the wall-clock budget by depth: Tip → 50 ms / 6 < depth ≤ 100 → 25 ms / depth > 100 → 10 ms.  Bounds the CPU bleed from V-9 (deep-fork header floods) | Extension of `src/test/pow_tests.cpp` `CheckBlockHeaderPoW_*` (existing budget tests cover the Tip case; depth-bucketing exercised via the dispatch from `validation.cpp::AcceptBlockHeader`) |
+| **M-8** | `-assumevalidcheckpoints=<path>` JSON loader; binary ships ZERO checkpoints.  New `BlockValidationResult::BLOCK_CHECKPOINT` + `Misbehaving("checkpoint-mismatch")` | Structural: file is greppable in `src/node/emergency_checkpoints.{h,cpp}` and wired through `kernel/chainstatemanager_opts.h`.  Operational: `doc/security/RESPONSE-RUNBOOK-51ATTACK.md` §3.1 |
+| **M-9** | `DEFAULT_MAX_PEER_CONNECTIONS` 125 → 200 | `src/net.h` (grep-only; default exposed to the existing connection-count tests) |
+| **M-10** | `-paranoid-headers-sync` + `-paranoid-headers-quorum=N` (default 3, clamped \[1,16\]) | Argument parsing in `src/node/peerman_args.cpp`; the gate logic and observation table live in `src/net_processing.cpp::ProcessHeadersMessage` |
+
+## v1.1 — B3PoW-Scratch consensus integration (in progress)
+
+This release replaces the interim double-BLAKE3 PoW with **B3PoW-Scratch v1.1**
+— a memory-hard BLAKE3 variant with a 1 MB scratchpad, 8 lanes, 2048
+iterations, and a 50 ms verifier wall-clock budget. Block IDs (`GetHash()`)
+remain SHA-256d; only PoW validation moves to B3PoW.
+
+### Algorithm
+- **Spec**: [`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md) (`SPEC_VERSION=0x00010100`).
+- **Reference**: [`contrib/miner/b3miner-rtl/ref/b3pow_ref.py`](../contrib/miner/b3miner-rtl/ref/b3pow_ref.py)
+  is the byte-for-byte oracle; the C++ port at
+  [`src/crypto/b3pow_scratch.{h,cpp}`](../src/crypto/) is required to agree.
+- **Consensus vectors**: `src/test/data/b3pow_consensus_vectors.json`
+  (regenerated by `contrib/miner/b3miner-rtl/ref/gen_vectors.py`).
+
+### C++ changes
+- **`CBlockHeader::GetPoWHash()`** now takes `(prev_block_hash, pad, budget,
+  out_budget_exceeded)` and returns `std::optional<uint256>`; double-BLAKE3
+  body removed.
+- **`PoWResult`** enum (`Pass`, `Fail`, `BudgetExceeded`) and
+  **`CheckBlockHeaderPoW()`** in `src/pow.{h,cpp}` consolidate
+  pre-check → cache lookup → hash → target compare → result mapping.
+- **`Consensus::Params`** gains `b3pow_verify_budget_ms` (50 ms mainnet /
+  testnet, 1000 ms regtest) and `b3pow_cache_depth` (4 mainnet / testnet,
+  1 regtest).
+- **`b3pow::Cache`** (`src/crypto/b3pow_cache.{h,cpp}`) is an LRU
+  scratchpad cache keyed by `prev_block_hash`, owned by
+  `ChainstateManager::m_b3pow_cache`, shared-mutex protected.
+- **`CheckBlockHeader` / `CheckBlock`** now take `prev_block_hash` and a
+  `b3pow::Cache&`; `BlockValidationResult::BLOCK_POW_BUDGET` is a new
+  validation result.
+
+### DoS mitigations (Finding 4)
+- **Pre-check + peer scoring**: nBits range is checked before any B3PoW
+  hashing.  `BLOCK_POW_BUDGET` results route to
+  `Misbehaving("b3pow-budget-exceeded")` in `net_processing.cpp`.
+- **Per-`prev_block_hash` scratchpad cache** (depth 4) so miners and
+  verifiers don't repay the ~5 ms pad-init cost on every nonce/header
+  sharing a parent.
+- **Headers-sync depth cap**: full B3PoW is deferred during presync;
+  `MAX_B3POW_VERIFY_PER_BATCH=256` caps B3PoW CPU per `HEADERS` message,
+  preventing a malicious peer from forcing 12.8 s of CPU in one batch.
+
+### Disk-load path
+- `LoadBlockIndexDB` and `ReadBlock` now do a cheap `DeriveTarget`
+  (nBits range) check instead of full B3PoW. Re-running B3PoW on every
+  block on startup would add ~5 minutes per 10k blocks; the local disk
+  is already a trusted source.
+
+### Tests
+- `src/test/b3pow_scratch_tests.cpp` — vector parity against the Python
+  reference; cache+oneshot agreement; nontrivial-prev sensitivity.
+- `src/test/b3pow_cache_tests.cpp` — LRU correctness, eviction policy,
+  thread-safety under concurrent access.
+- `src/test/pow_tests.cpp` — extended with
+  `CheckBlockHeaderPoW_budget_exceeded` and the new `GetPoWHash`
+  signature; old `pow_hash_uses_blake3` test renamed to
+  `pow_hash_uses_b3pow_scratch`.
+- `src/test/crypto_tests.cpp` — `blake3_dual_hash_design` rewritten as
+  `b3pow_dual_hash_design`; `blake3_rejects_sha256d_nonce` →
+  `b3pow_rejects_sha256d_nonce` (reuses a pad across nonces to stay fast).
+- `src/test/fuzz/pow.cpp` — new `b3pow_random_header` target exercising
+  the hash, cache, and budget paths.
+- `test/functional/feature_b3pow.py` — regtest mine-5-blocks + bad-nonce
+  rejection + P2P header-spam scoring.
+- `contrib/miner/b3miner-rtl/ref/tests/test_consensus_vectors.py` —
+  schema lock for `consensus_vectors.json`.
+
+### Memory footprint
+- The cache adds **4 MB RSS** on mainnet/testnet (4 × 1 MB pads); see
+  [`reduce-memory.md`](reduce-memory.md) for the knob.
+
 ## Status Summary
 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | Phase 0 | Environment and Build Baseline | **COMPLETE** |
 | Phase 1 | Chain Identity (Network Isolation) | **COMPLETE** |
-| Phase 2 | PoW Replacement (SHA-256d -> Double BLAKE3-256) | **COMPLETE** |
+| Phase 2 | PoW Replacement (SHA-256d -> B3PoW-Scratch v1.1; superseded the interim double-BLAKE3-256 swap) | **COMPLETE** |
 | Phase 3 | Consensus and Monetary Parameters | **COMPLETE** |
 | Phase 4 | Genesis Block | **COMPLETE** |
 | Phase 5 | Branding and Binary Renaming | **COMPLETE** |
@@ -209,6 +433,70 @@ merkle tree structure, and transaction ID format.
   - Dual-hash architecture rationale
   - SIMD acceleration details
   - Security considerations
+
+### Phase 6.4: NVIDIA CUDA GPU miner (added 2026-05-16)
+
+Standalone Rust crate at `contrib/miner/b3chain-gpuminer/` that ports
+the Python miner's hot path to CUDA. Targets a 200-500x speedup over
+the Python reference (~6 MH/s -> 1-3 GH/s on midrange RTX) so the
+testnet pool actually exercises real share-difficulty traffic without
+needing dozens of CPU machines.
+
+Architecture:
+
+- **Stratum V1 client** (`src/stratum/`): direct port of
+  `b3chain-cpuminer.py` 's `StratumPoolClient` to async tokio. Same
+  newline-delimited JSON framing, same `clean_epoch` semantics, same
+  reconnect/backoff behaviour. The mock server from
+  `contrib/miner/test_pool_miner.py` is ported to a Rust integration
+  test so the new client passes the same handshake scenarios.
+- **CUDA kernel** (`kernels/blake3.cuh` + `kernels/miner.cu`): a
+  ~250-line implementation of the BLAKE3 compression function with
+  the chunk-tree / parent-node code paths stripped (both hashes are
+  <=1024 bytes, single-chunk, ROOT-on-last-block). One thread per
+  candidate nonce; thread patches its nonce into a copy of the
+  80-byte header template, double-hashes, compares to share target
+  little-endian, and atomicAdds into a small results buffer on hit.
+- **GPU driver** (`src/gpu/driver.rs`): owns the device, the
+  persistent buffers (header template, share target, results), and
+  one extranonce2 counter. Pulls `MiningState` snapshots from a
+  `tokio::sync::watch`, builds the coinbase + merkle root + 80-byte
+  header on the host, dispatches 16M-nonce batches to the kernel,
+  drains candidates into the Stratum client's submit channel.
+- **JSONL log schema parity**: emits the same
+  `connect`/`subscribed`/`authorized`/`set_difficulty`/`notify`/
+  `progress`/`share_pre_submit`/`share_submit`/`submit_response`
+  events as the Python miner so the live dashboard at
+  `contrib/miner/tests/mining_dashboard.py` ingests the GPU miner's
+  output unchanged.
+- **Dashboard backend selector**: a new `Backend: CPU / GPU` combo
+  in `mining_dashboard.py` chooses which binary to spawn. The GPU
+  option auto-detects the built `b3chain-gpuminer` binary under
+  `target/release/` (or `target/debug/` for development) and surfaces
+  a clear "build the binary first" error if it's not present. The
+  `Threads` spinbox is auto-disabled when GPU is selected since the
+  GPU backend uses a single dispatcher task.
+- **Phase-A correctness gate**: `tests/kernel_correctness.rs`
+  generates 100k random 80-byte headers, hashes each on the host
+  with the `blake3` crate and on the GPU with `double_blake3_dump`,
+  asserts bytewise equality. This is the *primary* defence against
+  the most insidious GPU-miner failure mode (a BLAKE3 endianness or
+  constant mismatch that produces hashes the pool rejects 100% of).
+  It must pass before any pool traffic happens.
+- **Phase-B integration test**: `tests/stratum_handshake.rs` runs an
+  in-process mock server that drives the client through subscribe ->
+  authorize -> set_difficulty -> notify and asserts the watch-channel
+  state landed correctly. No GPU required, runs on every dev box.
+
+Build prerequisites (documented in `contrib/miner/b3chain-gpuminer/README.md`):
+NVIDIA driver >= 535, CUDA Toolkit 12.x, MSVC 2022 Build Tools on
+Windows, Rust stable 1.75+. The `cudarc` crate uses the runtime CUDA
+driver API so the produced binary doesn't statically depend on
+`nvcuda.dll` and ships across machines with just an NVIDIA driver.
+
+Out of scope for v0.1 (deferred to a follow-up): multi-stream
+pipelining, multi-GPU, AMD/Intel support, Stratum V2, TLS endpoints,
+auto-tuning per compute capability.
 
 ### Phase 6.1 verification (added 2026-05-15)
 

@@ -1,0 +1,43 @@
+
+Static checks (source-only)
+
+[P-1a] phase-a-stratum-server: 3 Stratum methods present
+  PASS  P-1a  got 4
+[P-1b] phase-a-share-validator: (blake3d|b3pow) used in validator
+  PASS  P-1b  got 1
+[P-1c] phase-a-template-poller: getBlockTemplate + template-error
+  PASS  P-1c  got 3
+[P-2a] phase-b-schema: 5 critical tables in 001_init.sql
+  PASS  P-2a  got 5
+[P-2b] phase-b-auth-flow: 10 endpoint handlers
+  PASS  P-2b  got 15
+[P-3b] phase-c-payout-job: transactional debit + sendmany + recipients ledger
+  PASS  P-3b  got 6
+[P-3c] phase-c-block-confirmer: pplns_credited + creditPplns + B3POOL_BLOCK_CONFIRMATIONS wiring
+  FAIL  P-3c  got 0, expected >=3
+[P-4b] phase-d-rate-limit: authLimiter + signupLimiter + passwordResetLimiter
+  PASS  P-4b  got 6
+[P-4c] phase-d-metrics: 12 b3chain_pool_* lines (HELP + value per metric)
+  PASS  P-4c  got 21
+[P-4d] phase-d-runbook: pool-down + orphan + balance scenarios
+  PASS  P-4d  got 12
+
+Node test checks
+
+[P-1d] phase-a-blake3-vector: tests/blake3.test.ts
+  FAIL  P-1d  got 1, expected >=3
+[P-2c] phase-b-address-validator: tests/address.test.ts
+  FAIL  P-2c  got 1, expected >=6
+[P-3a] phase-c-pplns-math: tests/pplns.test.ts (worked example)
+  FAIL  P-3a  got 1, expected >=5
+[P-4a] phase-d-vardiff: tests/vardiff.test.ts
+  FAIL  P-4a  got 1, expected >=4
+
+=========================================================================
+  Phase 6.2 stratum-pool verification summary
+=========================================================================
+  PASS:   9   FAIL:   5   SKIP:   0
+
+  wrote /mnt/d/b3chain/b3chain/doc/PHASE-6.2-VERIFICATION.md  (9 PASS, 5 FAIL, 0 SKIP)
+
+OVERALL: FAIL  (5 check(s) failed; logs in /tmp/b3chain-audit-pool.TZi0u1)

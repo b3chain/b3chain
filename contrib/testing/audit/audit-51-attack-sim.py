@@ -42,6 +42,8 @@ What it does
    ("wait 6 confirmations for $5k+ payments").
 """
 
+import argparse
+import csv
 import math
 import sys
 import time
@@ -54,9 +56,17 @@ from audit_common import (  # type: ignore
 )
 
 
+# Defaults (kept as module-level for backward compat with the existing
+# audit harness; the CLI parser below can override them).
 HONEST_CONFIRMATIONS = 6      # the threshold the victim trusts
 ATTACKER_LEAD        = 1      # extra blocks attacker mines to win the race
 PRE_MINE_BLOCKS      = 110    # both sides need spendable coinbase utxos
+
+# Cost-table output for the Phase 0 analysis doc.  Sweeps:
+#   k (confirmations) in {1..12}
+#   alpha (attacker share) in {0.30..0.60} step 0.05
+COST_TABLE_K_RANGE     = list(range(1, 13))
+COST_TABLE_ALPHA_RANGE = [round(x * 0.05, 2) for x in range(6, 13)]  # 0.30..0.60
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +99,95 @@ def print_chain_state(label: str, node: RegtestNode) -> None:
 # Attack scenario
 # ---------------------------------------------------------------------------
 
-def run_attack(r: AuditResult) -> None:
+def nakamoto_reorg_success_probability(alpha: float, z: int) -> float:
+    """Nakamoto §11 reorg-success probability for attacker share alpha and
+    z confirmations.  Returns a probability in [0, 1].
+
+    Implementation mirrors the inline calculation already present at the
+    bottom of run_attack(); pulled out so the CSV exporter can call it
+    without duplicating the loop body."""
+    if alpha <= 0:
+        return 0.0
+    if alpha >= 0.5:
+        return 1.0
+    p_attack = alpha / (1.0 - alpha)
+    lambda_ = z * p_attack
+    psum = 0.0
+    for k in range(z + 1):
+        psum += (math.exp(-lambda_) * lambda_**k / math.factorial(k)) \
+                * (1.0 - p_attack ** (z - k))
+    return 1.0 - psum
+
+
+def emit_cost_csv(out_path: Path) -> None:
+    """Phase 0 cost-table: k in {1..12}, alpha in {0.30..0.60}.
+
+    Each row is one (alpha, k) cell with:
+      - reorg success probability per Nakamoto §11
+      - minimum sustained attacker hashrate as multiple of honest hashrate
+        (alpha / (1 - alpha))
+      - approximate attacker cost (USD) at three network-hashrate scenarios
+
+    These numbers feed the V-1 / V-5 sections of
+    doc/security/B3POW-51-ATTACK-ANALYSIS.md."""
+
+    # Scenarios (must match section 3.3 of B3POW-51-ATTACK-ANALYSIS.md):
+    #   Launch  =  100 KH/s network,  $1.5K cap-ex per board (20 KH/s)
+    #   Growth  =    1 MH/s
+    #   Mature  =   50 MH/s
+    BOARD_HS         = 20_000      # KH/s -> hashes/sec
+    BOARD_USD        = 1_500
+    SCENARIOS = [
+        ("launch_100KHs",   100_000),
+        ("growth_1MHs",   1_000_000),
+        ("mature_50MHs", 50_000_000),
+    ]
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow([
+            "alpha", "k_confirmations", "reorg_success_prob",
+            "attacker_to_honest_ratio",
+        ] + [f"capex_usd_{name}" for name, _ in SCENARIOS])
+
+        for alpha in COST_TABLE_ALPHA_RANGE:
+            ratio = alpha / max(1.0 - alpha, 1e-9)
+            for k in COST_TABLE_K_RANGE:
+                p = nakamoto_reorg_success_probability(alpha, k)
+                row = [f"{alpha:.2f}", k, f"{p:.6f}", f"{ratio:.3f}"]
+                for _, hs in SCENARIOS:
+                    attacker_hs = hs * alpha / max(1.0 - alpha, 1e-9)
+                    boards = math.ceil(attacker_hs / BOARD_HS)
+                    capex = boards * BOARD_USD
+                    row.append(f"{capex}")
+                w.writerow(row)
+
+    print(BOLD(f"\nWrote cost table -> {out_path}"))
+    print(DIM(f"   sweep alpha in {COST_TABLE_ALPHA_RANGE}"))
+    print(DIM(f"   sweep k in {COST_TABLE_K_RANGE}"))
+    print(DIM(f"   scenarios: {[name for name, _ in SCENARIOS]}"))
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--confirmations", type=int, default=HONEST_CONFIRMATIONS,
+                   help="depth Bob waits before treating the payment as final")
+    p.add_argument("--attacker-lead", type=int, default=ATTACKER_LEAD,
+                   help="extra blocks the attacker mines beyond honest")
+    p.add_argument("--output-csv", type=Path, default=None,
+                   help="emit cost-table CSV at the given path (for the "
+                        "Phase 0 analysis doc); skips the regtest simulation")
+    p.add_argument("--skip-simulation", action="store_true",
+                   help="skip the regtest simulation (useful when only the "
+                        "CSV output is wanted)")
+    return p.parse_args()
+
+
+def run_attack(r: AuditResult,
+               honest_confirmations: int = HONEST_CONFIRMATIONS,
+               attacker_lead: int = ATTACKER_LEAD) -> None:
     banner("51% ATTACK SIMULATION (regtest, educational)")
     teach("""
         A 51% attack works when an entity controls more proof-of-work
@@ -148,30 +246,30 @@ def run_attack(r: AuditResult) -> None:
             chain has more cumulative work will win when the clusters meet.
         """)
 
-        # -- Phase 3: honest payment + 6 confirmations ----------------------
+        # -- Phase 3: honest payment + N confirmations ----------------------
         step(3, f"On the HONEST chain Alice pays Bob 25 B3C, "
-              f"miner mines {HONEST_CONFIRMATIONS} confirmations")
+              f"miner mines {honest_confirmations} confirmations")
         honest_pay_txid = miner.sendtoaddress(bob_addr, 25)
-        miner.generatetoaddress(HONEST_CONFIRMATIONS, alice_addr)
+        miner.generatetoaddress(honest_confirmations, alice_addr)
 
         bob_balance_before = victim.getbalance()
         bob_received = victim.gettransaction(honest_pay_txid)
         print(DIM(f"     honest payment txid     : {honest_pay_txid}"))
-        print(DIM(f"     Bob balance after 6 confirms: {bob_balance_before} B3C"))
-        r.expect(bob_received["confirmations"] >= HONEST_CONFIRMATIONS,
-                 f"[A-1] Bob's payment is confirmed >={HONEST_CONFIRMATIONS} times on the honest chain",
+        print(DIM(f"     Bob balance after {honest_confirmations} confirms: {bob_balance_before} B3C"))
+        r.expect(bob_received["confirmations"] >= honest_confirmations,
+                 f"[A-1] Bob's payment is confirmed >={honest_confirmations} times on the honest chain",
                  f"confirmations={bob_received['confirmations']}")
 
         teach(f"""
             From Bob's point of view this transaction is "final" — it has
-            {HONEST_CONFIRMATIONS} confirmations, which exchanges typically treat as safe
+            {honest_confirmations} confirmations, which exchanges typically treat as safe
             for medium-value payments. Bob releases the goods at this
             point.  An attacker would now have minutes to seconds to
             execute the reorg before Bob hears about it.
         """)
 
         # -- Phase 4: attacker mines an even-longer secret chain -----------
-        attacker_blocks = HONEST_CONFIRMATIONS + 1 + ATTACKER_LEAD
+        attacker_blocks = honest_confirmations + 1 + attacker_lead
         step(4, f"In SECRET the attacker mines {attacker_blocks} blocks "
               "(reach honest height + lead)")
         # First the attacker pays themselves to a fresh address that will
@@ -226,7 +324,7 @@ def run_attack(r: AuditResult) -> None:
         # -- Phase 7: educational summary ---------------------------------
         banner("RESULT: Bob has been double-spent")
         teach(f"""
-            A 51%-capable attacker reversed a {HONEST_CONFIRMATIONS}-confirmation transaction.
+            A 51%-capable attacker reversed a {honest_confirmations}-confirmation transaction.
             On a real network this requires sustained majority hashrate
             for the duration of the attack (~60 min for 6 confirmations on
             a 10-min-target chain).
@@ -274,8 +372,16 @@ def run_attack(r: AuditResult) -> None:
 
 
 def main() -> int:
+    args = parse_args()
+    if args.output_csv is not None:
+        emit_cost_csv(args.output_csv)
+        if args.skip_simulation:
+            return 0
     r = AuditResult("A-1", "51% double-spend attack simulation")
-    run_attack(r)
+    if args.skip_simulation:
+        return r.finish()
+    run_attack(r, honest_confirmations=args.confirmations,
+               attacker_lead=args.attacker_lead)
     return r.finish()
 
 

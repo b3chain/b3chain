@@ -6,10 +6,14 @@
 #ifndef BITCOIN_PRIMITIVES_BLOCK_H
 #define BITCOIN_PRIMITIVES_BLOCK_H
 
+#include <crypto/b3pow_scratch.h>
 #include <primitives/transaction.h>
 #include <serialize.h>
 #include <uint256.h>
 #include <util/time.h>
+
+#include <chrono>
+#include <optional>
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -53,8 +57,23 @@ public:
 
     uint256 GetHash() const;
 
-    /** b3chain: Compute the double-BLAKE3-256 proof-of-work hash of the header. */
-    uint256 GetPoWHash() const;
+    /** b3chain: Compute the B3PoW-Scratch v1.1 proof-of-work hash of the
+     *  header (see contrib/miner/b3miner-rtl/SPEC.md).
+     *
+     *  Unlike the SHA-256d block-identity hash, B3PoW depends on
+     *  `prev_block_hash` (it derives a 1 MB scratchpad from it).  Pass
+     *  the cached pad if you have one for this parent; otherwise pass
+     *  nullptr and the function will build a fresh one (~5 ms).
+     *
+     *  `budget` is a wall-clock guard; on overrun the function returns
+     *  std::nullopt and sets `out_budget_exceeded = true`.  Pass
+     *  `std::chrono::milliseconds{0}` to disable the guard (e.g. for
+     *  the miner search loop).
+     */
+    std::optional<uint256> GetPoWHash(const uint256& prev_block_hash,
+                                      const b3pow::PadPtr& pad,
+                                      std::chrono::milliseconds budget,
+                                      bool& out_budget_exceeded) const;
 
     NodeSeconds Time() const
     {

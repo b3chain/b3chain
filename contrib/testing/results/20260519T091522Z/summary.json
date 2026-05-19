@@ -1,0 +1,12 @@
+[
+  {"id": "cpp_pow", "script": "ctest_pow_tests", "result": "FAIL", "exit_code": 201, "duration_ms": 173, "note": "C++ pow_tests"},
+  {"id": "cpp_b3pow_scratch", "script": "ctest_b3pow_scratch_tests", "result": "FAIL", "exit_code": 201, "duration_ms": 196, "note": "C++ b3pow_scratch_tests"},
+  {"id": "cpp_b3pow_cache", "script": "ctest_b3pow_cache_tests", "result": "PASS", "exit_code": 0, "duration_ms": 219, "note": "C++ b3pow_cache_tests"},
+  {"id": "cpp_crypto", "script": "ctest_crypto_tests", "result": "PASS", "exit_code": 0, "duration_ms": 638, "note": "C++ crypto_tests"},
+  {"id": "cpp_validation", "script": "ctest_validation_tests", "result": "PASS", "exit_code": 0, "duration_ms": 217, "note": "C++ validation_tests"},
+  {"id": "phase11_master", "script": "phase11_run_all", "result": "FAIL", "exit_code": 1, "duration_ms": 7, "note": "Phase 11 master audit (run-all.sh)"},
+  {"id": "verify_b3pow", "script": "verify_b3pow_static", "result": "PASS", "exit_code": 0, "duration_ms": 2882, "note": "B3PoW reference verifier (offline vector check)"},
+  {"id": "feature_b3pow", "script": "feature_b3pow", "result": "PASS", "exit_code": 0, "duration_ms": 708, "note": "Functional test feature_b3pow.py"},
+  {"id": "stratum_pool", "script": "audit_stratum_pool", "result": "FAIL", "exit_code": 1, "duration_ms": 1563, "note": "Stratum pool audit"},
+  {"id": "stratum_v2", "script": "audit_stratum_v2", "result": "FAIL", "exit_code": 1, "duration_ms": 139, "note": "Stratum V2 audit"},
+  {"id": "bitcoin_inh", "script": "audit_bitcoin_inheritance", "result": "PASS", "exit_code": 0, "duration_ms": 7534117, "note": "Bitcoin inheritance audit"}

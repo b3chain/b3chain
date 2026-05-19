@@ -10,6 +10,25 @@ The size of some in-memory caches can be reduced. As caches trade off memory usa
   - The minimum value for `-dbcache` is 4.
   - A lower `-dbcache` makes initial sync time much longer. After the initial sync, the effect is less pronounced for most use-cases, unless fast validation of blocks is important, such as for mining.
 
+### B3PoW scratchpad cache
+
+`b3chaind` keeps an LRU cache of B3PoW-Scratch v1.1 scratchpads keyed
+by `prev_block_hash` so that mining many candidate nonces against the
+same parent — or verifying sibling headers off the same parent — pays
+the ~5 ms pad-init cost only once. Each entry is a fixed **1 MB** pad.
+
+- Default depth: **4 entries** on mainnet / testnet (set via
+  `Consensus::Params::b3pow_cache_depth` in
+  [`src/kernel/chainparams.cpp`](../src/kernel/chainparams.cpp)),
+  i.e. **~4 MB extra RSS**.
+- On `regtest` the depth is **1** (1 MB) to keep small CI machines
+  cheap.
+- The cache is not yet user-tunable via a command-line flag; it is a
+  consensus-derived parameter so a smaller cache only costs CPU
+  (extra pad re-inits), never correctness.  If you need to compile a
+  smaller-footprint build for an embedded device, change
+  `b3pow_cache_depth` per network in `chainparams.cpp` and rebuild.
+
 ## Memory pool
 
 - In B3Chain Core there is a memory pool limiter which can be configured with `-maxmempool=<n>`, where `<n>` is the size in MB (1000). The default value is `300`.

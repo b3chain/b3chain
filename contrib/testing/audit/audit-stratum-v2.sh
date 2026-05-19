@@ -194,28 +194,33 @@ do_node_checks() {
         return
     fi
 
+    # See audit-stratum-pool.sh: count TAP "ok N - ..." pass markers,
+    # not the single "# pass N" summary line.  We source .env.test via
+    # `set -a; . ./.env.test; set +a` instead of `node --env-file=`
+    # because the latter requires Node 20.6+ and not all CI hosts ship
+    # that yet (Ubuntu 24.04 ships Node 18).
     run_check "S-1a" "phase-a-codec: tests/sv2-codec.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-codec.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-codec.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 13
 
     run_check "S-1b" "phase-a-noise: tests/sv2-noise.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-noise.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-noise.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 6
 
     run_check "S-2b" "phase-b-channel: tests/sv2-mining.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-mining.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-mining.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 5
 
     run_check "S-3a" "phase-c-tp-msgs: tests/sv2-tp.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-tp.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-tp.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 5
 
     run_check "S-4a" "phase-d-jd-tokens: tests/sv2-jd.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-jd.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-jd.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 4
 
     run_check "S-5a" "phase-e-translator: tests/sv2-translator.test.ts" \
-        "cd '$POOL_DIR' && node --env-file=.env.test --test --import tsx tests/sv2-translator.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && set -a && . ./.env.test && set +a && node --test --import tsx tests/sv2-translator.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 1
 }
 

@@ -1,0 +1,7 @@
+[
+  {"id": "cpp_pow", "script": "ctest_pow_tests", "result": "FAIL", "exit_code": 201, "duration_ms": 189, "note": "C++ pow_tests (b3chain-specific cases)"},
+  {"id": "cpp_b3pow_scratch", "script": "ctest_b3pow_scratch_tests", "result": "PASS", "exit_code": 0, "duration_ms": 206, "note": "C++ b3pow_scratch_tests"},
+  {"id": "cpp_b3pow_cache", "script": "ctest_b3pow_cache_tests", "result": "PASS", "exit_code": 0, "duration_ms": 210, "note": "C++ b3pow_cache_tests"},
+  {"id": "cpp_crypto", "script": "ctest_crypto_tests", "result": "PASS", "exit_code": 0, "duration_ms": 639, "note": "C++ crypto_tests"},
+  {"id": "cpp_validation", "script": "ctest_validation_tests", "result": "PASS", "exit_code": 0, "duration_ms": 228, "note": "C++ validation_tests"},
+  {"id": "phase11_master", "script": "phase11_run_all", "result": "FAIL", "exit_code": 1, "duration_ms": 216128, "note": "Phase 11 master audit (run-all.sh)"}

@@ -11,6 +11,7 @@
 #include <interfaces/mining.h>
 #include <node/miner.h>
 #include <policy/policy.h>
+#include <test/util/pow.h>
 #include <test/util/random.h>
 #include <test/util/transaction_utils.h>
 #include <test/util/txmempool.h>
@@ -729,10 +730,16 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
 
         {
             // A block template does not have proof-of-work, but it might pass
-            // verification by coincidence. Grind the nonce if needed:
-            while (CheckProofOfWork(block.GetPoWHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) {
-                block.nNonce++;
-            }
+            // verification by coincidence.  Grind the nonce until we land on
+            // one that *fails* the target (so checkBlock rejects it with
+            // "high-hash").  We reuse the test mining helper but with an
+            // inverted predicate.
+            const auto& params = Assert(m_node.chainman)->GetParams().GetConsensus();
+            const auto target_opt = DeriveTarget(block.nBits, params.powLimit);
+            BOOST_REQUIRE(target_opt.has_value());
+            b3test::MineHeaderUntil(block, [&](const uint256& pow_hash) {
+                return UintToArith256(pow_hash) > *target_opt;
+            });
 
             std::string reason;
             std::string debug;
@@ -776,9 +783,9 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
             if (txFirst.size() < 4)
                 txFirst.push_back(block.vtx[0]);
             block.hashMerkleRoot = BlockMerkleRoot(block);
-            // Mine a valid nonce for BLAKE3 PoW (regtest difficulty is trivial)
+            // Mine a valid nonce for B3PoW-Scratch (regtest difficulty is trivial)
             block.nNonce = 0;
-            while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) ++block.nNonce;
+            b3test::MineBlockToTarget(block, Assert(m_node.chainman)->GetParams().GetConsensus());
         }
         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
         // Alternate calls between Chainman's ProcessNewBlock and submitSolution

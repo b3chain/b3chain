@@ -13,6 +13,7 @@
 #include <common/system.h>
 #include <compat/compat.h>
 #include <core_io.h>
+#include <crypto/b3pow_scratch.h>
 #include <streams.h>
 #include <util/exception.h>
 #include <util/strencodings.h>
@@ -96,10 +97,18 @@ static void grind_task(uint32_t nBits, CBlockHeader header, uint32_t offset, uin
     uint32_t finish = std::numeric_limits<uint32_t>::max() - step;
     finish = finish - (finish % step) + offset;
 
+    // b3chain: build the B3PoW scratchpad once for this parent, reuse
+    // across the whole nonce search.  Budget=0 (disabled) since miners
+    // are intentionally CPU-bound.
+    const auto pad = b3pow::InitScratchpad(header.hashPrevBlock);
+    bool budget_exceeded = false;
     while (!found && header.nNonce < finish) {
         const uint32_t next = (finish - header.nNonce < 5000*step) ? finish : header.nNonce + 5000*step;
         do {
-            if (UintToArith256(header.GetPoWHash()) <= target) {
+            auto pow_hash_opt = header.GetPoWHash(header.hashPrevBlock, pad,
+                                                  std::chrono::milliseconds{0},
+                                                  budget_exceeded);
+            if (pow_hash_opt && UintToArith256(*pow_hash_opt) <= target) {
                 if (!found.exchange(true)) {
                     proposed_nonce = header.nNonce;
                 }

@@ -1,0 +1,33 @@
+
+========== [cpp_pow] ctest_pow_tests ==========
+C++ pow_tests (b3chain-specific cases)
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=pow_tests/b3chain_magic_bytes_differ_from_bitcoin:pow_tests/b3chain_default_ports_differ_from_bitcoin:pow_tests/b3chain_no_bitcoin_dns_seeds:pow_tests/pow_hash_uses_b3pow_scratch:pow_tests/pow_hash_budget_exceeded:pow_tests/CheckBlockHeaderPoW_budget_exceeded:pow_tests/CheckBlockHeaderPoW_bad_nbits_fails_precheck:pow_tests/early_difficulty_guard_activates:pow_tests/early_difficulty_guard_no_activate_fast_block:pow_tests/early_difficulty_guard_beyond_guard_height:pow_tests/early_difficulty_guard_boundary_height:pow_tests/early_difficulty_guard_respects_powlimit:pow_tests/early_difficulty_guard_25pct_reduction --log_level=test_suite --color_output=no
+[cpp_pow] ctest_pow_tests -> FAIL (rc=201, 189 ms)
+
+========== [cpp_b3pow_scratch] ctest_b3pow_scratch_tests ==========
+C++ b3pow_scratch_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_scratch_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_scratch] ctest_b3pow_scratch_tests -> PASS (rc=0, 206 ms)
+
+========== [cpp_b3pow_cache] ctest_b3pow_cache_tests ==========
+C++ b3pow_cache_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_cache_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_cache] ctest_b3pow_cache_tests -> PASS (rc=0, 210 ms)
+
+========== [cpp_crypto] ctest_crypto_tests ==========
+C++ crypto_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=crypto_tests --log_level=test_suite --color_output=no
+[cpp_crypto] ctest_crypto_tests -> PASS (rc=0, 639 ms)
+
+========== [cpp_validation] ctest_validation_tests ==========
+C++ validation_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=validation_tests --log_level=test_suite --color_output=no
+[cpp_validation] ctest_validation_tests -> PASS (rc=0, 228 ms)
+
+========== [phase11_master] phase11_run_all ==========
+Phase 11 master audit (run-all.sh)
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/run-all.sh
+[phase11_master] phase11_run_all -> FAIL (rc=1, 216128 ms)
+/mnt/d/b3chain/b3chain/contrib/testing/tools/run-full-corpus.sh: line 116: ctest_validation_tests: command not found
+/mnt/d/b3chain/b3chain/contrib/testing/tools/run-full-corpus.sh: line 117: syntax error near unexpected token `fi'
+/mnt/d/b3chain/b3chain/contrib/testing/tools/run-full-corpus.sh: line 117: `fi'

@@ -1,0 +1,33 @@
+============================================================
+ B3Chain B3PoW-Scratch v1.1 Verification
+============================================================
+
+[1/3] b3pow_ref self-check
+  [32mPASS[0m: SPEC_VERSION
+  [32mPASS[0m: b3pow_ref deterministic (zero-header)
+
+[2/3] B3PoW-Scratch consensus vectors
+  Loaded schema_version=1, spec_version=0x00010101
+  [32mPASS[0m: spec_version matches b3pow_ref
+  [32mPASS[0m: genesis_mainnet_template: b3pow_scratch hash
+  [32mPASS[0m: genesis_mainnet_template: pow_hash <= target
+  [32mPASS[0m: genesis_regtest: b3pow_scratch hash
+  [32mPASS[0m: genesis_regtest: pow_hash <= target
+  [32mPASS[0m: mainnet_target_loose_pass: b3pow_scratch hash
+  [32mPASS[0m: mainnet_target_loose_pass: pow_hash <= target
+  [32mPASS[0m: mainnet_target_tight_fail: b3pow_scratch hash
+  [32mPASS[0m: mainnet_target_tight_fail: pow_hash <= target
+  [32mPASS[0m: nontrivial_prev: b3pow_scratch hash
+  [32mPASS[0m: nontrivial_prev: pow_hash <= target
+  [32mPASS[0m: cache_pair_nonce_0: b3pow_scratch hash
+  [32mPASS[0m: cache_pair_nonce_0: pow_hash <= target
+  [32mPASS[0m: cache_pair_nonce_1: b3pow_scratch hash
+  [32mPASS[0m: cache_pair_nonce_1: pow_hash <= target
+
+[3/3] Live block verification
+  [33mSKIP[0m: no --rpc-port specified
+
+============================================================
+ RESULTS: 17/17 passed, 0 failed
+============================================================
+ [32mAll tests passed![0m

@@ -72,12 +72,18 @@ matching the exponential decay above.
 
 Three layers, in increasing order of importance:
 
-1. **BLAKE3 PoW reduces ASIC concentration risk in early days.** The
-   cost-of-attack at launch is bounded by GPU/CPU rental rates, which
-   are diffuse. Bitcoin's SHA-256 ASIC market is concentrated in 5
-   companies; those companies could (in principle) repurpose hardware
-   to attack a SHA-256 fork from day one. BLAKE3 doesn't have that
-   problem yet.
+1. **B3PoW-Scratch v1.1 is memory-hard, reducing ASIC concentration
+   risk in early days.** The PoW spends most of its time in a 1 MB
+   per-header scratchpad walk (see
+   [`contrib/miner/b3miner-rtl/SPEC.md`](../../miner/b3miner-rtl/SPEC.md)),
+   so on-die SRAM/L1 buying power dominates the hashrate-per-watt
+   curve rather than raw arithmetic throughput. That makes
+   B3PoW-Scratch ASICs *possible* but expensive and slow to
+   profitably outpace commodity CPUs and GPUs - much harder than
+   building a stock SHA-256 ASIC. Bitcoin's SHA-256 ASIC market is
+   concentrated in 5 companies; those companies could (in principle)
+   repurpose hardware to attack a SHA-256 fork from day one. B3PoW
+   doesn't have that problem yet.
 2. **Conservative confirmation defaults.** Wallets and exchanges should
    require more confirmations for high-value B3Chain transactions in
    year one, until total hashrate grows enough that the cost-of-attack

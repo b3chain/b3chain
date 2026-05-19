@@ -124,6 +124,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   policy/feerate.cpp
   policy/policy.cpp
   pow.cpp
+  pow/lwma3.cpp
   protocol.cpp
   psbt.cpp
   rpc/rawtransaction_util.cpp
@@ -218,6 +219,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   node/connection_types.cpp
   node/context.cpp
   node/database_args.cpp
+  node/emergency_checkpoints.cpp
   node/eviction.cpp
   node/interface_ui.cpp
   node/interfaces.cpp

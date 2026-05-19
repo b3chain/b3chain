@@ -16,11 +16,14 @@ export interface VardiffParams {
 
 export class Vardiff {
     private currentDiff: number;
-    private windowStart = Date.now();
+    private windowStart: number;
     private sharesInWindow = 0;
 
-    constructor(public readonly params: VardiffParams) {
+    constructor(public readonly params: VardiffParams, startTime?: number) {
         this.currentDiff = params.initialDiff;
+        // Allow tests (and any callers using a virtual clock) to anchor
+        // the window to an explicit start time.  Defaults to wall clock.
+        this.windowStart = startTime ?? Date.now();
     }
 
     get diff(): number {
@@ -37,11 +40,13 @@ export class Vardiff {
         if (elapsed < this.params.retuneSeconds) return null;
 
         const observedInterval = this.sharesInWindow > 0 ? elapsed / this.sharesInWindow : elapsed;
-        // ratio > 1 means we want a HIGHER diff (shares too frequent)
+        // ratio > 1 means we want a HIGHER diff (shares too frequent).
+        // E.g. target=10s, observed=1s → ratio=10 → diff should multiply by 10.
+        // Conversely target=10s, observed=30s → ratio=1/3 → diff should drop to a third.
         const ratio = this.params.targetSeconds > 0
             ? observedInterval > 0 ? this.params.targetSeconds / observedInterval : this.params.maxStep
             : 1;
-        let multiplier = 1 / ratio;
+        let multiplier = ratio;
         // clamp single-step magnitude
         if (multiplier > this.params.maxStep) multiplier = this.params.maxStep;
         if (multiplier < 1 / this.params.maxStep) multiplier = 1 / this.params.maxStep;

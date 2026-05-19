@@ -7,9 +7,15 @@
 
 #include <arith_uint256.h>
 #include <chain.h>
+#include <crypto/b3pow_cache.h>
+#include <crypto/b3pow_scratch.h>
+#include <pow/lwma3.h>
 #include <primitives/block.h>
 #include <uint256.h>
 #include <util/check.h>
+
+#include <chrono>
+#include <optional>
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -18,7 +24,10 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 
     // b3chain: Early difficulty guard — during the bootstrap phase, if a block
     // takes more than 2x the target time, drop difficulty by 25% per-block to
-    // help the chain survive low initial hashrate.
+    // help the chain survive low initial hashrate.  Applied regardless of
+    // whether the chain uses LWMA-3 or the legacy 2016-block retarget so
+    // bootstrap behaviour is identical between regtest (legacy) and mainnet
+    // (LWMA-3).
     if (params.nEarlyDifficultyGuardHeight > 0 &&
         (pindexLast->nHeight + 1) <= params.nEarlyDifficultyGuardHeight &&
         pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 2)
@@ -33,6 +42,29 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         return bnNew.GetCompact();
     }
 
+    // b3chain M-3 (V-4 mitigation): LWMA-3 difficulty algorithm.
+    //
+    // When use_lwma3 is on (mainnet / testnet / signet), retarget every
+    // block using a sliding window of LWMA3_WINDOW = 60 blocks.  Closes
+    // the 2-week-retarget bootstrap window that ETC was reorged through
+    // in Aug 2020.  See src/pow/lwma3.h and
+    // doc/security/B3POW-51-ATTACK-ANALYSIS.md V-4.
+    //
+    // Regtest keeps the legacy path because the existing functional
+    // tests rely on its 2016-block boundaries.
+    if (params.use_lwma3) {
+        if (params.fPowNoRetargeting) {
+            return pindexLast->nBits;
+        }
+        // Min-difficulty exception preserved (test networks).
+        if (params.fPowAllowMinDifficultyBlocks &&
+            pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 2) {
+            return nProofOfWorkLimit;
+        }
+        return pow::CalculateLwma3Target(pindexLast, params);
+    }
+
+    // Legacy 2016-block linear retarget (Bitcoin/regtest path).
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
     {
@@ -106,6 +138,13 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t height, uint32_t old_nbits, uint32_t new_nbits)
 {
     if (params.fPowAllowMinDifficultyBlocks) return true;
+
+    // b3chain M-3: LWMA-3 retargets per-block with its own internal
+    // bounds (solve-time clamped to [-5T, +6T] => max ~50% per-window
+    // change, much smaller per single block).  The legacy 2016-block
+    // bounds-check below is meaningless under LWMA-3 because every
+    // block has its own retarget.  Defer to LWMA-3's internal clamps.
+    if (params.use_lwma3) return true;
 
     if (height % params.DifficultyAdjustmentInterval() == 0) {
         int64_t smallest_timespan = params.nPowTargetTimespan/4;
@@ -185,4 +224,79 @@ bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Par
         return false;
 
     return true;
+}
+
+PoWResult CheckBlockHeaderPoW(const CBlockHeader& header,
+                              const uint256& prev_block_hash,
+                              unsigned int nBits,
+                              const Consensus::Params& params,
+                              b3pow::Cache& cache,
+                              HeaderDepth depth)
+{
+    // 1. Pre-check: derive the target.  Rejects out-of-range nBits and
+    //    headers with nBits above the powLimit.  These are free (no
+    //    BLAKE3 or scratchpad) and are how Finding 4 / D1 keeps a peer
+    //    that sprays garbage headers from spending B3PoW CPU.
+    auto bnTarget{DeriveTarget(nBits, params.powLimit)};
+    if (!bnTarget) return PoWResult::Fail;
+
+    // 2. Fuzz-determinism bypass: in fuzz builds we don't run the real
+    //    PoW.  This matches the existing CheckProofOfWork shortcut so
+    //    fuzz harnesses can still construct "valid" headers.
+    if (EnableFuzzDeterminism()) {
+        // The fuzz oracle uses the SHA-256d header hash, *not* the
+        // B3PoW hash -- B3PoW is too slow to fuzz directly and is
+        // covered by its own targeted fuzz harness.
+        const uint256 cheap_hash = header.GetHash();
+        return ((cheap_hash.data()[31] & 0x80) == 0)
+                   ? PoWResult::Pass
+                   : PoWResult::Fail;
+    }
+
+    // 3. Cache lookup / pad init.  GetOrBuild is internally serialized
+    //    with shared_mutex; concurrent verifiers against the same parent
+    //    pay only the wait, never the rebuild.
+    b3pow::PadPtr pad = cache.GetOrBuild(prev_block_hash);
+
+    // 4. Run the hash under the configured wall-clock budget, scaled by
+    //    the header's depth below the active tip (M-7, V-9).  A hostile
+    //    peer flooding deep-fork headers spends progressively less of
+    //    our CPU per header.  Tip-height headers always get the full
+    //    budget so honest IBD never trips a budget overrun.
+    //
+    //    Numerator / denominator semantics (so we can express the
+    //    Recent and Deep slices without floating-point division and
+    //    keep the regtest's 1000 ms budget exactly representable):
+    //       Tip    -> budget * 1 / 1   (e.g. 50 ms mainnet)
+    //       Recent -> budget * 1 / 2   (e.g. 25 ms mainnet)
+    //       Deep   -> budget * 1 / 5   (e.g. 10 ms mainnet)
+    int64_t numer = 1, denom = 1;
+    switch (depth) {
+        case HeaderDepth::Tip:    numer = 1; denom = 1; break;
+        case HeaderDepth::Recent: numer = 1; denom = 2; break;
+        case HeaderDepth::Deep:   numer = 1; denom = 5; break;
+    }
+    const int64_t base_ms = params.b3pow_verify_budget_ms > 0
+                                ? params.b3pow_verify_budget_ms : 0;
+    const int64_t scaled_ms = (base_ms * numer) / denom;
+    const auto budget = std::chrono::milliseconds{scaled_ms};
+    bool budget_exceeded = false;
+    auto pow_opt = header.GetPoWHash(prev_block_hash, pad, budget, budget_exceeded);
+    if (!pow_opt) {
+        // Budget overrun.  Finding 4 / D1: caller (validation) must
+        // surface BLOCK_POW_BUDGET so net_processing can demote the
+        // peer.
+        return PoWResult::BudgetExceeded;
+    }
+    if (budget_exceeded) {
+        // Defense in depth: Hash() may have completed (returned a hash)
+        // but still tripped the budget on the post-loop probe.  Treat
+        // that as overrun too -- a peer should not be able to scrape
+        // verification under the budget by being just-fast-enough.
+        return PoWResult::BudgetExceeded;
+    }
+
+    // 5. Compare to target.
+    if (UintToArith256(*pow_opt) > *bnTarget) return PoWResult::Fail;
+    return PoWResult::Pass;
 }

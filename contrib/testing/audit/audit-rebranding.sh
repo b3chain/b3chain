@@ -57,6 +57,7 @@ EXCLUDES_DEFAULT=(
     --glob '!**/CHANGELOG*.md'
     --glob '!**/SECURITY-AUDIT.md'  # this audit may name patterns
     --glob '!**/contrib/testing/audit/**'  # the audit scripts themselves
+    --glob '!**/contrib/testing/results/**'  # prior corpus run logs (self-referential)
     --glob '!**/*.po'
     --glob '!**/*.pot'
     --glob '!**/*.ts'
@@ -78,6 +79,7 @@ run_search() {
              --exclude-dir=minisketch --exclude-dir=crc32c \
              --exclude-dir=blake3 \
              --exclude-dir=audit \
+             --exclude-dir=results \
              --exclude="release-notes-*.md" \
              --exclude="*.po" --exclude="*.pot" \
              --exclude="*.ts" --exclude="*.xlf" \

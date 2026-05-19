@@ -127,7 +127,7 @@ run_check "2" "audit-folder: lib/audit_common.py importable" \
 # 3..10 — the heavy audits. These can be expensive; allow skipping.
 audits=(
     "3:supply-cap:audit-supply-cap.py:python3"
-    "4:pow-isolation:audit-pow-isolation.py:python3"
+    "4:pow-isolation:audit-b3pow-isolation.py:python3"
     "5:net-isolation:audit-network-isolation.py:python3"
     "6:addr-rejection:audit-address-rejection.py:python3"
     "7:simd-blake3:audit-simd-blake3.py:python3"

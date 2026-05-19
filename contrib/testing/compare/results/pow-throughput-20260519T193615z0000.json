@@ -1,0 +1,93 @@
+{
+  "comparison": "pow-throughput",
+  "rows": [
+    {
+      "algo": "sha256",
+      "threads": 1,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 11855872,
+      "hashes_per_sec": 3951957.3333333335,
+      "ns_per_hash": 253.03916911383658
+    },
+    {
+      "algo": "sha256",
+      "threads": 32,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 27598848,
+      "hashes_per_sec": 9199616.0,
+      "ns_per_hash": 108.7001892252894
+    },
+    {
+      "algo": "sha256d",
+      "threads": 1,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 6397952,
+      "hashes_per_sec": 2132650.6666666665,
+      "ns_per_hash": 468.900048015365
+    },
+    {
+      "algo": "sha256d",
+      "threads": 32,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 6723584,
+      "hashes_per_sec": 2241194.6666666665,
+      "ns_per_hash": 446.19060310691447
+    },
+    {
+      "algo": "blake3",
+      "threads": 1,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 9116672,
+      "hashes_per_sec": 3038890.6666666665,
+      "ns_per_hash": 329.0674491744356
+    },
+    {
+      "algo": "blake3",
+      "threads": 32,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 12544000,
+      "hashes_per_sec": 4181333.3333333335,
+      "ns_per_hash": 239.15816326530611
+    },
+    {
+      "algo": "blake3d",
+      "threads": 1,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 5399552,
+      "hashes_per_sec": 1799850.6666666667,
+      "ns_per_hash": 555.6016499146596
+    },
+    {
+      "algo": "blake3d",
+      "threads": 32,
+      "input_bytes": 80,
+      "duration_s": 3.0,
+      "total_hashes": 6769664,
+      "hashes_per_sec": 2256554.6666666665,
+      "ns_per_hash": 443.15345636061113
+    }
+  ],
+  "summary": {
+    "speedup_blake3d_vs_sha256d_single_thread": 0.8439500640204867,
+    "speedup_blake3d_vs_sha256d_multi_thread": 1.0068534876637223
+  },
+  "host": {
+    "hostname": "DESKTOP-NRQANR8",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "cores": 32,
+    "cpu_model": "Intel(R) Core(TM) i9-14900K"
+  },
+  "timestamp": "2026-05-19T19:36:15+00:00",
+  "notes": [
+    "input size: 80 bytes",
+    "duration per measurement: 3.0s"
+  ]
+}

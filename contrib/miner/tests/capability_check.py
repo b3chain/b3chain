@@ -33,6 +33,28 @@ MINER_SCRIPT = os.path.join(MINER_DIR, "b3chain-cpuminer.py")
 MOCK_TEST_SCRIPT = os.path.join(MINER_DIR, "test_pool_miner.py")
 POOL_DIR = os.path.join(REPO_ROOT_GUESS, "contrib", "testnet", "pool")
 
+# Optional GPU backend. The crate lives next to the CPU miner; the
+# binary is produced by `cargo build --release` in
+# contrib/miner/b3chain-gpuminer/. We probe both windows / unix exe
+# names so the dashboard can offer a "Backend: GPU" option only when
+# the build artifact actually exists.
+GPU_MINER_DIR = os.path.join(MINER_DIR, "b3chain-gpuminer")
+_GPU_EXE_NAMES = ("b3chain-gpuminer.exe", "b3chain-gpuminer")
+
+
+def gpu_miner_binary_path() -> Optional[str]:
+    """Return the path to a built b3chain-gpuminer binary, or None.
+
+    Looks under <crate>/target/release/ first (the canonical Cargo
+    layout) and falls back to <crate>/target/debug/ for development.
+    """
+    for sub in ("release", "debug"):
+        for name in _GPU_EXE_NAMES:
+            cand = os.path.join(GPU_MINER_DIR, "target", sub, name)
+            if os.path.exists(cand):
+                return cand
+    return None
+
 LIVE_POOL_HOST = "pool.b3chain.org"
 LIVE_POOL_PORT = 3333
 

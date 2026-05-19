@@ -1,0 +1,62 @@
+
+========== [cpp_pow] ctest_pow_tests ==========
+C++ pow_tests (b3chain-specific cases)
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=pow_tests/b3chain_magic_bytes_differ_from_bitcoin:pow_tests/b3chain_default_ports_differ_from_bitcoin:pow_tests/b3chain_no_bitcoin_dns_seeds:pow_tests/pow_hash_uses_b3pow_scratch:pow_tests/pow_hash_budget_exceeded:pow_tests/CheckBlockHeaderPoW_budget_exceeded:pow_tests/CheckBlockHeaderPoW_bad_nbits_fails_precheck:pow_tests/early_difficulty_guard_activates:pow_tests/early_difficulty_guard_boundary_height:pow_tests/early_difficulty_guard_respects_powlimit:pow_tests/early_difficulty_guard_25pct_reduction --log_level=test_suite --color_output=no
+[cpp_pow] ctest_pow_tests -> PASS (rc=0, 191 ms)
+
+========== [cpp_b3pow_scratch] ctest_b3pow_scratch_tests ==========
+C++ b3pow_scratch_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_scratch_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_scratch] ctest_b3pow_scratch_tests -> PASS (rc=0, 210 ms)
+
+========== [cpp_b3pow_cache] ctest_b3pow_cache_tests ==========
+C++ b3pow_cache_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=b3pow_cache_tests --log_level=test_suite --color_output=no
+[cpp_b3pow_cache] ctest_b3pow_cache_tests -> PASS (rc=0, 205 ms)
+
+========== [cpp_crypto] ctest_crypto_tests ==========
+C++ crypto_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=crypto_tests --log_level=test_suite --color_output=no
+[cpp_crypto] ctest_crypto_tests -> PASS (rc=0, 659 ms)
+
+========== [cpp_validation] ctest_validation_tests ==========
+C++ validation_tests
+command: /mnt/d/b3chain/b3chain/build/bin/test_bitcoin --run_test=validation_tests --log_level=test_suite --color_output=no
+[cpp_validation] ctest_validation_tests -> PASS (rc=0, 231 ms)
+
+========== [phase11_master] phase11_run_all ==========
+Phase 11 master audit (run-all.sh)
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/run-all.sh
+[phase11_master] phase11_run_all -> PASS (rc=0, 209544 ms)
+
+========== [verify_b3pow] verify_b3pow_static ==========
+B3PoW reference verifier (offline vector check)
+command: python3 /mnt/d/b3chain/b3chain/contrib/testing/verify-b3pow.py
+[verify_b3pow] verify_b3pow_static -> PASS (rc=0, 2991 ms)
+
+========== [feature_b3pow] feature_b3pow ==========
+Functional test feature_b3pow.py
+command: python3 /mnt/d/b3chain/b3chain/test/functional/feature_b3pow.py
+[feature_b3pow] feature_b3pow -> PASS (rc=0, 841 ms)
+
+========== [stratum_pool] audit_stratum_pool ==========
+Stratum pool audit
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/audit-stratum-pool.sh
+[stratum_pool] audit_stratum_pool -> PASS (rc=0, 1366 ms)
+
+========== [stratum_v2] audit_stratum_v2 ==========
+Stratum V2 audit
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/audit/audit-stratum-v2.sh
+[stratum_v2] audit_stratum_v2 -> PASS (rc=0, 4264 ms)
+
+========== [bitcoin_inh] audit_bitcoin_inheritance -> SKIP ==========
+Reason: SKIP_BITCOIN_INH=1 (use only after a fresh full run)
+
+========== [compare_all] compare_run_all ==========
+BLAKE3 vs SHA-256d compare suite
+command: bash /mnt/d/b3chain/b3chain/contrib/testing/compare/run-all-compare.sh
+[compare_all] compare_run_all -> PASS (rc=0, 30823 ms)
+
+========================================================================
+  Corpus complete. Summary: /mnt/d/b3chain/b3chain/contrib/testing/results/20260519T193234Z/summary.json
+========================================================================

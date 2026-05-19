@@ -479,6 +479,21 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-alertnotify=<cmd>", "Execute command when an alert is raised (%s in cmd is replaced by message)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
     argsman.AddArg("-assumevalid=<hex>", strprintf("If this block is in the chain assume that it and its ancestors are valid and potentially skip their script verification (0 to verify all, default: %s, testnet3: %s, testnet4: %s, signet: %s)", defaultChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnetChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnet4ChainParams->GetConsensus().defaultAssumeValid.GetHex(), signetChainParams->GetConsensus().defaultAssumeValid.GetHex()), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    // b3chain M-9 / V-5: emergency-checkpoint stub.  No checkpoints
+    // ship with the binary; this flag is OFF by default.  When set,
+    // the node loads a (height, hash) JSON list and rejects any block
+    // at one of those heights whose hash differs.  Intended as a
+    // break-glass response to an in-progress 51%-attack -- exchanges
+    // and SPV providers coordinate the (height, hash) pair out-of-band.
+    // See doc/security/RESPONSE-RUNBOOK-51ATTACK.md and
+    // src/node/emergency_checkpoints.h.
+    argsman.AddArg("-assumevalidcheckpoints=<path>",
+                   "b3chain: path to a JSON file of {height, hash} "
+                   "emergency checkpoints.  No checkpoints ship with the binary; "
+                   "this flag is OFF by default and is intended only as a "
+                   "break-glass response to an in-progress 51%-attack.  See "
+                   "doc/security/RESPONSE-RUNBOOK-51ATTACK.md.",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksdir=<dir>", "Specify directory to hold blocks subdirectory for *.dat files (default: <datadir>)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksxor",
                    strprintf("Whether an XOR-key applies to blocksdir *.dat files. "
@@ -546,6 +561,17 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-listen", strprintf("Accept connections from outside (default: %u if no -proxy, -connect or -maxconnections=0)", DEFAULT_LISTEN), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-listenonion", strprintf("Automatically create Tor onion service (default: %d)", DEFAULT_LISTEN_ONION), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxconnections=<n>", strprintf("Maintain at most <n> automatic connections to peers (default: %u). This limit does not apply to connections manually added via -addnode or the addnode RPC, which have a separate limit of %u.", DEFAULT_MAX_PEER_CONNECTIONS, MAX_ADDNODE_CONNECTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
+    // b3chain M-8 (V-10): paranoid headers-sync mode.
+    argsman.AddArg("-paranoid-headers-sync",
+                   "b3chain: require multiple peer confirmations before accepting a "
+                   "new tip header from the network.  Mitigation against eclipse "
+                   "attacks (default: off).  See doc/security/B3POW-51-ATTACK-ANALYSIS.md V-10.",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
+    argsman.AddArg("-paranoid-headers-quorum=<n>",
+                   "b3chain: number of distinct peers that must independently "
+                   "deliver the same tip header before -paranoid-headers-sync accepts it "
+                   "(default: 3, clamped to [1, 16]).",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxreceivebuffer=<n>", strprintf("Maximum per-connection receive buffer, <n>*1000 bytes (default: %u)", DEFAULT_MAXRECEIVEBUFFER), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxsendbuffer=<n>", strprintf("Maximum per-connection memory usage for the send buffer, <n>*1000 bytes (default: %u)", DEFAULT_MAXSENDBUFFER), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxuploadtarget=<n>", strprintf("Tries to keep outbound traffic under the given target per 24h. Limit does not apply to peers with 'download' permission or blocks created within past week. 0 = no limit (default: %s). Optional suffix units [k|K|m|M|g|G|t|T] (default: M). Lowercase is 1000 base while uppercase is 1024 base", DEFAULT_MAX_UPLOAD_TARGET), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);

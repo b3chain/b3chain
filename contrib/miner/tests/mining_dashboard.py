@@ -4,11 +4,15 @@
 Live mining dashboard for the b3chain CPU miner.
 
 The dashboard is a separate QMainWindow opened from a "Mine" button in
-the test UI. It drives `b3chain-cpuminer.py` as a QProcess against a
-configurable Stratum V1 pool, parses its --json-log file in real time,
-and shows live hashrate, share counters, per-thread stats, recent shares,
-last-share details, a polyline hashrate chart, and the raw + JSONL output
-streams in tabs. A Save Session button writes a complete session report.
+the test UI. It drives EITHER `b3chain-cpuminer.py` (Python, CPU,
+default) OR `b3chain-gpuminer` (Rust, NVIDIA CUDA, opt-in via the
+"Backend" combo) as a QProcess against a configurable Stratum V1 pool,
+parses the chosen miner's --json-log file in real time, and shows live
+hashrate, share counters, per-thread stats, recent shares, last-share
+details, a polyline hashrate chart, and the raw + JSONL output streams
+in tabs. Both miners share the same JSONL schema so the rest of this
+file does not care which backend produced the file. A Save Session
+button writes a complete session report.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from .capability_check import MINER_SCRIPT
+from .capability_check import MINER_SCRIPT, gpu_miner_binary_path
 from .hashrate_chart import HashrateChart, _fmt_rate
 from .mining_parsers import (
     AuthorizedEvent, BlockFoundEvent, ConnectEvent, DisconnectEvent,
@@ -80,6 +84,10 @@ def _default_thread_count() -> int:
     return max(1, logical // 2)
 
 
+BACKEND_CPU = "cpu"
+BACKEND_GPU = "gpu"
+
+
 @dataclasses.dataclass
 class MiningConfig:
     pool_url: str = DEFAULT_POOL_URL
@@ -87,6 +95,10 @@ class MiningConfig:
     password: str = "x"
     threads: int = dataclasses.field(default_factory=_default_thread_count)
     useragent: str = DEFAULT_USERAGENT
+    # "cpu" -> spawn b3chain-cpuminer.py (Python). "gpu" -> spawn the
+    # Rust b3chain-gpuminer binary (CUDA). The dashboard only offers
+    # "gpu" when capability_check.gpu_miner_binary_path() resolves.
+    backend: str = BACKEND_CPU
 
 
 def _load_settings() -> dict:
@@ -209,7 +221,16 @@ class MiningRunner(QObject):
     def start(self, cfg: MiningConfig) -> None:
         if self.is_running:
             return
-        if not os.path.exists(MINER_SCRIPT):
+        if cfg.backend == BACKEND_GPU:
+            gpu_bin = gpu_miner_binary_path()
+            if not gpu_bin:
+                self.failed_to_start.emit(
+                    "GPU backend selected but b3chain-gpuminer binary not "
+                    "found. Build it with `cargo build --release` in "
+                    "contrib/miner/b3chain-gpuminer/."
+                )
+                return
+        elif not os.path.exists(MINER_SCRIPT):
             self.failed_to_start.emit(f"miner script missing: {MINER_SCRIPT}")
             return
 
@@ -282,6 +303,12 @@ class MiningRunner(QObject):
 
     @staticmethod
     def _build_argv(cfg: MiningConfig, jsonl_path: str) -> List[str]:
+        if cfg.backend == BACKEND_GPU:
+            return MiningRunner._build_argv_gpu(cfg, jsonl_path)
+        return MiningRunner._build_argv_cpu(cfg, jsonl_path)
+
+    @staticmethod
+    def _build_argv_cpu(cfg: MiningConfig, jsonl_path: str) -> List[str]:
         # Use a smaller --progress-interval than the miner CLI default
         # (1_000_000) so the dashboard's hashrate ticks fast even on
         # slower boxes. The miner also has a wall-clock floor of ~1s, so
@@ -298,6 +325,31 @@ class MiningRunner(QObject):
             "--useragent", cfg.useragent,
             "--json-log", jsonl_path,
             "--progress-interval", "100000",
+        ]
+
+    @staticmethod
+    def _build_argv_gpu(cfg: MiningConfig, jsonl_path: str) -> List[str]:
+        # The CUDA miner binary speaks the same JSONL schema as the
+        # Python miner (share_pre_submit, share_submit, progress, ...)
+        # so the rest of this dashboard does not care which backend
+        # produced the file. The argv shape is intentionally a strict
+        # subset of the CPU miner's: --threads becomes irrelevant on
+        # the GPU (one driver task instead of N worker threads), so we
+        # drop it.
+        gpu_bin = gpu_miner_binary_path()
+        if not gpu_bin:
+            # Should not happen -- the UI greys out the GPU radio when
+            # the binary is missing -- but keep a useful fallback so
+            # the error surfaced to the user is "binary missing" not
+            # "type error".
+            gpu_bin = "b3chain-gpuminer"
+        return [
+            gpu_bin,
+            "--stratum", cfg.pool_url,
+            "--user", cfg.user,
+            "--pass", cfg.password,
+            "--useragent", cfg.useragent,
+            "--json-log", jsonl_path,
         ]
 
     # ---------------------------------------------------------- subprocess
@@ -647,18 +699,51 @@ class MiningDashboard(QMainWindow):
         self._pass_edit.setMinimumWidth(80)
         h.addWidget(self._pass_edit)
 
+        h.addWidget(QLabel("Backend:"))
+        self._backend_combo = QComboBox()
+        self._backend_combo.addItem("CPU (Python)", BACKEND_CPU)
+        # Only offer GPU when the binary actually exists on disk; we
+        # leave the entry visible-but-disabled either way so the user
+        # discovers the feature even when they haven't built it yet.
+        self._backend_combo.addItem("GPU (CUDA)", BACKEND_GPU)
+        gpu_present = gpu_miner_binary_path() is not None
+        # QComboBox doesn't support per-item enable directly; if GPU is
+        # missing we still let the user pick it, then surface a clear
+        # error on Start. The tooltip explains the requirement.
+        gpu_tip = (
+            "Choose CPU (b3chain-cpuminer.py, Python) or GPU\n"
+            "(b3chain-gpuminer, Rust + CUDA). The GPU backend\n"
+            "needs a build of contrib/miner/b3chain-gpuminer/\n"
+            "(see its README for prerequisites)."
+        )
+        if not gpu_present:
+            gpu_tip += (
+                "\n\nGPU binary is NOT detected at the expected path; "
+                "choosing GPU here will fail on Start until you build it."
+            )
+        self._backend_combo.setToolTip(gpu_tip)
+        h.addWidget(self._backend_combo)
+
         h.addWidget(QLabel("Threads:"))
         self._threads_spin = QSpinBox()
         self._threads_spin.setRange(1, 64)
         self._threads_spin.setValue(_default_thread_count())
         self._threads_spin.setToolTip(
-            "Number of mining worker threads. Default is half the logical\n"
-            "core count, which approximates physical cores on hyperthreaded\n"
-            "CPUs. Going higher usually REDUCES aggregate hashrate because\n"
-            "Python's GIL serialises the per-iteration overhead and extra\n"
-            "threads just starve each other."
+            "Number of mining worker threads (CPU backend only -- ignored\n"
+            "for GPU). Default is half the logical core count, which\n"
+            "approximates physical cores on hyperthreaded CPUs. Going\n"
+            "higher usually REDUCES aggregate hashrate because Python's\n"
+            "GIL serialises the per-iteration overhead and extra threads\n"
+            "just starve each other."
         )
         h.addWidget(self._threads_spin)
+        # Disable the threads spinbox when GPU is selected, since the
+        # GPU backend uses a single dispatcher task.
+        self._backend_combo.currentIndexChanged.connect(
+            lambda _i: self._threads_spin.setEnabled(
+                self._backend_combo.currentData() != BACKEND_GPU
+            )
+        )
 
         h.addWidget(QLabel("UA:"))
         self._ua_edit = QLineEdit(DEFAULT_USERAGENT)
@@ -894,6 +979,14 @@ class MiningDashboard(QMainWindow):
         self._threads_spin.setValue(int(s.get("threads",
                                               self._threads_spin.value())))
         self._ua_edit.setText(s.get("useragent", DEFAULT_USERAGENT))
+        # Restore the backend selection if present.
+        backend = s.get("backend", BACKEND_CPU)
+        for i in range(self._backend_combo.count()):
+            if self._backend_combo.itemData(i) == backend:
+                self._backend_combo.setCurrentIndex(i)
+                break
+        # Sync the threads-spinbox enabled state for the loaded backend.
+        self._threads_spin.setEnabled(backend != BACKEND_GPU)
 
     def _persist_settings(self, cfg: MiningConfig) -> None:
         s = _load_settings()
@@ -908,6 +1001,7 @@ class MiningDashboard(QMainWindow):
             "password": cfg.password,
             "threads": cfg.threads,
             "useragent": cfg.useragent,
+            "backend": cfg.backend,
             "recent_pools": recent,
         })
         _save_settings(s)
@@ -919,6 +1013,7 @@ class MiningDashboard(QMainWindow):
             password=self._pass_edit.text(),
             threads=self._threads_spin.value(),
             useragent=self._ua_edit.text().strip() or DEFAULT_USERAGENT,
+            backend=self._backend_combo.currentData() or BACKEND_CPU,
         )
 
     # ---------------------------------------------------------- start/stop
@@ -959,8 +1054,14 @@ class MiningDashboard(QMainWindow):
 
     def _set_inputs_enabled(self, enabled: bool) -> None:
         for w in (self._pool_combo, self._user_edit, self._pass_edit,
-                  self._threads_spin, self._ua_edit):
+                  self._threads_spin, self._ua_edit, self._backend_combo):
             w.setEnabled(enabled)
+        # When re-enabling after a stop, respect the GPU-disables-threads
+        # rule. Otherwise the spinbox would unconditionally re-enable.
+        if enabled:
+            self._threads_spin.setEnabled(
+                self._backend_combo.currentData() != BACKEND_GPU
+            )
         self._start_btn.setEnabled(enabled)
         self._stop_btn.setEnabled(not enabled)
 

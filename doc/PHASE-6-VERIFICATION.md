@@ -31,7 +31,7 @@ bash contrib/testing/audit/audit-internal-miner.sh --static  # static checks onl
 bash contrib/testing/audit/audit-internal-miner.sh --dry-run # print what would run
 ```
 
-Last run: **2026-05-15 03:49**
+Last run: **2026-05-19 09:30**
 
 ---
 
@@ -70,7 +70,7 @@ The audit script appends to this section every time it runs. Phase 6.1 is
 considered "verified" once this section is empty after a clean run.
 
 <!-- VERIFIER-FINDINGS-START -->
-*Last verifier run: 2026-05-15 03:49*
+*Last verifier run: 2026-05-19 09:30*
 
 *(clean run — no failures, no skips)*
 <!-- VERIFIER-FINDINGS-END -->

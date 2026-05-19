@@ -195,10 +195,14 @@ class RegtestNode:
             "-listenonion=0", "-discover=0", "-dnsseed=0",
             "-fallbackfee=0.0001", "-maxtxfee=1",
         ] + self.extra_args
+        # Capture stderr so we can show diagnostic logs when b3chaind
+        # crashes during startup; pipe it into a file under the workdir.
+        self._stderr_path = self.workdir / "b3chaind.stderr.log"
+        self._stderr_fh = open(self._stderr_path, "w")
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=self._stderr_fh,
         )
 
         deadline = time.time() + wait_seconds
@@ -208,9 +212,16 @@ class RegtestNode:
                 return self
             except (RpcError, urllib.error.URLError, ConnectionError):
                 if self._proc.poll() is not None:
+                    # Surface the last few lines of b3chaind's stderr.
+                    tail = ""
+                    try:
+                        with open(self._stderr_path, "r") as f:
+                            tail = "".join(f.readlines()[-30:])
+                    except Exception:
+                        pass
                     raise RuntimeError(
                         f"{self.name}: b3chaind exited with code "
-                        f"{self._proc.returncode}"
+                        f"{self._proc.returncode}\n{tail}"
                     )
                 time.sleep(0.25)
         raise TimeoutError(f"{self.name}: b3chaind did not respond within {wait_seconds}s")

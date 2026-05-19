@@ -7,8 +7,10 @@
 #define BITCOIN_POW_H
 
 #include <consensus/params.h>
+#include <crypto/b3pow_cache.h>
 
 #include <cstdint>
+#include <optional>
 
 class CBlockHeader;
 class CBlockIndex;
@@ -32,6 +34,58 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
 bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params&);
+
+/** Outcome of a B3PoW-Scratch header verification. */
+enum class PoWResult {
+    /** Header hashes within the target. */
+    Pass,
+    /** Header hashed cleanly but the result misses the target. */
+    Fail,
+    /** Wall-clock budget exceeded -- header rejected without a definitive
+     *  pass/fail decision.  Treated as fail for consensus, but the caller
+     *  must additionally punish the originating peer (Finding 4 / D1). */
+    BudgetExceeded,
+};
+
+/** Full B3PoW-Scratch v1.1 header verification (cache + budget).
+ *
+ * Pre-checks (cheap, called by the caller before this entry):
+ *   - nBits is in valid range (see DeriveTarget)
+ *   - header serialises to exactly 80 bytes
+ *
+ * This function:
+ *   1. Looks up a 1 MB scratchpad in `cache` keyed by `prev_block_hash`,
+ *      building one on miss (~5 ms).
+ *   2. Runs B3PoW-Scratch under a wall-clock budget of
+ *      `params.b3pow_verify_budget_ms`.
+ *   3. Compares the resulting pow_hash against the target derived from
+ *      `nBits` and `params.powLimit`.
+ *
+ * Thread-safe wrt concurrent calls into the same `cache`.
+ */
+/** b3chain M-7 (V-9): how deep below the active tip the header sits.
+ *
+ *  Used by CheckBlockHeaderPoW to scale the wall-clock budget so that
+ *  hostile peers cannot bleed CPU by spraying deep-fork headers. */
+enum class HeaderDepth : uint8_t {
+    /** Tip ±6: full budget (default).  Cheap to misclassify a stale
+     *  header as a tip header, so the default is also the loosest. */
+    Tip,
+    /** 6 < depth ≤ 100: half budget.  Plausible orphans / honest
+     *  reorgs land here. */
+    Recent,
+    /** depth > 100: one-fifth budget.  Almost certainly a deep-fork
+     *  attack or a hopelessly stale peer; we still verify but on a
+     *  very short clock. */
+    Deep,
+};
+
+PoWResult CheckBlockHeaderPoW(const CBlockHeader& header,
+                              const uint256& prev_block_hash,
+                              unsigned int nBits,
+                              const Consensus::Params& params,
+                              b3pow::Cache& cache,
+                              HeaderDepth depth = HeaderDepth::Tip);
 
 /**
  * Return false if the proof-of-work requirement specified by new_nbits at a

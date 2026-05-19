@@ -1,0 +1,31 @@
+{
+  "comparison": "length-extension",
+  "rows": [
+    {
+      "algo": "sha256",
+      "attack_succeeded": true,
+      "attack_microseconds": 105.25599986976886,
+      "forged_tag_hex": "82f688f4739cf2128ae7a25eab6a4e5a561d9e366cea5f7d1ae3466c8ae17ed5"
+    },
+    {
+      "algo": "blake3",
+      "attack_succeeded": false,
+      "attack_microseconds": 0.8480001270072535
+    }
+  ],
+  "summary": {
+    "sha256_le_attack_succeeded": true,
+    "blake3_le_attack_succeeded": false
+  },
+  "host": {
+    "hostname": "DESKTOP-NRQANR8",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "cores": 32,
+    "cpu_model": "Intel(R) Core(TM) i9-14900K"
+  },
+  "timestamp": "2026-05-19T19:36:45+00:00",
+  "notes": [
+    "Demonstrates the classic LE attack on a naive H(secret||msg) MAC. Bitcoin's H(H(x)) construction is not vulnerable; this is a construction-level comparison, not a Bitcoin attack."
+  ]
+}

@@ -1,0 +1,20 @@
+==> ctest unit suite (logging to /mnt/d/b3chain/b3chain/.inheritance-logs/ctest.log)
+==> functional suite (logging to /mnt/d/b3chain/b3chain/.inheritance-logs/functional.log; this is slow)
+
+==> classifying results
+inheritance_classify: rewrote /mnt/d/b3chain/b3chain/doc/SECURITY-INHERITANCE.md
+## Bitcoin Test Suite — Inheritance Run
+
+Generated: 2026-05-19 13:14
+
+| Category | Count |
+|---|---:|
+| PASS | 144 |
+| DIVERGED-EXPECTED | 0 |
+| FAIL | 0 |
+| SKIP | 0 |
+| **Total** | **144** |
+
+
+
+AUDIT RESULT: PASS  [Bitcoin inheritance]

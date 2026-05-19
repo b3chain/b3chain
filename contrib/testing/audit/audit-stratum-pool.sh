@@ -112,9 +112,13 @@ do_static_checks() {
         "grep -cE 'mining\\.(subscribe|authorize|submit)' '$POOL_DIR/src/stratum/server.ts'" \
         ge 3
 
-    # P-1b: share-validator implements BLAKE3d
-    run_check "P-1b" "phase-a-share-validator: blake3d(header) used in validator" \
-        "grep -lE 'blake3d\\(.*header.*\\)' '$POOL_DIR/src/stratum/share-validator.ts' | wc -l" \
+    # P-1b: share-validator implements a PoW hash over the header.
+    # B3PoW-Scratch v1.1 update: a TypeScript port of B3PoW-Scratch
+    # is pending (out of scope for this PoW rename). For now the pool
+    # still uses blake3d() as the share-pow shim; this check accepts
+    # either symbol so the upgrade lands without breaking the audit.
+    run_check "P-1b" "phase-a-share-validator: (blake3d|b3pow) used in validator" \
+        "grep -lE '(blake3d|b3pow|b3powScratch)\\(.*header.*\\)' '$POOL_DIR/src/stratum/share-validator.ts' | wc -l" \
         ge 1
 
     # P-1c: job manager polls getblocktemplate
@@ -139,7 +143,7 @@ do_static_checks() {
 
     # P-3c: confirmer + pplns flag
     run_check "P-3c" "phase-c-block-confirmer: pplns_credited + creditPplns + B3POOL_BLOCK_CONFIRMATIONS wiring" \
-        "grep -lcE 'pplns_credited|blockConfirmations|creditPplns' '$POOL_DIR/src/pool/block-confirmer.ts' '$POOL_DIR/src/pool/pplns.ts' | awk -F: '{s+=\$NF} END {print s}'" \
+        "grep -cE 'pplns_credited|blockConfirmations|creditPplns' '$POOL_DIR/src/pool/block-confirmer.ts' '$POOL_DIR/src/pool/pplns.ts' | awk -F: '{s+=\$NF} END {print s}'" \
         ge 3
 
     # P-4b: rate limiters wired in auth router
@@ -187,20 +191,23 @@ do_node_checks() {
         return
     fi
 
+    # Count TAP "ok N - ..." lines (one per passing subtest); the
+    # previous "grep -c '# pass'" was matching only the single summary
+    # line "# pass N" once, regardless of N.
     run_check "P-1d" "phase-a-blake3-vector: tests/blake3.test.ts" \
-        "cd '$POOL_DIR' && node --test --import tsx tests/blake3.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && node --test --import tsx tests/blake3.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 3
 
     run_check "P-2c" "phase-b-address-validator: tests/address.test.ts" \
-        "cd '$POOL_DIR' && node --test --import tsx tests/address.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && node --test --import tsx tests/address.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 6
 
     run_check "P-3a" "phase-c-pplns-math: tests/pplns.test.ts (worked example)" \
-        "cd '$POOL_DIR' && node --test --import tsx tests/pplns.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && node --test --import tsx tests/pplns.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 5
 
     run_check "P-4a" "phase-d-vardiff: tests/vardiff.test.ts" \
-        "cd '$POOL_DIR' && node --test --import tsx tests/vardiff.test.ts 2>&1 | grep -c '# pass'" \
+        "cd '$POOL_DIR' && node --test --import tsx tests/vardiff.test.ts 2>&1 | grep -cE '^ok [0-9]'" \
         ge 4
 }
 

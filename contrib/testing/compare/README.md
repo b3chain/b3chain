@@ -1,9 +1,21 @@
-# BLAKE3 vs SHA-256 Comparative Suite
+# BLAKE3 (primitive) vs SHA-256 Comparative Suite
 
 This directory holds the empirical and analytical comparisons between
-B3Chain's hash function (double BLAKE3-256) and Bitcoin's (SHA-256d). The
-goal is to back the claim *"BLAKE3 is a measurable improvement"* with
-numbers and citations rather than rhetoric.
+the BLAKE3 *primitive* used inside B3Chain's PoW
+(**B3PoW-Scratch v1.1**, see
+[`SPEC.md`](../../miner/b3miner-rtl/SPEC.md)) and Bitcoin's SHA-256d.
+The goal is to back the claim *"BLAKE3 is a measurable improvement
+as the inner round function"* with numbers and citations rather than
+rhetoric.
+
+> **Scope clarification.** These comparisons measure the BLAKE3
+> *primitive* and the analogous SHA-256 primitive. They do **not**
+> measure end-to-end B3PoW-Scratch throughput - B3PoW's whole point
+> is that it is **memory-hard**, i.e. dominated by 1 MB scratchpad
+> traffic rather than primitive throughput, so SHA-256-style ASICs do
+> not transfer to B3PoW. The high-level summary at
+> [`compare-b3pow-vs-sha256d.md`](compare-b3pow-vs-sha256d.md)
+> explains why memory-hardness matters for ASIC neutrality.
 
 ## Layout
 

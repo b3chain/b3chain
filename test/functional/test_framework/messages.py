@@ -23,8 +23,10 @@ import copy
 import hashlib
 from io import BytesIO
 import math
+import os
 import random
 import socket
+import sys
 import time
 import unittest
 
@@ -37,6 +39,53 @@ except ImportError:
         "The 'blake3' Python package is required for b3chain functional tests. "
         "Install it with: pip3 install blake3"
     )
+
+# b3chain: load the B3PoW-Scratch reference from contrib/miner/b3miner-rtl/ref
+# so functional tests can mine valid blocks under the v1.1 PoW.  The
+# reference is the authoritative source -- the C++ port in src/crypto/
+# is required to agree byte-for-byte (enforced by src/test/b3pow_scratch_tests.cpp).
+_B3POW_REF_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..",
+    "contrib", "miner", "b3miner-rtl", "ref"))
+if _B3POW_REF_DIR not in sys.path:
+    sys.path.insert(0, _B3POW_REF_DIR)
+try:
+    import b3pow_ref as _b3pow_ref
+except ImportError as _e:
+    raise ImportError(
+        "Failed to import b3pow_ref from "
+        f"{_B3POW_REF_DIR}: {_e}.  This module is required for "
+        "B3PoW-Scratch v1.1 mining inside functional tests."
+    )
+
+# Per-process pad cache keyed by (prev_block_hash_bytes).  Each pad is
+# 1 MB, so we keep at most a handful around (matches the C++ node's
+# Consensus::Params::b3pow_cache_depth default of 4).
+_B3POW_PAD_CACHE = {}
+_B3POW_PAD_CACHE_DEPTH = 4
+
+def _b3pow_get_pad(prev_block_hash_bytes):
+    """Return a (possibly cached) B3PoW scratchpad for `prev_block_hash_bytes`."""
+    cached = _B3POW_PAD_CACHE.get(prev_block_hash_bytes)
+    if cached is not None:
+        return cached
+    pad = _b3pow_ref.init_scratchpad(prev_block_hash_bytes)
+    if len(_B3POW_PAD_CACHE) >= _B3POW_PAD_CACHE_DEPTH:
+        _B3POW_PAD_CACHE.pop(next(iter(_B3POW_PAD_CACHE)))
+    _B3POW_PAD_CACHE[prev_block_hash_bytes] = pad
+    return pad
+
+def b3pow_hash(header_bytes, prev_block_hash_bytes):
+    """B3PoW-Scratch v1.1 over an 80-byte header and 32-byte parent hash.
+
+    Returns the 32-byte big-endian pow_hash (raw -- caller reverses
+    if they want little-endian display).
+    """
+    assert len(header_bytes) == 80
+    assert len(prev_block_hash_bytes) == 32
+    pad = _b3pow_get_pad(prev_block_hash_bytes)
+    return _b3pow_ref.b3pow_scratch(header_bytes, prev_block_hash_bytes,
+                                    pad=pad).pow_hash
 
 from test_framework.crypto.siphash import siphash256
 from test_framework.util import assert_equal
@@ -778,13 +827,22 @@ class CBlockHeader:
 
     @property
     def pow_hash_hex(self):
-        """Return block PoW hash (double BLAKE3-256) as hex string."""
-        return pow_hash256(self._serialize_header())[::-1].hex()
+        """Return block PoW hash (B3PoW-Scratch v1.1) as little-endian hex."""
+        return b3pow_hash(self._serialize_header(),
+                          ser_uint256(self.hashPrevBlock))[::-1].hex()
 
     @property
     def pow_hash_int(self):
-        """Return block PoW hash (double BLAKE3-256) as integer."""
-        return uint256_from_str(pow_hash256(self._serialize_header()))
+        """Return block PoW hash (B3PoW-Scratch v1.1) as integer.
+
+        Note: B3PoW depends on `hashPrevBlock`, so updating `nNonce`
+        alone changes the result -- but updating `hashPrevBlock`
+        requires rebuilding the pad (slow).  `solve()` exploits this
+        by caching the pad per parent.
+        """
+        return uint256_from_str(
+            b3pow_hash(self._serialize_header(),
+                       ser_uint256(self.hashPrevBlock)))
 
     def __repr__(self):
         return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x)" \
@@ -854,9 +912,19 @@ class CBlock(CBlockHeader):
         return True
 
     def solve(self):
-        """Mine the block by finding a nonce that satisfies the BLAKE3 PoW target."""
+        """Mine the block by finding a nonce that satisfies the B3PoW-Scratch target.
+
+        The pad is a function of hashPrevBlock only, so we build it
+        once up front and reuse it across all nonce trials.
+        """
         target = uint256_from_compact(self.nBits)
-        while self.pow_hash_int > target:
+        prev_be = ser_uint256(self.hashPrevBlock)
+        pad = _b3pow_get_pad(prev_be)
+        while True:
+            header = self._serialize_header()
+            pow_hash = _b3pow_ref.b3pow_scratch(header, prev_be, pad=pad).pow_hash
+            if uint256_from_str(pow_hash) <= target:
+                return
             self.nNonce += 1
 
     # Calculate the block weight using witness and non-witness

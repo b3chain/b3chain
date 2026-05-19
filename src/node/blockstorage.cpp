@@ -134,8 +134,14 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHeader().GetPoWHash(), pindexNew->nBits, consensusParams)) {
-                    LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
+                // b3chain: only sanity-check that nBits is in range here.
+                // Full B3PoW recheck would cost ~11 ms/block × N blocks
+                // on every startup -- infeasible.  The block was already
+                // PoW-validated by CheckBlock when it was accepted; if
+                // local disk has been tampered with that's outside our
+                // threat model.
+                if (!DeriveTarget(pindexNew->nBits, consensusParams.powLimit)) {
+                    LogError("%s: nBits out of range: %s\n", __func__, pindexNew->ToString());
                     return false;
                 }
 
@@ -1017,8 +1023,12 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
 
     const auto block_hash{block.GetHash()};
 
-    // Check the header (use PoW hash for BLAKE3-based proof-of-work)
-    if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, GetConsensus())) {
+    // b3chain: nBits-only sanity check (cheap).  Full B3PoW would
+    // require parent context and the 1 MB scratchpad cache; both are
+    // unavailable from this code path and the block was already
+    // PoW-validated when it was accepted, so a cheap target-range
+    // check is sufficient as a disk-integrity smoke test.
+    if (!DeriveTarget(block.nBits, GetConsensus().powLimit)) {
         LogError("Errors in block header at %s while reading block", pos.ToString());
         return false;
     }

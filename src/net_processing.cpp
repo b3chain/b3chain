@@ -56,6 +56,7 @@
 #include <txmempool.h>
 #include <uint256.h>
 #include <util/check.h>
+#include <util/hasher.h>
 #include <util/strencodings.h>
 #include <util/time.h>
 #include <util/trace.h>
@@ -83,6 +84,7 @@
 #include <set>
 #include <span>
 #include <typeinfo>
+#include <unordered_map>
 #include <utility>
 
 using namespace util::hex_literals;
@@ -814,6 +816,16 @@ private:
 
     /** Hash of the last block we received via INV */
     uint256 m_last_block_inv_triggering_headers_sync GUARDED_BY(g_msgproc_mutex){};
+
+    /** b3chain M-8 (V-10): paranoid headers-sync quorum tracker.
+     *  Maps header-hash -> set of NodeIds that have delivered that exact
+     *  header.  Only populated when m_opts.paranoid_headers_sync is true.
+     *  Capped to avoid unbounded growth under hostile churn (see
+     *  ProcessHeadersMessage for the size guard).  Lives under
+     *  g_msgproc_mutex because the HEADERS handler holds it. */
+    std::unordered_map<uint256, std::set<NodeId>, SaltedUint256Hasher>
+        m_paranoid_header_observations GUARDED_BY(g_msgproc_mutex){};
+    static constexpr size_t kParanoidObservationsMax = 1024;
 
     /**
      * Sources of received blocks, saved to be able punish them when processing
@@ -1821,6 +1833,28 @@ void PeerManagerImpl::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidati
     // Conflicting (but not necessarily invalid) data or different policy:
     case BlockValidationResult::BLOCK_MISSING_PREV:
         if (peer) Misbehaving(*peer, message);
+        return;
+    // b3chain (Finding 4 / D1): a peer whose header took longer than the
+    // B3PoW verifier budget to process is treated as actively
+    // adversarial -- a single oversized header costs 50 ms of CPU and
+    // the only way to produce one is to pre-compute it offline (which
+    // is why we punish in addition to rejecting).
+    case BlockValidationResult::BLOCK_POW_BUDGET:
+        if (peer) Misbehaving(*peer, "b3pow-budget-exceeded");
+        return;
+    // b3chain M-4 (F-3 fix): a peer that proposes a chain reorganising
+    // more than max_reorg_depth blocks below the active tip is
+    // adversarial (or hopelessly stale).  See V-5 in
+    // doc/security/B3POW-51-ATTACK-ANALYSIS.md.
+    case BlockValidationResult::BLOCK_DEEP_REORG:
+        if (peer) Misbehaving(*peer, "deep-reorg-attempt");
+        return;
+    // b3chain M-9 / V-5: a peer that proposes a block at a height
+    // covered by the operator-loaded emergency-checkpoint set whose
+    // hash differs is on a hostile fork.  See
+    // doc/security/RESPONSE-RUNBOOK-51ATTACK.md.
+    case BlockValidationResult::BLOCK_CHECKPOINT:
+        if (peer) Misbehaving(*peer, "checkpoint-mismatch");
         return;
     case BlockValidationResult::BLOCK_TIME_FUTURE:
         break;
@@ -2943,6 +2977,67 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
     // something new (if these headers are valid).
     bool received_new_header{last_received_header == nullptr};
 
+    // b3chain (Finding 4 / D3): cap how many full-B3PoW verifications we
+    // run in a single batch.  Each verification is bounded at ~50 ms by
+    // the verifier budget, so at most MAX_B3POW_VERIFY_PER_BATCH * 50ms
+    // of CPU is committed per HEADERS message.  Any remainder is
+    // implicitly deferred: pindexLast advances to the last header we
+    // actually processed, and the follow-up getheaders below (gated on
+    // `nCount == max_headers_result`, where nCount is the ORIGINAL
+    // batch size) asks the peer for the headers after pindexLast on
+    // the next round-trip.
+    static constexpr size_t MAX_B3POW_VERIFY_PER_BATCH = 256;
+    bool truncated_for_b3pow = false;
+    if (headers.size() > MAX_B3POW_VERIFY_PER_BATCH) {
+        LogDebug(BCLog::NET,
+                 "Truncating HEADERS batch from %u to %u entries to bound "
+                 "B3PoW CPU per peer=%d; remainder will be fetched in "
+                 "the next round-trip.\n",
+                 static_cast<unsigned>(headers.size()),
+                 static_cast<unsigned>(MAX_B3POW_VERIFY_PER_BATCH),
+                 pfrom.GetId());
+        headers.resize(MAX_B3POW_VERIFY_PER_BATCH);
+        truncated_for_b3pow = true;
+    }
+
+    // b3chain M-8 (V-10): paranoid headers-sync quorum gate.  Defer
+    // commit of any tip-extending header until `quorum` distinct peers
+    // have delivered the exact same final header hash.  No-op when
+    // m_opts.paranoid_headers_sync is false (the default) or during
+    // IBD (where waiting for quorum stalls catch-up entirely).
+    bool paranoid_quorum_short = false;
+    if (m_opts.paranoid_headers_sync && !m_chainman.IsInitialBlockDownload()
+        && !headers.empty()) {
+        const uint256 last_hash = headers.back().GetHash();
+        auto& observers = m_paranoid_header_observations[last_hash];
+        observers.insert(pfrom.GetId());
+        // Trim observation table if it grows past the cap.  We keep
+        // the most recently observed N entries -- arbitrary eviction
+        // order, but bounded memory is the goal.
+        while (m_paranoid_header_observations.size() > kParanoidObservationsMax) {
+            m_paranoid_header_observations.erase(
+                m_paranoid_header_observations.begin());
+        }
+        if (observers.size() < m_opts.paranoid_headers_quorum) {
+            LogDebug(BCLog::NET,
+                     "paranoid-headers-sync: deferring header %s "
+                     "(observers=%u / quorum=%u) from peer=%d\n",
+                     last_hash.ToString(),
+                     static_cast<unsigned>(observers.size()),
+                     m_opts.paranoid_headers_quorum,
+                     pfrom.GetId());
+            paranoid_quorum_short = true;
+        }
+    }
+
+    // M-8: if the paranoid-headers-sync quorum is short we silently
+    // drop the batch -- the next peer's HEADERS will refresh observers
+    // and eventually meet the quorum.  No misbehavior is attributed
+    // (the peer is acting normally; we're just being paranoid).
+    if (paranoid_quorum_short) {
+        return;
+    }
+
     // Now process all the headers.
     BlockValidationState state;
     const bool processed{m_chainman.ProcessNewBlockHeaders(headers,
@@ -2960,8 +3055,51 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
         LogBlockHeader(*pindexLast, pfrom, /*via_compact_block=*/false);
     }
 
+    // b3chain M-5: depth-aware ban score for stale-tip headers.
+    //
+    // After processing, if the headers chain we just accepted is rooted
+    // far below the active tip, the peer is either malicious (feeding
+    // a stale fork) or hopelessly out of date.  Either way we should
+    // throttle them.  Apply a graduated response keyed on the gap
+    // (pindexLast->nHeight vs active tip height).
+    //
+    // Thresholds (informational; configurable via consensus.max_reorg_depth):
+    //   * gap <  max_reorg_depth/2  -> no extra action
+    //   * gap >= max_reorg_depth/2  -> log and tag header chain as "stale"
+    //   * gap >= max_reorg_depth    -> Misbehaving("stale-tip-headers", depth)
+    //
+    // Bypass: only applies when we are NOT in IBD and the peer was not
+    // explicitly requested to send these headers.
+    {
+        const auto& consensus = m_chainman.GetParams().GetConsensus();
+        const int max_reorg_depth = consensus.max_reorg_depth;
+        if (max_reorg_depth > 0 && !m_chainman.IsInitialBlockDownload()) {
+            const CBlockIndex* tip = m_chainman.ActiveChain().Tip();
+            if (tip != nullptr && pindexLast != nullptr) {
+                const int gap = tip->nHeight - pindexLast->nHeight;
+                if (gap >= max_reorg_depth) {
+                    LogDebug(BCLog::NET,
+                             "peer=%d: stale-tip headers, gap=%d (cap=%d) -> Misbehaving\n",
+                             pfrom.GetId(), gap, max_reorg_depth);
+                    PeerRef stale_peer = GetPeerRef(pfrom.GetId());
+                    if (stale_peer) Misbehaving(*stale_peer,
+                        strprintf("stale-tip-headers (gap=%d cap=%d)",
+                                  gap, max_reorg_depth));
+                } else if (gap >= max_reorg_depth / 2) {
+                    LogDebug(BCLog::NET,
+                             "peer=%d: stale-tip headers (warn), gap=%d (half-cap=%d)\n",
+                             pfrom.GetId(), gap, max_reorg_depth / 2);
+                }
+            }
+        }
+    }
+
     // Consider fetching more headers if we are not using our headers-sync mechanism.
-    if (nCount == m_opts.max_headers_result && !have_headers_sync) {
+    // b3chain (Finding 4 / D3): also fetch the remainder if we truncated
+    // this batch above to cap B3PoW CPU.  In that case pindexLast is at
+    // the last truncated header, and a follow-up getheaders advances the
+    // peer past it on the next round-trip.
+    if ((nCount == m_opts.max_headers_result || truncated_for_b3pow) && !have_headers_sync) {
         // Headers message had its maximum size; the peer may have more headers.
         if (MaybeSendGetHeaders(pfrom, GetLocator(pindexLast), peer)) {
             LogDebug(BCLog::NET, "more getheaders (%d) to end to peer=%d (startheight:%d)\n",

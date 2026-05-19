@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "spec_version": "0x00010101",
+  "entries": [
+    {
+      "name": "genesis_mainnet_template",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e248b2101",
+      "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_pow_hash_hex": "737db4bb86d4fbd16761c338aee726eaff9fe36eb4a08b3e9319e9173c060b52",
+      "nbits_hex": "0x1e01ffff",
+      "expected_check_pow": false,
+      "notes": "Mainnet genesis template (zero merkle_root -- recompute post-chainparams-rewire).  Locks the JSON schema."
+    },
+    {
+      "name": "genesis_regtest",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008241a967ffff7f2000000000",
+      "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_pow_hash_hex": "1822743d5bfed8eeac80117b4536e116597c29453b21582950c5f0357b9ffe63",
+      "nbits_hex": "0x207fffff",
+      "expected_check_pow": true,
+      "notes": "Regtest genesis template (nonce=0).  Regtest powLimit (0x207fffff) accepts ~50% of random hashes, so the expected_check_pow flag is whatever the comparator gives."
+    },
+    {
+      "name": "mainnet_target_loose_pass",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_pow_hash_hex": "0fdb24c541a86c67bd793b400ce7f7640785a32948d6944a59b527bb2d6e8c78",
+      "nbits_hex": "0x1e01ffff",
+      "expected_check_pow": false,
+      "notes": "Mainnet powLimit (0x1e01ffff).  expected_check_pow is computed from the actual pow_hash -- the C++ port must agree byte-for-byte on the hash *and* on the boolean."
+    },
+    {
+      "name": "mainnet_target_tight_fail",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_pow_hash_hex": "0fdb24c541a86c67bd793b400ce7f7640785a32948d6944a59b527bb2d6e8c78",
+      "nbits_hex": "0x03000001",
+      "expected_check_pow": false,
+      "notes": "Synthetic tight target (target=1) -- expected to fail with overwhelming probability."
+    },
+    {
+      "name": "nontrivial_prev",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "prev_block_hash_hex": "deadbeefcafebabe0badf00dc0ffee00abcdef0123456789fedcba9876543210",
+      "expected_pow_hash_hex": "ef13bb0dfebbd5f508c22764586b8f329a640d25b658e525dc13f45611a19687",
+      "nbits_hex": "0x1e01ffff",
+      "expected_check_pow": false,
+      "notes": "Same header as mainnet_target_loose_pass but non-zero prev_block_hash; pow_hash MUST differ."
+    },
+    {
+      "name": "cache_pair_nonce_0",
+      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e00000000",
+      "prev_block_hash_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "expected_pow_hash_hex": "8736f8607e2da22f93a2fa45040dbea20a423cec25b0994ee6d817e261bcb160",
+      "nbits_hex": "0x1e01ffff",
+      "expected_check_pow": false,
+      "notes": "Cache-pair member 1 (nonce=0) -- shares prev_block_hash with cache_pair_nonce_1."
+    },
+    {
+      "name": "cache_pair_nonce_1",
+      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e01000000",
+      "prev_block_hash_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "expected_pow_hash_hex": "6052403bee42b081c2e0e94c98957d7062ca2d3e9b84b3e2763b0b90c90f9fb3",
+      "nbits_hex": "0x1e01ffff",
+      "expected_check_pow": false,
+      "notes": "Cache-pair member 2 (nonce=1) -- C++ test asserts this is served from the cache after member 1."
+    }
+  ]
+}

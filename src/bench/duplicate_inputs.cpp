@@ -8,6 +8,7 @@
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/validation.h>
+#include <crypto/b3pow_cache.h>
 #include <pow.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
@@ -69,9 +70,14 @@ static void DuplicateInputs(benchmark::Bench& bench)
 
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
+    // PoW is skipped (fCheckPOW=false) so the cache is never consulted,
+    // but the API requires it.
+    b3pow::Cache b3pow_cache_bench{/*depth=*/1};
     bench.run([&] {
         BlockValidationState cvstate{};
-        assert(!CheckBlock(block, cvstate, chainparams.GetConsensus(), false, false));
+        assert(!CheckBlock(block, cvstate, chainparams.GetConsensus(),
+                           block.hashPrevBlock, b3pow_cache_bench,
+                           /*fCheckPOW=*/false, /*fCheckMerkleRoot=*/false));
         assert(cvstate.GetRejectReason() == "bad-txns-inputs-duplicate");
     });
 }

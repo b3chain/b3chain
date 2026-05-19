@@ -12,10 +12,15 @@ differs in important ways:
   and internal nodes, between keyed and unkeyed modes, and between
   position-dependent chunks.
 
-For B3Chain's use of double-hashing for PoW (`H(H(header))`), neither
-construction is directly attacked; the comparison matters for any
-protocol-level use of the hash where someone might naively concatenate
-(secret || data) without thinking.
+B3Chain does not use the bare BLAKE3 primitive as its PoW; the PoW
+is **B3PoW-Scratch v1.1** (a memory-hard construction layered on top
+of BLAKE3, see
+[`SPEC.md`](../../miner/b3miner-rtl/SPEC.md)). The
+collision-resistance analysis below still applies because BLAKE3 is
+the inner round function of B3PoW-Scratch, but the discussion of
+"length-extension" and "tree mode" is most directly relevant to other
+protocol-level uses of the hash where someone might naively
+concatenate `(secret || data)` without thinking.
 
 ## Merkle-Damgard, briefly
 
@@ -91,11 +96,13 @@ Properties:
 1. **Block / tx ID hashing** — `H(H(x))` SHA-256d unchanged. The MD
    construction does not leak via length extension because the inner hash
    normalises the input.
-2. **PoW hashing** — `H(H(x))` BLAKE3d. Same shape as SHA-256d, but using
-   BLAKE3's tree construction. The double-hash is technically redundant
-   for length-extension (BLAKE3 doesn't have it) but kept for symmetry
-   with the Bitcoin protocol layout and to provide a future-proof
-   defence-in-depth margin.
+2. **PoW hashing** — **B3PoW-Scratch v1.1**: 1 MB memory-hard
+   scratchpad walked by 8 lanes of BLAKE3 with 2048 outer iterations,
+   finalised by a single BLAKE3 over the lane state. See
+   [`SPEC.md`](../../miner/b3miner-rtl/SPEC.md). The BLAKE3 primitive
+   is used as the inner round function; the construction itself is
+   parallel, memory-hard, and deliberately incompatible with the bare
+   BLAKE3 / SHA-256 ASIC market.
 3. **Future MAC / KDF** — when B3Chain needs a keyed primitive (e.g. for
    deterministic peer-id generation, BIP324 negotiation, Lightning HTLC
    secrets), use BLAKE3's built-in `keyed_hash` and `derive_key` rather

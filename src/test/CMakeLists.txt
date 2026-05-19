@@ -12,6 +12,8 @@ add_executable(test_bitcoin
   audit/consensus_invariants_tests.cpp
   argsman_tests.cpp
   arith_uint256_tests.cpp
+  b3pow_cache_tests.cpp
+  b3pow_scratch_tests.cpp
   banman_tests.cpp
   base32_tests.cpp
   base58_tests.cpp
@@ -76,6 +78,7 @@ add_executable(test_bitcoin
   policyestimator_tests.cpp
   pool_tests.cpp
   pow_tests.cpp
+  lwma3_tests.cpp
   prevector_tests.cpp
   raii_event_tests.cpp
   random_tests.cpp
@@ -134,6 +137,7 @@ add_executable(test_bitcoin
 
 include(TargetDataSources)
 target_json_data_sources(test_bitcoin
+  data/b3pow_consensus_vectors.json
   data/base58_encode_decode.json
   data/bip341_wallet_vectors.json
   data/blockfilters.json

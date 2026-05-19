@@ -7,6 +7,7 @@
 #include <chainparams.h>
 #include <common/args.h>
 #include <consensus/validation.h>
+#include <crypto/b3pow_cache.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <serialize.h>
@@ -47,6 +48,8 @@ static void DeserializeAndCheckBlockTest(benchmark::Bench& bench)
 
     ArgsManager bench_args;
     const auto chainParams = CreateChainParams(bench_args, ChainType::MAIN);
+    b3pow::Cache b3pow_cache_bench{
+        static_cast<size_t>(chainParams->GetConsensus().b3pow_cache_depth)};
 
     bench.unit("block").run([&] {
         CBlock block; // Note that CBlock caches its checked state, so we need to recreate it here
@@ -55,7 +58,8 @@ static void DeserializeAndCheckBlockTest(benchmark::Bench& bench)
         assert(rewound);
 
         BlockValidationState validationState;
-        bool checked = CheckBlock(block, validationState, chainParams->GetConsensus());
+        bool checked = CheckBlock(block, validationState, chainParams->GetConsensus(),
+                                  block.hashPrevBlock, b3pow_cache_bench);
         assert(checked);
     });
 }

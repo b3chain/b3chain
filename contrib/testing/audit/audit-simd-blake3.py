@@ -3,24 +3,32 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
-[B-1] SIMD BLAKE3 differential audit.
+[B-1] SIMD BLAKE3 primitive differential audit.
 
-The b3chaind binary uses the BLAKE3 C library, which selects the fastest
-available SIMD path at runtime (SSE2 / SSE4.1 / AVX2 / AVX-512 on x86_64,
-NEON on ARM). A subtle SIMD bug could give wrong hashes on some CPUs only,
-which would silently fork the network.
+This audit targets the BLAKE3 *primitive*, which is the inner round
+function used inside B3PoW-Scratch v1.1 (the chain's actual PoW; see
+contrib/miner/b3miner-rtl/SPEC.md). It does NOT exercise B3PoW-Scratch
+itself - that pinning is owned by the consensus-vector tests
+(verify-b3pow.py + src/test/data/b3pow_consensus_vectors.json).
+
+The b3chaind binary links the BLAKE3 C library, which selects the
+fastest available SIMD path at runtime (SSE2 / SSE4.1 / AVX2 /
+AVX-512 on x86_64, NEON on ARM). A subtle SIMD bug would give wrong
+hashes on some CPUs only and would silently fork the network because
+B3PoW-Scratch composes BLAKE3 over a 1 MB scratchpad.
 
 This audit:
   1. Runs every input from the official BLAKE3 spec test vectors
      (https://github.com/BLAKE3-team/BLAKE3) through the SIMD-enabled
-     `blake3` Python module and verifies the output byte-for-byte against
-     the published reference digests.
+     `blake3` Python module and verifies the output byte-for-byte
+     against the published reference digests.
   2. Runs 1000+ random-sized inputs (sizes 0..100000) through the SIMD
-     library AND a pure-Python portable BLAKE3 reference embedded in this
-     script, and verifies they match byte-for-byte.
-  3. Specifically tests all chunk-boundary sizes: 0, 1, 31, 32, 33, 63,
-     64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024,
-     1025 (chunk = 1024 bytes), 4096, 8192, 65535, 65536, 100000.
+     library AND a pure-Python portable BLAKE3 reference embedded in
+     this script, and verifies they match byte-for-byte.
+  3. Specifically tests all chunk-boundary sizes: 0, 1, 31, 32, 33,
+     63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023,
+     1024, 1025 (chunk = 1024 bytes), 4096, 8192, 65535, 65536,
+     100000.
 
 Requires: pip3 install blake3
 """

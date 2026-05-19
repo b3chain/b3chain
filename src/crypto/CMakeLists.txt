@@ -4,6 +4,8 @@
 
 add_library(bitcoin_crypto STATIC EXCLUDE_FROM_ALL
   aes.cpp
+  b3pow_cache.cpp
+  b3pow_scratch.cpp
   chacha20.cpp
   chacha20poly1305.cpp
   hex_base.cpp

@@ -131,7 +131,7 @@ suddenly stops eliding).
 | **Priority**     | Critical (blocking mainnet launch) |
 | **Effort**       | 4–8 person-weeks of audit firm time + 2 person-weeks of internal time |
 | **Cost bracket** | $40K – $120K USD depending on scope |
-| **Dependencies** | Phase 11 self-audit complete (it is) |
+| **Dependencies** | Phase 11 self-audit complete (it is); B3PoW v1.1.1 51%-attack self-evaluation complete (see [`B3POW-51-ATTACK-ANALYSIS.md`](security/B3POW-51-ATTACK-ANALYSIS.md)) |
 | **Owner**        | (unassigned) |
 
 ### Scope
@@ -139,9 +139,15 @@ suddenly stops eliding).
 Engage a reputable cryptography audit firm (Trail of Bits, NCC Group,
 Cure53, Quarkslab, Least Authority) for a focused review of:
 
-- The BLAKE3 PoW integration: every diff from upstream Bitcoin Core
-  that touches `pow.cpp`, `validation.cpp` PoW paths, `chainparams.cpp`,
-  and `crypto/blake3/`.
+- The B3PoW-Scratch v1.1.1 PoW integration: every diff from upstream
+  Bitcoin Core that touches `pow.cpp`, `pow/lwma3.{h,cpp}`,
+  `validation.cpp` PoW paths, `chainparams.cpp`, `crypto/blake3/`,
+  `crypto/b3pow_scratch.{h,cpp}`, and `crypto/b3pow_cache.{h,cpp}`.
+- The 51%-attack mitigations M-2..M-9 documented in
+  [`B3POW-51-ATTACK-ANALYSIS.md`](security/B3POW-51-ATTACK-ANALYSIS.md):
+  BIP94, LWMA-3, max_reorg_depth, the 2-tier pinned cache, the
+  depth-asymmetric verifier budget, the emergency-checkpoint stub,
+  and the paranoid-headers-sync flag.
 - The address format changes (`key_io.cpp`, base58/bech32 wiring).
 - The HD wallet coin_type swap.
 
@@ -246,11 +252,20 @@ we are not surprised later.
 
 | Field | Value |
 |-------|-------|
-| **Status**       | `proposed` |
-| **Priority**     | Medium (if no checkpoints, this is `deferred`) |
+| **Status**       | `in-progress` (the emergency-checkpoint *stub* shipped as M-9 / V-5; the multi-party signing ceremony is still pending) |
+| **Priority**     | Medium (in-progress) |
 | **Effort**       | 1 person-week ceremony + ongoing per-checkpoint |
-| **Dependencies** | Decision on whether to ship checkpoints at all |
+| **Dependencies** | M-9 stub shipped ([`src/node/emergency_checkpoints.{h,cpp}`](../src/node/), [`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md)) |
 | **Owner**        | (unassigned) |
+
+### What shipped (stub)
+
+`-assumevalidcheckpoints=<path>` loads operator-supplied JSON of
+(height, hash) pairs and rejects any block at one of those heights
+with a different hash.  The binary ships ZERO checkpoints; this flag
+is OFF by default.  See the runbook for the operational procedure.
+
+### What's still proposed (ceremony)
 
 ### Scope
 
@@ -322,6 +337,56 @@ withholding attacks, censorship by individual miners).
   here are worse than no attestation at all.
 - TPM availability and standardisation: not all mining hardware ships
   with a usable TPM.
+
+---
+
+## 9. Continuous 51%-attack monitoring & alerting
+
+| Field | Value |
+|-------|-------|
+| **Status**       | `proposed` |
+| **Priority**     | High (post-mainnet) |
+| **Effort**       | 2–3 person-weeks |
+| **Dependencies** | Phase 0 / Phase 1 simulators (`audit-51-attack-sim.py`, `audit-selfish-mining-sim.py`, `audit-bootstrap-reorg-sim.py`) shipped (they did); a dedicated monitoring host with redundant b3chain nodes |
+| **Owner**        | (unassigned) |
+
+### Scope
+
+Move the 51%-attack analysis from a self-audit artifact to a
+**live signal**.  Components:
+
+- **Hashrate sentinel**: rolling-window hashrate measurement from the
+  monitoring host's view of the chain; alert when the apparent hashrate
+  drops by > 30% over 1 hour or > 50% over 6 hours.  Inputs: block
+  timestamps and LWMA-3 difficulty target.
+- **Reorg sentinel**: alert on any reorganisation > 10 blocks
+  observed by the monitoring host (well below the
+  `max_reorg_depth = 200` cap, so the operator sees it before it
+  hits the consensus rule).
+- **Stale-tip-headers sentinel**: scrape `debug.log` for the rate of
+  `stale-tip-headers (gap=...)` Misbehaving events; alert if a single
+  peer triggers it > 3 times / hour.
+- **Cache eviction sentinel**: scrape for `b3pow_cache` resize /
+  evict log lines (after M-6, these should be near-zero on a
+  well-behaved node).
+- **Exchange-feed integration**: if at least one cooperating exchange
+  publishes a reorg-victim feed (deposit double-spend reports), wire
+  it in to the alerting pipeline.
+
+Each sentinel triggers the corresponding section of
+[`RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md).
+
+### Expected security gain
+
+Catches an attack while it's in motion rather than after the fact.
+Reduces mean-time-to-runbook from "exchange tells us" to "monitoring
+tells us within minutes".
+
+### Risks
+
+- False positives during legitimate hashrate volatility (mining-pool
+  migrations, ISP outages).  Tune thresholds conservatively.
+- Adds an alerting surface that itself must be reliable.
 
 ---
 

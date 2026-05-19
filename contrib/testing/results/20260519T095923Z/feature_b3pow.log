@@ -1,0 +1,8 @@
+2026-05-19T10:03:05.495002Z TestFramework (INFO): PRNG seed is: 5698322064937280044
+2026-05-19T10:03:05.495727Z TestFramework (INFO): Initializing test directory /tmp/bitcoin_func_test_6l89rjaa
+2026-05-19T10:03:05.765888Z TestFramework (INFO): Accept: mine 5 regtest blocks via generatetoaddress
+2026-05-19T10:03:05.825302Z TestFramework (INFO): Reject: submit header whose nonce fails the B3PoW target
+2026-05-19T10:03:05.843915Z TestFramework (INFO): Peer-score: header spam triggers Misbehaving
+2026-05-19T10:03:05.898357Z TestFramework (INFO): Stopping nodes
+2026-05-19T10:03:06.019609Z TestFramework (INFO): Cleaning up /tmp/bitcoin_func_test_6l89rjaa on exit
+2026-05-19T10:03:06.019914Z TestFramework (INFO): Tests successful

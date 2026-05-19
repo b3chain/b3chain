@@ -24,7 +24,7 @@ and verifies end-to-end correctness.
 | 1-3 | Node startup | All 3 nodes start at height 0 |
 | 4 | Address prefix | Regtest addresses use `b3rt1` prefix |
 | 5 | Peer connectivity | Nodes discover and connect to each other |
-| 6 | Mining (2016 blocks) | BLAKE3 PoW mining works via `generatetoaddress` |
+| 6 | Mining (2016 blocks) | B3PoW-Scratch v1.1 mining works via `generatetoaddress` |
 | 7-8 | Block sync | Blocks propagate to all nodes |
 | 9-10 | Tip consensus | All 3 nodes agree on the same chain tip |
 | 11 | Miner balance | Miner receives block rewards (50 B3C/block) |
@@ -61,29 +61,42 @@ BINDIR=/path/to/build/bin bash contrib/testing/regtest-simulation.sh
 
 **Runtime:** ~70 seconds on modern hardware.
 
-### verify-blake3-pow.py
+### verify-b3pow.py
 
-**Standalone BLAKE3 PoW verification.** Verifies the double BLAKE3-256
-hash algorithm against known test vectors, and optionally connects to a
-running node to verify live blocks.
+**Standalone B3PoW-Scratch v1.1 verification.** Recomputes every entry
+in [`src/test/data/b3pow_consensus_vectors.json`](../../src/test/data/b3pow_consensus_vectors.json)
+through the Python reference at
+[`contrib/miner/b3miner-rtl/ref/b3pow_ref.py`](../miner/b3miner-rtl/ref/b3pow_ref.py)
+and optionally connects to a running node to verify live blocks.
+
+The reference implementation is the single source of truth and is
+byte-for-byte equivalent to the C++ port at
+[`src/crypto/b3pow_scratch.cpp`](../../src/crypto/b3pow_scratch.cpp);
+the consensus-vectors JSON file is what pins them together.
 
 **Usage:**
 
 ```bash
-# Verify test vectors only (no node needed)
-python3 contrib/testing/verify-blake3-pow.py
+# Verify the consensus vectors (no node needed)
+python3 contrib/testing/verify-b3pow.py
 
-# Verify test vectors + live blocks from a running regtest node
-python3 contrib/testing/verify-blake3-pow.py --rpc-port=18545
+# Verify vectors + live blocks from a running regtest node
+python3 contrib/testing/verify-b3pow.py --rpc-port=18545
 ```
+
+`verify-blake3-pow.py` still exists as a thin deprecation shim that
+forwards to `verify-b3pow.py`. It will be removed in the next release.
 
 ## Related Resources
 
 | Resource | Location |
 |----------|----------|
+| B3PoW-Scratch v1.1 normative spec | `contrib/miner/b3miner-rtl/SPEC.md` |
+| Python reference implementation | `contrib/miner/b3miner-rtl/ref/b3pow_ref.py` |
+| Consensus-grade vectors (JSON) | `src/test/data/b3pow_consensus_vectors.json` |
+| C++ port of the PoW | `src/crypto/b3pow_scratch.cpp` / `b3pow_cache.cpp` |
 | Reference CPU miner | `contrib/miner/b3chain-cpuminer.py` |
 | Genesis block miners | `contrib/genesis/` |
-| PoW design document | `doc/b3chain-pow-design.md` |
 | Mining documentation | `doc/mining.md` |
 | Stratum / pool implementer guide | `doc/stratum.md` |
 | C++ unit tests | `src/test/` (run via `ctest`) |
@@ -91,9 +104,6 @@ python3 contrib/testing/verify-blake3-pow.py --rpc-port=18545
 
 ## Verified Results
 
-As of the initial release, the following test results have been achieved:
-
-- **C++ unit tests:** 148 passed, 0 failed, 1 skipped
-- **Python functional tests:** 258 passed, 0 failed, 19 skipped
-- **Regtest simulation:** 19/19 checks passed (2016 blocks, 3 nodes)
-- **BLAKE3 benchmark:** ~1.4 MH/s single-thread on modern CPU
+The most recent published end-to-end run is mirrored at
+[`b3chain.org/testing/test-results.html`](https://b3chain.org/testing/test-results.html);
+machine-readable per-script results live under `contrib/testing/results/`.

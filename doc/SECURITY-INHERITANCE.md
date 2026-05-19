@@ -29,9 +29,24 @@ unless we changed the underlying code. This document is the inventory:
 ## Why this exists
 
 The original Phase 11 audit ([`SECURITY-AUDIT.md`](SECURITY-AUDIT.md)) covers
-**B3Chain-specific** invariants: the BLAKE3 PoW swap, the rebranded address
+**B3Chain-specific** invariants: the B3PoW-Scratch v1.1 PoW swap (which
+replaced an interim double-BLAKE3 swap as of v1.1), the rebranded address
 prefix, the coin_type 9333, the 51% attack. It does **not** check that we
 left Bitcoin's other security properties intact.
+
+**Note on the PoW swap**: B3Chain replaces Bitcoin's SHA-256d PoW with
+**B3PoW-Scratch v1.1** -- a memory-hard BLAKE3 variant with a 1 MB
+scratchpad, 8 lanes, 2048 iterations, and a 50 ms wall-clock verifier
+budget (`Consensus::Params::b3pow_verify_budget_ms`).  Block IDs (the
+hash returned by `GetHash()` and `getblockhash`) remain SHA-256d --
+only PoW validation uses B3PoW.  The authoritative spec lives in
+[`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md),
+the byte-for-byte reference is
+[`contrib/miner/b3miner-rtl/ref/b3pow_ref.py`](../contrib/miner/b3miner-rtl/ref/b3pow_ref.py),
+and the C++ port is [`src/crypto/b3pow_scratch.{h,cpp}`](../src/crypto/).
+Consensus parity between the two is enforced by
+[`src/test/b3pow_scratch_tests.cpp`](../src/test/b3pow_scratch_tests.cpp)
+against the JSON vector set in `src/test/data/b3pow_consensus_vectors.json`.
 
 This document closes that gap. Every property below is one Bitcoin already
 proves; the question is "do we still prove it?". The answer for almost every
@@ -54,7 +69,7 @@ bash contrib/testing/audit/audit-bitcoin-inheritance.sh
 #    - exits non-zero if any "should be inherited" test fails
 ```
 
-Last full run: **never** (rewritten by the verifier on the first run)
+Last full run: **2026-05-19 13:14** (144 PASS, 0 diverged, 0 FAIL, 0 SKIP)
 
 ---
 
@@ -65,7 +80,9 @@ Last full run: **never** (rewritten by the verifier on the first run)
 | Block subsidy halving schedule | `feature_block.py` | `inherited` | `audit-supply-cap.py`, `consensus_invariants_tests::audit_subsidy_*` | Halving interval unchanged at 210 000. |
 | 21M total supply cap | analytic + `feature_block.py` | `inherited` | `audit-supply-cap.py` C-2 | Cap is `2 099 999 997 690 000` sat. |
 | Subsidy returns 0 after halving 64 (UB guard) | `validation_tests.cpp` | `inherited` | `consensus_invariants_tests::audit_subsidy_*` | Guards against `x >> 64` UB. |
-| Difficulty retarget enforces 4× bounds | `pow_tests.cpp::CalculateNextWorkRequired` | `inherited` | `audit-supply-cap.py` C-4 | Retarget formula unchanged. |
+| Difficulty retarget enforces 4× bounds | `pow_tests.cpp::CalculateNextWorkRequired` | `diverged-by-design` | `lwma3_tests.cpp`, `feature_lwma3.py`, `audit-supply-cap.py` C-4 | b3chain M-3: Bitcoin's 2016-block linear retarget is replaced by **LWMA-3** (window=45, solve-time clamp 6×spacing / -spacing/6). See [`src/pow/lwma3.{h,cpp}`](../src/pow/) and `B3POW-51-ATTACK-ANALYSIS.md` V-4. Regtest retains the legacy retarget for functional-test compatibility. |
+| Timewarp attack mitigation (BIP94 block-storm rule) | `feature_block_storm.py`, upstream `enforce_BIP94` | `diverged-by-design` (matches upstream) | `audit-timewarp-sim.py`, `feature_timewarp_bip94.py` | b3chain F-2 fix (M-2): `enforce_BIP94 = true` on **mainnet/testnet/signet** (Bitcoin Core's default is mainnet-off, testnet-on). Caps the minimum timestamp at a difficulty boundary to the parent's `nTime - 600s`. See `B3POW-51-ATTACK-ANALYSIS.md` V-3. |
+| Reorg depth cap (consensus-enforced max_reorg_depth) | n/a (Bitcoin has no equivalent) | `diverged-by-design` (new) | `feature_reorg_depth_cap.py`, validation rejection `BlockValidationResult::BLOCK_DEEP_REORG` | b3chain M-4 / F-3: `consensus.max_reorg_depth = 200` (≈ 33 h at 600 s).  Blocks proposing a reorg deeper than this below the active tip are rejected with `Misbehaving("deep-reorg-attempt")`.  Bypassed during IBD / assumevalid / regtest.  See `B3POW-51-ATTACK-ANALYSIS.md` V-5. |
 | Median-time-past rule | `feature_block.py` | `inherited` | — | Unchanged. |
 | Coinbase maturity (100 blocks) | `feature_block.py` | `inherited` | — | Unchanged. |
 | Block weight / sigops limits | `feature_block.py`, `feature_segwit.py` | `inherited` | — | Unchanged. |
@@ -87,8 +104,9 @@ Last full run: **never** (rewritten by the verifier on the first run)
 | SHA-256d correctness | `crypto_tests.cpp::sha256d_*` | `inherited` | — | Block ID + txid construction unchanged. |
 | HMAC-SHA-256 / -512 | `crypto_tests.cpp::hmac_*` | `inherited` | — | Used by BIP32 derivation and BIP39 seeds. |
 | RIPEMD-160 | `crypto_tests.cpp::ripemd160_*` | `inherited` | — | Address hashing unchanged. |
-| **PoW algorithm (SHA-256d for nonce)** | `pow_tests.cpp::*difficulty*` | **`diverged-by-design`** | `audit-pow-isolation.py`, `pow_blake3_tests.cpp` (if present) | Replaced with double-BLAKE3-256 keyed on a per-chain context string. |
+| **PoW algorithm (SHA-256d for nonce)** | `pow_tests.cpp::*difficulty*` | **`diverged-by-design`** | `audit-pow-isolation.py`, `b3pow_scratch_tests.cpp`, `b3pow_cache_tests.cpp`, `feature_b3pow.py` | Replaced with **B3PoW-Scratch v1.1** -- memory-hard BLAKE3 variant with a 1 MB scratchpad and 50 ms verifier budget; see [`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md). |
 | BLAKE3 hashing (no upstream Bitcoin equivalent) | n/a | `diverged-by-design` (new) | `audit-simd-blake3.py` (B-1) | SIMD-vs-portable differential test. |
+| **B3PoW verifier budget enforcement (DoS mitigation)** | n/a | `diverged-by-design` (new) | `pow_tests::CheckBlockHeaderPoW_budget_exceeded`, `b3pow_cache_tests.cpp` | Headers that exceed `b3pow_verify_budget_ms` return `BLOCK_POW_BUDGET` and trigger `Misbehaving("b3pow-budget-exceeded")` for the offending peer; headers-sync caps full B3PoW verification at `MAX_B3POW_VERIFY_PER_BATCH=256` per `HEADERS` message. |
 | `getblockhash` returns SHA-256d | `rpc_tests.cpp` | `inherited` | — | Block ID hash unchanged; only the PoW hash differs. |
 
 ## Script & transaction
@@ -173,7 +191,19 @@ should be `inherited` reports `failing-investigation`, it is a real
 regression and must be filed as an issue with label `inheritance-regression`.
 
 <!-- INHERIT-FINDINGS-START -->
-*(no findings — verifier has not been run against a real build yet)*
+## Bitcoin Test Suite — Inheritance Run
+
+Generated: 2026-05-19 13:14
+
+| Category | Count |
+|---|---:|
+| PASS | 144 |
+| DIVERGED-EXPECTED | 0 |
+| FAIL | 0 |
+| SKIP | 0 |
+| **Total** | **144** |
+
+
 <!-- INHERIT-FINDINGS-END -->
 
 ## Out of scope
