@@ -50,7 +50,100 @@ package depends on.
   that hands out a fresh `bytearray` copy per call, matching the new
   TS / cpuminer pattern. CI parity is unchanged (`17/17` vectors pass).
 
-## v1.1.1 — B3PoW-Scratch 51%-attack mitigations (current)
+## v1.1.2 — Post-F-6 cleanup + in-house roadmap progress (current)
+
+Maintenance release stacked on top of `a24b77b60c` (the v1.1.1 F-6 fix).
+No new consensus rules; no genesis re-mine; no chain-ID roll.  Closes
+the gap between what `doc/CHANGELOG.md` and `doc/SECURITY-ROADMAP.md`
+already described and what was actually in git, and lands the in-house
+half of three SECURITY-ROADMAP deliverables.
+
+- **F-6 follow-up cleanups (Group A).**
+  - [`src/kernel/chainparams.cpp`](../src/kernel/chainparams.cpp):
+    testnet4 was inheriting Bitcoin testnet4's `nMinimumChainWork`
+    + `defaultAssumeValid` (block 91000 hash `...839d9b`).  Both
+    zeroed to match the other production chains; the F-6 genesis
+    re-mine rolled the chain ID so any inherited assumevalid was
+    meaningless.  Pre-genesis: no live impact.
+  - [`contrib/testnet/explorer/install.sh`](../contrib/testnet/explorer/install.sh):
+    added `testnet4` + `signet` genesis-hash sed lines so a btc-rpc-explorer
+    rebuilt against b3chain no longer falls back to upstream Bitcoin
+    genesis hashes (which would 404 every block lookup).
+  - [`b3chain-website/testing/test-vectors.html`](https://b3chain.org/testing/test-vectors.html)
+    and `pow-verifier.html`: refreshed `SPEC_VERSION = 0x00010101`,
+    mainnet `nBits = 0x1d7fffff`, and all six post-F-6
+    `expected_pow_hash` values; vector names in the
+    expected-output block updated to match the actual
+    `consensus_vectors.json` schema.
+- **Track the three untracked miner trees + CI workflows (Group B).**
+  Four logical commits adding ~150 source files (~14,350 lines, all
+  text, no binaries / no build artefacts):
+  - `c55c08d913` — `.github/workflows/{ci.yml, b3miner-rtl.yml}` +
+    `contrib/miner/b3miner-rtl/` (64 files / 8,260 lines).  The F-1
+    ITER_MUL[7] fix in `ref/b3pow_ref.py` + `rtl/params_pkg.sv`, the
+    F-4 `ref/tests/test_address_uniformity.py` uniformity gate, the
+    F-6-touched `ref/gen_vectors.py`, the canonical SPEC.md, and all
+    SystemVerilog + Vivado / Verilator scaffolding.
+  - `105e50f567` — `contrib/miner/b3miner-firmware/` (42 files /
+    2,714 lines).  ESP-IDF firmware tree for B3Miner-1 hardware.
+  - `4cd4a81a84` — `contrib/miner/b3chain-gpuminer/` (24 files /
+    3,376 lines).  Deprecated double-BLAKE3 GPU miner kept as
+    historical reference.
+- **In-house SECURITY-ROADMAP scaffolds (Group C, commit
+  `1761ea3b5a`).**
+  - **§3 Continuous benchmark CI** (`scaffold landed`).  New
+    [`.github/workflows/benchmark.yml`](../.github/workflows/benchmark.yml)
+    + [`contrib/testing/audit/audit-bench-trend.py`](../contrib/testing/audit/audit-bench-trend.py).
+    Nightly + per-PR-on-hot-path job builds `bench_bitcoin` for HEAD
+    and HEAD~1, runs the focused filter
+    `B3PoW.*|CheckBlock.*|ConnectBlock.*`, fails the run on > 5%
+    median regression, and publishes a markdown summary to the job
+    page.
+  - **§9 Continuous 51%-attack monitoring** (`script landed`).  New
+    [`contrib/monitoring/51attack-watch.py`](../contrib/monitoring/51attack-watch.py)
+    long-running daemon polls `getchaintips` /
+    `getblockchaininfo` / `getnetworkhashps` every `--interval`
+    seconds and emits structured JSONL alerts on (a) non-active
+    tips at `branchlen >= 6`, (b) network hashps ≤ 50% of the
+    100-block peak (height-keyed sliding window, immune to host
+    clock-jumps), (c) reorgs reaching half of `max_reorg_depth`
+    (M-4).  Includes an in-memory dedup window, RPC-down /
+    webhook-5xx / detector-exception bypass paths, and an optional
+    webhook for PagerDuty / Slack / generic JSON sinks.  Operator
+    deployment guide:
+    [`doc/security/51-MONITORING-OPS.md`](security/51-MONITORING-OPS.md).
+    Tier-3-verified per
+    [`.cursor/rules/tiered-verification.mdc`](../.cursor/rules/tiered-verification.mdc):
+    every comment step has matching code, the polling loop is named,
+    and every bypass / failure path is enumerated.
+  - **§1 OSS-Fuzz onboarding** (`build scaffold ready`).  New
+    [`contrib/oss-fuzz/b3chain/`](../contrib/oss-fuzz/b3chain/README.md)
+    directory mirrors `google/oss-fuzz/projects/bitcoin-core/`
+    layout (project.yaml, Dockerfile, build.sh, README.md) so the
+    future PR enabling ClusterFuzz for b3chain is a drop-in copy.
+- **CI fixes uncovered by the first cross-repo Linux run (Group D).**
+  - `e944ee16cf` — `.github/workflows/b3miner-rtl.yml` path
+    `../../../src/test/data/...` → `../../../../src/test/data/...`
+    (one more `..` to reach the repo root from `contrib/miner/b3miner-rtl/ref/`).
+    The fresh `b3miner-rtl` workflow now passes on Linux: F-1, F-4,
+    and F-6 are all exercised end-to-end with no drift.
+  - `5093846f61` — `.github/workflows/benchmark.yml` cmake flags
+    `-DBUILD_WALLET=OFF` → `-DENABLE_WALLET=OFF`, add `-DENABLE_IPC=OFF`
+    so the configure step does not require `libcapnp-dev` (not in
+    the runner's apt-get list).
+
+Documentation updates rolled in:
+[`doc/SECURITY-ROADMAP.md`](SECURITY-ROADMAP.md) — status flips for
+items 1 (`proposed (build scaffold ready)`), 3 (`in-progress (scaffold
+landed)`), 9 (`in-progress (script landed)`), with relative-path
+links to the landed scaffolds.
+[`doc/SECURITY-AUDIT.md`](SECURITY-AUDIT.md) — new rows A-8 (benchmark
+trend) and A-9 (51-attack monitoring).
+[`contrib/miner/b3miner-rtl/CHANGELOG.md`](../contrib/miner/b3miner-rtl/CHANGELOG.md)
+— note that the F-1 + F-4 fixes are now in tree (were authored in this
+tree, never tracked until v1.1.2).
+
+## v1.1.1 — B3PoW-Scratch 51%-attack mitigations
 
 `SPEC_VERSION = 0x00010101` (algorithm), `REG_ID_MAGIC = 0xB3110002`
 (RTL/firmware).  See

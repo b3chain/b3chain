@@ -2,6 +2,40 @@
 
 All notable changes to `b3miner-rtl` are recorded here. Newest entries on top.
 
+## v1.1.2 — first commit into b3chain-main
+
+The tree authored in this directory had never actually been tracked
+by git until the b3chain v1.1.2 maintenance release (commit
+`c55c08d913` on `b3chain-main`, May 2026).  Nothing about the source
+changed — every file here, including the F-1 and F-4 fixes and the
+post-F-6 vectors, was already present locally — but `doc/CHANGELOG.md`
+and `doc/SECURITY-ROADMAP.md` had been claiming this work was "in
+tree" while it was only in the working directory.  v1.1.2 closes that
+gap.
+
+Notable contents that are now actually in version control:
+
+- **F-1 (ITER_MUL[7] saturation fix)** — `ref/b3pow_ref.py`
+  and `rtl/params_pkg.sv` agree on the corrected ITER_MUL table; all
+  17 consensus vectors hash identically against `b3pow_ref.py` and
+  `src/test/data/b3pow_consensus_vectors.json`.
+- **F-4 (address-uniformity gate)** —
+  `ref/tests/test_address_uniformity.py` exercises 2²⁰ random
+  (parent, nonce, time) triples and asserts the empirical address
+  histogram passes a chi-squared test against the uniform null at
+  α = 1e-6.  The test is wired into the `b3miner-rtl` GitHub Actions
+  workflow.
+- **F-6 (post-genesis-re-mine vectors)** — `ref/gen_vectors.py`
+  regenerates `src/test/data/b3pow_consensus_vectors.json` from the
+  reference implementation; the workflow re-generates and `diff`s
+  against the canonical file on every push.  This is how the
+  post-F-6 `expected_pow_hash` values made it into the consensus
+  vectors in the first place.
+
+The first CI run after the b3chain v1.1.2 push (`e944ee16cf`) is the
+first time this code was exercised end-to-end on a Linux host;
+everything passed.
+
 ## [unreleased]
 
 ### Added
