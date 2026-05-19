@@ -42,6 +42,21 @@ incident does not page the operator hundreds of times.
                           to act before the cap actually fires and
                           freezes the chain.
 
+  finalized_drift_*    -- b3chain M-14: drift of the finalization
+                          horizon from `getfinalizedblockhash`.  Three
+                          sub-kinds:
+                            _source_flip      -> operator just ran
+                                                 finalizeblock or
+                                                 unfinalizeblock.
+                            _operator_change  -> operator re-finalized
+                                                 at a different block
+                                                 without first
+                                                 unfinalizing.
+                            _horizon_stall    -> implicit M-4 horizon
+                                                 stuck while tip
+                                                 advanced (= tip stall
+                                                 vs cap drift).
+
 Execution model (Tier 3 — verify-before-done audit)
 ---------------------------------------------------
 
@@ -73,6 +88,14 @@ BYPASS:   - RPC down                  -> `RpcUnavailable` -> emit
                                          desync the detector.
           - max_reorg_depth missing   -> falls back to --reorg-cap
                                          (200) from CLI.
+          - getfinalizedblockhash     -> `RpcUnavailable` -> log once
+            RPC missing (older          to stderr and set
+            b3chaind w/o M-14)          finalized_rpc_missing_logged;
+                                        detect_finalized_drift becomes
+                                        a no-op for the lifetime of
+                                        this watcher process, the
+                                        other three detectors keep
+                                        running.
 
 FAILURE:  - Alert fatigue             -> in-memory `_AlertDedup` keeps
                                          the last emit time per
@@ -132,6 +155,10 @@ DEFAULT_REORG_CAP         = 200      # consensus.max_reorg_depth (M-4)
 DEFAULT_NEAR_REORG_FRAC   = 0.50     # half-cap by default
 DEFAULT_DEDUP_WINDOW_SEC  = 300.0    # 5 min
 DEFAULT_HTTP_TIMEOUT_SEC  = 10.0
+# b3chain M-14: detect_finalized_drift horizon-stall counter.  At the
+# default --interval=30s, 5 polls = 2.5 min before the implicit M-4
+# horizon being stuck (while tip advances) flags as a stall.
+DEFAULT_FINALIZED_STALL_THRESHOLD = 5
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +369,122 @@ def detect_hashrate_collapse(samples: deque[tuple[int, float]],
     }]
 
 
+def detect_finalized_drift(prev_state: dict | None,
+                           current: dict,
+                           tip_height: int,
+                           stale_threshold: int) -> list[dict]:
+    """
+    b3chain M-14: detect drift of the finalization horizon vs the tip.
+
+    `current` is the dict returned by the `getfinalizedblockhash` RPC:
+        {"hash": str, "height": int, "source": "operator" | "max_reorg_depth"}
+    `prev_state` is what this detector returned last time as its
+    "next prev state" -- a dict of the same shape plus a stale_count.
+    `tip_height` is the current ActiveTip().nHeight.
+    `stale_threshold` is how many consecutive polls the
+    max_reorg_depth horizon can remain at the same height (while tip
+    advances) before we alert.
+
+    Three alert conditions:
+
+      finalized_drift_source_flip      -- source changed since last
+                                          poll (e.g. operator just ran
+                                          `unfinalizeblock` -> source
+                                          flipped from "operator" to
+                                          "max_reorg_depth").  Info-
+                                          severity; expected during
+                                          legitimate operator action.
+
+      finalized_drift_operator_change  -- source stayed "operator" but
+                                          hash changed (= operator
+                                          re-finalized at a different
+                                          height).  Warning -- a
+                                          re-finalize while watcher is
+                                          live is unusual.
+
+      finalized_drift_horizon_stall    -- source is "max_reorg_depth"
+                                          and height did not advance
+                                          for `stale_threshold`
+                                          consecutive polls while
+                                          `tip_height` did.  Warning;
+                                          signals the tip is stuck
+                                          (M-4 horizon = tip - cap).
+
+    Pure function: no I/O; the caller maintains prev_state.
+    """
+    out: list[dict] = []
+    src      = current.get("source", "")
+    height   = int(current.get("height", -1))
+    hash_str = current.get("hash", "")
+
+    if prev_state is None:
+        # First poll: nothing to compare against.
+        return out
+
+    prev_src      = prev_state.get("source", "")
+    prev_height   = int(prev_state.get("height", -1))
+    prev_hash     = prev_state.get("hash", "")
+
+    if src != prev_src:
+        out.append({
+            "kind":         "finalized_drift_source_flip",
+            "prev_source":  prev_src,
+            "new_source":   src,
+            "prev_hash":    prev_hash,
+            "new_hash":     hash_str,
+            "new_height":   height,
+            "severity":     "info",
+            "message": (
+                f"finalization source changed: {prev_src!r} -> {src!r} "
+                f"(height {prev_height} -> {height})"
+            ),
+        })
+    elif src == "operator" and hash_str != prev_hash:
+        out.append({
+            "kind":         "finalized_drift_operator_change",
+            "prev_hash":    prev_hash,
+            "new_hash":     hash_str,
+            "prev_height":  prev_height,
+            "new_height":   height,
+            "severity":     "warning",
+            "message": (
+                f"operator-finalized block changed without source flip: "
+                f"{prev_hash[:12]}@{prev_height} -> {hash_str[:12]}@{height}"
+            ),
+        })
+
+    # Horizon-stall check (only meaningful for the implicit M-4 case).
+    if src == "max_reorg_depth":
+        prev_tip = prev_state.get("tip_height_at_obs", -1)
+        stale    = int(prev_state.get("stale_count", 0))
+        if height == prev_height and tip_height > prev_tip and prev_tip >= 0:
+            stale += 1
+        else:
+            stale = 0
+        if stale >= stale_threshold:
+            out.append({
+                "kind":              "finalized_drift_horizon_stall",
+                "height":            height,
+                "tip_height":        tip_height,
+                "stale_polls":       stale,
+                "stale_threshold":   stale_threshold,
+                "severity":          ("critical" if stale >= stale_threshold * 2
+                                      else "warning"),
+                "message": (
+                    f"M-4 horizon stuck at height {height} for {stale} polls "
+                    f"while tip advanced to {tip_height}"
+                ),
+            })
+        # The caller will overwrite prev_state with our latest values; we
+        # pass the updated stale_count back via a sentinel in the dict so
+        # the caller doesn't have to know our internal accounting.
+        current["__stale_count__"] = stale
+    else:
+        current["__stale_count__"] = 0
+    current["__tip_height_at_obs__"] = tip_height
+    return out
+
+
 def detect_near_reorg_cap(prev_tip_hash: str | None,
                           new_tip_hash: str,
                           new_tip_height: int,
@@ -478,10 +621,19 @@ class _Watcher:
     dedup: _AlertDedup
     webhook_url: str | None
     http_timeout: float
+    finalized_stall_threshold: int = 5
     hashrate_samples: deque[tuple[int, float]] = dataclasses.field(
         default_factory=deque)
     last_tip_hash: str | None = None
     last_tip_height: int | None = None
+    # b3chain M-14: prior observation of `getfinalizedblockhash` so the
+    # detect_finalized_drift detector can compare poll-to-poll.  Shape
+    # matches what detect_finalized_drift returns via its `current`
+    # mutation contract (see __stale_count__ / __tip_height_at_obs__).
+    last_finalized_obs: dict | None = None
+    # Set true once we've logged the "RPC not present" warning once;
+    # used to avoid spamming stderr on every poll against an older node.
+    finalized_rpc_missing_logged: bool = False
 
     def emit(self, alert: dict) -> None:
         """Print the alert as a JSONL line; optionally POST to webhook."""
@@ -582,6 +734,47 @@ class _Watcher:
         except Exception as e:
             _eprint(f"detect_near_reorg_cap raised: {e}; continuing")
 
+        # Detector 4 (b3chain M-14): finalization-horizon drift.  Polls
+        # the new `getfinalizedblockhash` RPC and compares to the prior
+        # observation.  BYPASS path: an older b3chaind without the
+        # M-14 RPC will return "Method not found" (RpcUnavailable);
+        # we log once to stderr and silently skip the detector so the
+        # daemon stays useful on mixed-version monitoring fleets.
+        try:
+            try:
+                fin_obs = self.rpc.call("getfinalizedblockhash")
+            except RpcUnavailable as e:
+                if not self.finalized_rpc_missing_logged:
+                    _eprint(
+                        "getfinalizedblockhash RPC unavailable "
+                        f"({e}); skipping detect_finalized_drift this "
+                        "loop and on subsequent polls (older b3chaind?)"
+                    )
+                    self.finalized_rpc_missing_logged = True
+                fin_obs = None
+            if fin_obs is not None:
+                tip_h = int(info.get("blocks", -1))
+                for a in detect_finalized_drift(
+                    self.last_finalized_obs, fin_obs, tip_h,
+                    self.finalized_stall_threshold,
+                ):
+                    sig = f"{a['kind']}-{a.get('new_height', a.get('height', '?'))}"
+                    key = _AlertKey(kind=a["kind"], signature=sig)
+                    self.emit_dedup(a, key, now)
+                # Persist for next iteration.  detect_finalized_drift
+                # has annotated fin_obs in-place with the stale-counter
+                # bookkeeping the next call needs.
+                self.last_finalized_obs = {
+                    "hash":               fin_obs.get("hash", ""),
+                    "height":             int(fin_obs.get("height", -1)),
+                    "source":             fin_obs.get("source", ""),
+                    "stale_count":        fin_obs.get("__stale_count__", 0),
+                    "tip_height_at_obs":  fin_obs.get(
+                        "__tip_height_at_obs__", tip_h),
+                }
+        except Exception as e:
+            _eprint(f"detect_finalized_drift raised: {e}; continuing")
+
     def run(self) -> None:
         _eprint(
             f"started; interval={self.interval_sec}s, "
@@ -660,6 +853,11 @@ def parse_args() -> argparse.Namespace:
                    default=DEFAULT_HTTP_TIMEOUT_SEC,
                    help=f"RPC + webhook timeout in seconds "
                         f"(default {DEFAULT_HTTP_TIMEOUT_SEC:.0f})")
+    p.add_argument("--finalized-stall-threshold", type=int,
+                   default=DEFAULT_FINALIZED_STALL_THRESHOLD,
+                   help=f"M-14 finalization horizon stall threshold "
+                        f"in poll cycles (default "
+                        f"{DEFAULT_FINALIZED_STALL_THRESHOLD})")
     p.add_argument("--webhook-url", default=None,
                    help="POST every alert as JSON to this URL.  Env "
                         "var WEBHOOK_URL takes precedence if set.")
@@ -707,6 +905,7 @@ def main() -> int:
         rpc=rpc,
         interval_sec=args.interval,
         deep_fork_depth=args.deep_fork_depth,
+        finalized_stall_threshold=args.finalized_stall_threshold,
         hashrate_window=args.hashrate_window,
         hashrate_drop_frac=args.hashrate_drop,
         near_reorg_threshold=near_reorg_threshold,
