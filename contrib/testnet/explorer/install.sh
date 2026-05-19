@@ -152,6 +152,13 @@ if [ -f "$COIN" ]; then
     sed -i -E 's|("main":[[:space:]]+)"000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"|\1"b6cdeba06d5b4c98df9db07c58d0d7ca50866b855ab3ca470382a7d19b52a9e6"|' "$COIN"
     sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"4b3f758b306086eca0a95c68020ab74cb87c652b1788780fa3235306bb3d4006"|' "$COIN"
     sed -i -E 's|("regtest":[[:space:]]+)"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"|\1"8c19b11553c449cfe6f8b00c830b8e34249529fd9521cb4825541df9b0372de4"|' "$COIN"
+    # testnet4 (Bitcoin Core 28+): upstream defaults to the BIP94
+    # block-storm-rule testnet4 genesis.  b3chain testnet4 was re-mined
+    # at the F-6 powLimit (0x1d7fffff).
+    sed -i -E 's|("testnet4":[[:space:]]+)"00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043"|\1"eb3fd63c95062962d2fb42ac3dcbc2056eefb8b3209858a1d400cf2b565ea1a0"|' "$COIN"
+    # signet: upstream default-signet genesis.  b3chain signet was
+    # re-mined at the F-6 powLimit.
+    sed -i -E 's|("signet":[[:space:]]+)"00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6"|\1"d30df57fdaebdb8090ff90f18357d2497a5ba4b083aa748a458c087254075ed7"|' "$COIN"
     # Strip Bitcoin-specific mining-pool registry URLs (avoids 30s
     # startup hangs trying to reach raw.githubusercontent.com just to
     # learn pool names that don't apply to B3Chain).

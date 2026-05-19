@@ -349,8 +349,16 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].threshold = 1512; // 75%
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].period = 2016;
 
-        consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000000000034a4690fe592dc49c7c"};
-        consensus.defaultAssumeValid = uint256{"000000000000000180a58e7fa3b0db84b5ea76377524894f53660d93ac839d9b"}; // 91000
+        // b3chain F-6 fix follow-up: testnet4 was carrying Bitcoin
+        // testnet4's nMinimumChainWork + defaultAssumeValid (block 91000
+        // hash `...839d9b`).  Those values reference a Bitcoin chain
+        // that does not exist on b3chain testnet4 -- the F-6 genesis
+        // re-mine rolled the chain ID, so any inherited assumevalid
+        // below the new genesis is meaningless.  Zero both out to match
+        // the other production chains (mainnet/testnet/signet/regtest)
+        // until a real b3chain-testnet4 checkpoint exists.
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
 
         pchMessageStart[0] = 0x1c;
         pchMessageStart[1] = 0x16;
