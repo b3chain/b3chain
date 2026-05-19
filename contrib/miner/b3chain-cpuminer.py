@@ -11,7 +11,17 @@ A simple CPU miner for b3chain that supports two modes:
   2. Pool mining via Stratum V1 (the protocol pool.b3chain.org:3333 speaks --
      see contrib/testnet/pool/docs/STRATUM-PROTOCOL.md).
 
-Both modes use double BLAKE3-256 proof-of-work.
+Default PoW: **B3PoW-Scratch v1.1** (the canonical consensus algorithm,
+imported from contrib/miner/b3miner-rtl/ref/b3pow_ref.py). Pure-Python
+B3PoW-Scratch is intentionally slow (a handful of H/s per core) -- this
+miner is a correctness reference for testing, validation, and pool
+integration, not a competitive miner. For real mining use B3Miner-1
+firmware (contrib/miner/b3miner-firmware/) or another B3PoW-Scratch-aware
+miner.
+
+Pass --legacy-blake3d to fall back to the retired double-BLAKE3 PoW for
+cross-checking historical headers; such shares WILL NOT be accepted by a
+live B3Chain pool.
 
 In pool mode every share submitted to the pool is logged with byte-level
 detail (job id, both extranonces, ntime, nonce, full coinbase tx, coinbase
@@ -68,6 +78,7 @@ Common flags:
   --threads N            Number of mining threads (default: 1)
   --benchmark            Run a 10-second hash rate benchmark and exit
   --verbose              Print extra debug info
+  --legacy-blake3d       Use the retired double-BLAKE3 PoW (testing only)
 """
 
 import argparse
@@ -96,8 +107,33 @@ except ImportError:
     print("Install with: pip3 install blake3")
     sys.exit(1)
 
+# Import the canonical B3PoW-Scratch v1.1 Python reference. The reference
+# ships with the repo at contrib/miner/b3miner-rtl/ref/b3pow_ref.py and is
+# bit-exact with the consensus C++ code (src/crypto/b3pow_scratch.cpp).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_B3POW_REF_DIR = os.path.join(_HERE, "b3miner-rtl", "ref")
+if _B3POW_REF_DIR not in sys.path:
+    sys.path.insert(0, _B3POW_REF_DIR)
+try:
+    import b3pow_ref  # type: ignore
+except ImportError as _exc:
+    print(
+        "ERROR: cannot import b3pow_ref from", _B3POW_REF_DIR,
+        f"({_exc})",
+    )
+    print(
+        "Hint: this miner must be run from a b3chain checkout that includes "
+        "contrib/miner/b3miner-rtl/ref/b3pow_ref.py."
+    )
+    sys.exit(1)
+
 
 USER_AGENT_DEFAULT = "b3chain-cpuminer/1.0"
+
+# PoW-algorithm label that goes into the JSONL log so replay tools know
+# which verifier to invoke when re-deriving a share.
+POW_ALGO_B3POW_SCRATCH = "b3pow_scratch_v1.1"
+POW_ALGO_BLAKE3D_LEGACY = "blake3d_legacy"
 
 # Pool diff-1 target -- standard Bitcoin/Stratum convention.
 # A share at difficulty D meets the share target when its PoW hash <=
@@ -110,7 +146,11 @@ POOL_DIFF1_TARGET = 0x00000000ffff0000000000000000000000000000000000000000000000
 # ---------------------------------------------------------------------------
 
 def double_blake3(data: bytes) -> bytes:
-    """Compute BLAKE3(BLAKE3(data)) -- b3chain PoW hash."""
+    """Compute BLAKE3(BLAKE3(data)) -- the *retired* B3Chain PoW hash.
+
+    Kept only behind --legacy-blake3d for backward-compatibility testing
+    against historical headers. Does NOT produce valid B3Chain shares.
+    """
     h1 = blake3.blake3(data).digest()
     return blake3.blake3(h1).digest()
 
@@ -118,6 +158,83 @@ def double_blake3(data: bytes) -> bytes:
 def double_sha256(data: bytes) -> bytes:
     """Compute SHA256(SHA256(data)) -- used for block identity hash and merkle tree."""
     return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+class PadCache:
+    """Small LRU-ish cache of pristine, pre-initialised B3PoW-Scratch
+    scratchpad templates, keyed on the 32-byte little-endian parent
+    block hash.
+
+    A pad is 1 MiB; we cap the cache at 4 entries (~4 MiB) which is
+    more than enough for normal operation -- a Stratum worker only sees
+    a new parent on every chain tip, plus rare reorgs.
+
+    Important: the canonical Python reference `b3pow_scratch(..., pad=p)`
+    **mutates** `p` in place via the per-iteration RMW step (matching
+    the FPGA hardware behaviour). The cache therefore stores a PRISTINE
+    init-only pad and `get_fresh()` hands out a fresh, mutable copy on
+    every call. The init step (16384 BLAKE3-XOF chunks ~= 10 ms) is the
+    only per-parent cost that's actually amortisable; the 1 MiB
+    `bytearray` copy is ~100 us and runs once per nonce.
+    """
+
+    def __init__(self, capacity: int = 4):
+        self._capacity = capacity
+        self._pads: "dict[bytes, bytes]" = {}  # immutable pristine bytes
+        self._order: list[bytes] = []
+        self._lock = threading.Lock()
+
+    def _pristine(self, prev_le: bytes) -> bytes:
+        assert len(prev_le) == 32
+        with self._lock:
+            p = self._pads.get(prev_le)
+            if p is not None:
+                self._order.remove(prev_le)
+                self._order.append(prev_le)
+                return p
+        # Build outside the lock; init is the slow part.
+        p = bytes(b3pow_ref.init_scratchpad(prev_le))
+        with self._lock:
+            if prev_le not in self._pads:
+                self._pads[prev_le] = p
+                self._order.append(prev_le)
+                while len(self._order) > self._capacity:
+                    oldest = self._order.pop(0)
+                    self._pads.pop(oldest, None)
+        return p
+
+    def get_fresh(self, prev_le: bytes) -> bytearray:
+        """Return a fresh mutable copy of the pristine pad for `prev_le`."""
+        return bytearray(self._pristine(prev_le))
+
+
+def b3pow_scratch_hash(header: bytes, prev_le: bytes, pad_cache: PadCache) -> bytes:
+    """Compute the B3PoW-Scratch v1.1 PoW hash for a candidate header.
+
+    `prev_le` is the raw little-endian SHA-256d hash of the parent block
+    (the same value that appears inside `header` at offset 4..36).
+    A fresh pad copy is taken per call (the underlying reference
+    mutates the pad in place); the init step is cached per parent.
+    """
+    pad = pad_cache.get_fresh(prev_le)
+    return b3pow_ref.b3pow_scratch(header, prev_le, pad=pad).pow_hash
+
+
+def pow_hash_for(
+    header: bytes,
+    prev_le: bytes,
+    pad_cache: PadCache,
+    legacy_blake3d: bool,
+) -> bytes:
+    """Dispatch to the active PoW algorithm.
+
+    Default = B3PoW-Scratch v1.1 (canonical). Pass --legacy-blake3d to
+    fall back to the retired double-BLAKE3 algorithm (cross-checking
+    historical headers only -- will NOT produce valid B3Chain shares).
+    """
+    if legacy_blake3d:
+        return double_blake3(header)
+    return b3pow_scratch_hash(header, prev_le, pad_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +602,7 @@ class Share:
     coinbase_txid_le: bytes
     merkle_root_le: bytes
     header: bytes               # 80 bytes
-    pow_le: bytes               # BLAKE3(BLAKE3(header)), little-endian raw
+    pow_le: bytes               # raw PoW hash bytes, little-endian
     pow_int: int                # int.from_bytes(pow_le, "little")
     block_hash_le: bytes        # SHA256d(header), little-endian raw
     share_target: int
@@ -496,6 +613,8 @@ class Share:
     found_at: float
     attempts_for_job: int
     thread_idx: int
+    pow_algo: str = POW_ALGO_B3POW_SCRATCH
+    prev_hash_le: bytes = b""   # raw LE parent block hash (32 B)
 
 
 def build_coinbase_full(coinb1: bytes, en1: bytes, en2: bytes, coinb2: bytes) -> bytes:
@@ -997,8 +1116,10 @@ def pool_mining_worker(thread_idx: int,
                        logger: JsonlLogger,
                        submit_queue: "queue.Queue[Share]",
                        progress_interval: int,
-                       quiet_progress: bool) -> None:
-    """Per-thread BLAKE3d nonce search.
+                       quiet_progress: bool,
+                       pad_cache: PadCache,
+                       legacy_blake3d: bool) -> None:
+    """Per-thread B3PoW-Scratch v1.1 nonce search.
 
     Outer loop: re-snapshot job + extranonce1 + share_target + clean_epoch
     each pass. Inner loop: iterate nonce 0..2^32 within the snapshot,
@@ -1008,8 +1129,17 @@ def pool_mining_worker(thread_idx: int,
     Disjoint extranonce2 slicing across N threads: thread i starts at
     en2 = i and bumps by N when the nonce range is exhausted, so each
     thread searches a non-overlapping subset.
+
+    The 1 MiB scratchpad is cached per parent in `pad_cache` (shared
+    across all worker threads). The first share on a new parent pays
+    a one-off ~10 ms init; every subsequent share reuses the pad.
+
+    With --legacy-blake3d, the worker falls back to the retired
+    double-BLAKE3 algorithm for cross-checking historical headers only;
+    such shares will be rejected by a live B3Chain pool.
     """
     en2_counter = thread_idx
+    pow_algo = POW_ALGO_BLAKE3D_LEGACY if legacy_blake3d else POW_ALGO_B3POW_SCRATCH
 
     # Cross-job cumulative counters survive clean_epoch resets so that
     # progress.hashrate is a stable instantaneous Δattempts/Δt over the
@@ -1101,7 +1231,7 @@ def pool_mining_worker(thread_idx: int,
                     break
                 header = serialize_header(job.version, prev_le, merkle_root_le,
                                           job.ntime, job.bits, nonce)
-                pow_le = double_blake3(header)
+                pow_le = pow_hash_for(header, prev_le, pad_cache, legacy_blake3d)
                 pow_int = int.from_bytes(pow_le, byteorder="little")
                 attempts_for_job += 1
 
@@ -1134,6 +1264,8 @@ def pool_mining_worker(thread_idx: int,
                         found_at=time.time(),
                         attempts_for_job=attempts_for_job,
                         thread_idx=thread_idx,
+                        pow_algo=pow_algo,
+                        prev_hash_le=prev_le,
                     )
                     submit_queue.put(share)
                     # Continue scanning the rest of the nonce space; only a
@@ -1232,6 +1364,9 @@ def _share_to_jsonl(s: Share) -> dict:
         "is_block": s.is_block,
         "attempts_for_job": s.attempts_for_job,
         "found_at": s.found_at,
+        "pow_algo": s.pow_algo,
+        "prev_hash_le": s.prev_hash_le.hex() if s.prev_hash_le else "",
+        "prev_hash_be": s.prev_hash_le[::-1].hex() if s.prev_hash_le else "",
     }
 
 
@@ -1268,7 +1403,12 @@ def _print_share_dump_pre(s: Share) -> None:
     print(f"[{ts}] === SHARE #{s.seq} (thread={s.thread_idx}, job={s.job_id}) ===")
     if s.is_block:
         print("  *** BLOCK CANDIDATE -- pow_int <= network_target ***")
-    print(f"  trigger             : pow <= shareTarget  (BLAKE3(BLAKE3(header)) check)")
+    _algo_human = (
+        "B3PoW-Scratch v1.1 check"
+        if s.pow_algo == POW_ALGO_B3POW_SCRATCH
+        else "BLAKE3(BLAKE3(header)) LEGACY check"
+    )
+    print(f"  trigger             : pow <= shareTarget  ({_algo_human})")
     print(f"  job_id              : {s.job_id}")
     print(f"  extranonce1         : {s.extranonce1_hex}                 "
           f"(server-assigned)")
@@ -1428,7 +1568,8 @@ class MinerState:
 
 
 def mine_block(rpc: RPCClient, coinbase_addr: str, coinbase_msg: str,
-               state: MinerState, verbose: bool) -> bool:
+               state: MinerState, verbose: bool,
+               pad_cache: PadCache, legacy_blake3d: bool) -> bool:
     """
     Get a block template, mine it, and submit if valid.
     Returns True if a block was found and submitted.
@@ -1477,7 +1618,7 @@ def mine_block(rpc: RPCClient, coinbase_addr: str, coinbase_msg: str,
     while state.running and nonce < 0xFFFFFFFF:
         header = serialize_header(version, prev_hash, merkle_root,
                                   cur_time, bits, nonce)
-        pow_hash = double_blake3(header)
+        pow_hash = pow_hash_for(header, prev_hash, pad_cache, legacy_blake3d)
         pow_int = int.from_bytes(pow_hash, byteorder='little')
 
         if pow_int <= target:
@@ -1520,11 +1661,13 @@ def mine_block(rpc: RPCClient, coinbase_addr: str, coinbase_msg: str,
 
 
 def mining_loop(rpc: RPCClient, coinbase_addr: str, coinbase_msg: str,
-                state: MinerState, verbose: bool):
+                state: MinerState, verbose: bool,
+                pad_cache: PadCache, legacy_blake3d: bool):
     """Continuous mining loop."""
     while state.running:
         try:
-            mine_block(rpc, coinbase_addr, coinbase_msg, state, verbose)
+            mine_block(rpc, coinbase_addr, coinbase_msg, state, verbose,
+                       pad_cache, legacy_blake3d)
         except RPCError as e:
             print(f"  RPC error: {e}")
             time.sleep(5)
@@ -1540,32 +1683,50 @@ def mining_loop(rpc: RPCClient, coinbase_addr: str, coinbase_msg: str,
 # Benchmark
 # ---------------------------------------------------------------------------
 
-def benchmark():
-    """Run a 10-second BLAKE3 double-hash benchmark."""
-    print("Running BLAKE3 double-hash benchmark (10 seconds)...")
+def benchmark(legacy_blake3d: bool = False):
+    """Run a 10-second PoW benchmark.
 
-    # Create a dummy 80-byte header
+    Default: B3PoW-Scratch v1.1 (canonical algorithm, ~few H/s/core in
+    pure Python -- this is correctness-only, not a competitive miner).
+    With legacy_blake3d=True: retired double-BLAKE3, for sanity-checking
+    historical headers only.
+    """
+    label = (
+        "double-BLAKE3 (LEGACY, will not produce valid B3Chain shares)"
+        if legacy_blake3d
+        else "B3PoW-Scratch v1.1 (pure Python -- correctness reference)"
+    )
+    print(f"Running {label} benchmark (10 seconds)...")
+
     header = bytes(80)
+    prev_le = bytes(32)
+    pad_cache = PadCache()
     count = 0
     nonce = 0
     start = time.time()
     duration = 10.0
 
     while time.time() - start < duration:
-        # Simulate mining: modify nonce bytes and hash
         nonce_bytes = struct.pack('<I', nonce)
         test_header = header[:76] + nonce_bytes
-        double_blake3(test_header)
+        pow_hash_for(test_header, prev_le, pad_cache, legacy_blake3d)
         nonce += 1
         count += 1
 
     elapsed = time.time() - start
-    hashrate = count / elapsed
+    hashrate = count / elapsed if elapsed > 0 else 0.0
 
     print(f"  Hashes: {count:,}")
     print(f"  Time:   {elapsed:.2f}s")
-    print(f"  Rate:   {hashrate:,.0f} H/s")
-    print(f"          {hashrate/1000:,.1f} kH/s")
+    print(f"  Rate:   {hashrate:,.2f} H/s")
+    if hashrate >= 1000:
+        print(f"          {hashrate/1000:,.2f} kH/s")
+    if not legacy_blake3d:
+        print(
+            "  Note:   Pure-Python B3PoW-Scratch is intentionally slow.\n"
+            "          For real mining use B3Miner-1 firmware or another\n"
+            "          B3PoW-Scratch-aware miner."
+        )
     return hashrate
 
 
@@ -1612,11 +1773,18 @@ def pool_mining_loop(args, state: 'MinerState') -> None:
         verbose=args.verbose,
     )
 
+    pad_cache = PadCache()
+    pow_label = (
+        "double-BLAKE3 (LEGACY, will be rejected)"
+        if args.legacy_blake3d
+        else "B3PoW-Scratch v1.1 (1 MiB pad, 8 lanes, 2048 iters)"
+    )
+
     print(f"b3chain CPU miner -- pool mode")
     print(f"  Pool:    {args.stratum}  ({'TLS' if use_tls else 'TCP'})")
     print(f"  User:    {args.user}")
     print(f"  Threads: {args.threads}")
-    print(f"  PoW:     BLAKE3(BLAKE3(80-byte header))")
+    print(f"  PoW:     {pow_label}")
     print()
 
     submit_queue: "queue.Queue[Share]" = queue.Queue(maxsize=1024)
@@ -1651,7 +1819,8 @@ def pool_mining_loop(args, state: 'MinerState') -> None:
         w = threading.Thread(
             target=pool_mining_worker,
             args=(i, num_threads, client, state, logger, submit_queue,
-                  int(args.progress_interval), bool(args.quiet_progress)),
+                  int(args.progress_interval), bool(args.quiet_progress),
+                  pad_cache, bool(args.legacy_blake3d)),
             daemon=True,
             name=f"miner-{i}",
         )
@@ -1785,13 +1954,29 @@ Examples:
                         help="Run hash rate benchmark and exit")
     parser.add_argument("--verbose", action="store_true",
                         help="Print extra debug info")
+    parser.add_argument(
+        "--legacy-blake3d",
+        dest="legacy_blake3d", action="store_true",
+        help=(
+            "Use the retired double-BLAKE3 PoW for cross-checking historical "
+            "vectors. WILL NOT produce valid B3Chain mainnet/testnet shares. "
+            "Default is B3PoW-Scratch v1.1 (canonical consensus algorithm)."
+        ),
+    )
 
     args = parser.parse_args()
+
+    if args.legacy_blake3d:
+        print(
+            "WARNING: --legacy-blake3d selected. This computes the *retired* "
+            "double-BLAKE3 PoW and will NOT produce valid B3Chain shares.",
+            file=sys.stderr,
+        )
 
     # Mode selection. --benchmark wins; --stratum and --coinbaseaddr are
     # mutually exclusive.
     if args.benchmark:
-        benchmark()
+        benchmark(legacy_blake3d=args.legacy_blake3d)
         return
 
     if args.stratum and args.coinbaseaddr:
@@ -1880,16 +2065,18 @@ Examples:
     print("Mining started. Press Ctrl+C to stop.\n")
     start_time = time.time()
 
+    pad_cache = PadCache()
+
     if args.threads <= 1:
         mining_loop(rpc, args.coinbaseaddr, args.coinbasemsg, state,
-                    args.verbose)
+                    args.verbose, pad_cache, bool(args.legacy_blake3d))
     else:
         threads = []
         for i in range(args.threads):
             t = threading.Thread(
                 target=mining_loop,
                 args=(rpc, args.coinbaseaddr, args.coinbasemsg, state,
-                      args.verbose),
+                      args.verbose, pad_cache, bool(args.legacy_blake3d)),
                 daemon=True,
             )
             t.start()

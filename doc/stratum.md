@@ -7,27 +7,48 @@ proof-of-work**. Node operators and solo miners should also read
 reference CPU miner; this file is the narrow contract that everything
 mining-adjacent must agree on.
 
-It contains three things, and only three things:
+It contains four things:
 
-1. How pools (and any external miner) compute the PoW hash.
-2. Test vectors for verifying a BLAKE3 implementation byte-for-byte.
-3. A reference to the official BLAKE3 specification.
+1. The PoW algorithm in use (and where its normative spec lives).
+2. How pools compute the PoW hash from a share submission.
+3. Test vectors for verifying an implementation byte-for-byte.
+4. Implementation pointers for in-tree reference code.
 
-If your implementation matches every test vector here, your shares and
-blocks will be accepted by `b3chaind`. If it does not, they will not.
+If your implementation matches every test vector here and reproduces
+the byte-exact output of the reference, your shares and blocks will be
+accepted by `b3chaind`. If it does not, they will not.
 
 ---
 
-## 1. How pools compute the PoW hash
+## 1. PoW algorithm in use
 
-B3Chain replaces Bitcoin's `SHA256d` proof-of-work with **double
-BLAKE3-256**:
+| Field | Value |
+|---|---|
+| Algorithm | **B3PoW-Scratch v1.1** |
+| `SPEC_VERSION` | `0x00010101` (1.1.1, F-1 fix) |
+| Primitive | BLAKE3 (full + 2-round reduced) |
+| Working set | 1 MiB scratchpad, 8 lanes × 128 KiB |
+| Iterations | 2 048 read-modify-write rounds per hash |
+| Spec | [`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md) |
+| Python reference | [`contrib/miner/b3miner-rtl/ref/b3pow_ref.py`](../contrib/miner/b3miner-rtl/ref/b3pow_ref.py) |
+| C++ consensus | [`src/crypto/b3pow_scratch.cpp`](../src/crypto/b3pow_scratch.cpp) |
+| TypeScript port (pool) | [`contrib/testnet/pool/src/lib/b3pow-scratch.ts`](../contrib/testnet/pool/src/lib/b3pow-scratch.ts) |
+| Consensus vectors | [`src/test/data/b3pow_consensus_vectors.json`](../src/test/data/b3pow_consensus_vectors.json) |
+| End-to-end verifier | [`contrib/testing/verify-b3pow.py`](../contrib/testing/verify-b3pow.py) |
+
+> **The pool validates shares with the canonical B3PoW-Scratch v1.1
+> algorithm exactly as the consensus code does**, including the
+> per-parent scratchpad cache pattern.
+
+---
+
+## 2. How pools compute the PoW hash
 
 ```
-PoW_hash = BLAKE3(BLAKE3(block_header))
+PoW_hash = b3pow_scratch( header, prev_block_hash )
 ```
 
-`block_header` is the standard 80-byte serialized header — identical
+`header` is the standard 80-byte serialized block header — identical
 layout to Bitcoin, identical endianness, identical fields:
 
 | Field           | Size     | Encoding              |
@@ -39,47 +60,74 @@ layout to Bitcoin, identical endianness, identical fields:
 | nBits           | 4 bytes  | uint32, little-endian |
 | nNonce          | 4 bytes  | uint32, little-endian |
 
-**Critical:** *Only the proof-of-work hash changes.* Block ID hashes,
-txids, the merkle tree, and the witness merkle root all still use
-`SHA256d`. This means:
+`prev_block_hash` is the 32-byte SHA-256d block-identity hash of the
+parent block, **as raw little-endian bytes** (i.e. the same value that
+appears in `hashPrevBlock` inside the header). Pools receive it
+big-endian from `getblocktemplate`'s `previousblockhash` field;
+byte-reverse before feeding it to `b3pow_scratch`.
 
-| Hash                             | Algorithm |
-|----------------------------------|-----------|
-| `block.GetPoWHash()`             | BLAKE3d   |
-| `block.GetHash()` (block ID)     | SHA256d   |
-| `tx.GetHash()` (txid)            | SHA256d   |
-| `tx.GetWitnessHash()` (wtxid)    | SHA256d   |
-| Merkle root / witness merkle root| SHA256d   |
-| `getblocktemplate` "target"      | nBits→target (compact, identical to Bitcoin) |
+**Critical:** *Only the proof-of-work hash differs from Bitcoin.* Block
+ID hashes, txids, the merkle tree, and the witness merkle root all
+still use `SHA256d`. This means:
 
-### Share validation
+| Hash                              | Algorithm |
+|-----------------------------------|-----------|
+| `block.GetPoWHash(prev, pad, …)`  | B3PoW-Scratch v1.1 |
+| `block.GetHash()` (block ID)      | SHA-256d  |
+| `tx.GetHash()` (txid)             | SHA-256d  |
+| `tx.GetWitnessHash()` (wtxid)     | SHA-256d  |
+| Merkle root / witness merkle root | SHA-256d  |
+| `getblocktemplate` "target"       | nBits→target (compact, identical to Bitcoin) |
+
+### 2.1 Scratchpad caching
+
+`b3pow_scratch` begins by filling a 1 MiB scratchpad from
+`BLAKE3-XOF(prev_block_hash || i)`. The pad depends only on
+`prev_block_hash`, so a pool's share validator **must** maintain a
+per-parent cache (e.g. an LRU keyed by `previousblockhash`) and reuse
+the pad across every share for the same job:
+
+```
+pad = pad_cache.get_or_init(prev_block_hash, init_scratchpad)
+pow = b3pow_scratch(header, prev_block_hash, pad=pad).pow_hash
+```
+
+Without caching, a validator pays a 1 MiB BLAKE3-XOF init (~10 ms on
+a modern CPU) on every share, which scales catastrophically. The
+reference pool's TS port enforces this pattern in
+[`contrib/testnet/pool/src/lib/pad-cache.ts`](../contrib/testnet/pool/src/lib/pad-cache.ts).
+
+### 2.2 Share validation
 
 A pool validates a share by checking, in **little-endian integer**
 comparison:
 
 ```
-int_le(BLAKE3(BLAKE3(header))) <= share_target
+int_le( b3pow_scratch(header, prev) ) <= share_target
 ```
 
 `share_target` is a pool-side per-worker target, always less restrictive
 than (numerically greater than or equal to) the network target derived
 from `nBits`.
 
-### Block submission
+### 2.3 Block submission
 
-When `int_le(BLAKE3(BLAKE3(header))) <= block_target`, submit the block
-via the node's `submitblock` RPC. The node revalidates with
-`CheckProofOfWork(block.GetPoWHash(), block.nBits, ...)` — implemented
-in [`src/validation.cpp`](../src/validation.cpp) — and rejects anything
-that fails.
+When `int_le( b3pow_scratch(header, prev) ) <= block_target`, submit
+the block via the node's `submitblock` RPC. The node revalidates with
+`CheckProofOfWork(block.GetPoWHash(prev, pad, …), block.nBits, …)` —
+implemented in [`src/validation.cpp`](../src/validation.cpp) — and
+rejects anything that fails.
 
-### Extranonce / coinbase
+### 2.4 Extranonce / coinbase
 
 Extranonce handling in the coinbase scriptSig is identical to Bitcoin.
 Only the final 80-byte-header hash computation differs. Standard
-Stratum v1 `mining.notify` / `mining.submit` framing applies.
+Stratum v1 `mining.notify` / `mining.submit` framing applies. Pools
+that built share validators for double-BLAKE3 only need to swap the
+hash function call — the `notify`/`submit` shape, extranonce, and
+merkle-branch logic are unchanged.
 
-### Default ports
+### 2.5 Default ports
 
 | Network | P2P Port | RPC Port |
 |---------|----------|----------|
@@ -87,104 +135,147 @@ Stratum v1 `mining.notify` / `mining.submit` framing applies.
 | Testnet | 18533    | 18534    |
 | Regtest | 18544    | 18545    |
 
-### End-to-end pseudocode
+### 2.6 End-to-end pseudocode
 
 ```python
-import blake3, struct
+import struct, sys
+sys.path.insert(0, 'contrib/miner/b3miner-rtl/ref')
+from b3pow_ref import b3pow_scratch, init_scratchpad, nbits_to_target
 
-def double_blake3(header_bytes: bytes) -> bytes:
-    return blake3.blake3(blake3.blake3(header_bytes).digest()).digest()
+pad_cache: dict[bytes, bytearray] = {}
 
-def meets_target(header_bytes: bytes, target: int) -> bool:
-    return int.from_bytes(double_blake3(header_bytes), 'little') <= target
+def get_pad(prev_le: bytes) -> bytearray:
+    p = pad_cache.get(prev_le)
+    if p is None:
+        p = init_scratchpad(prev_le)
+        pad_cache[prev_le] = p
+    return p
+
+def meets_target(header: bytes, prev_le: bytes, target: int) -> bool:
+    pad = get_pad(prev_le)
+    pow_hash = b3pow_scratch(header, prev_le, pad=pad).pow_hash
+    return int.from_bytes(pow_hash, 'little') <= target
 ```
+
+`prev_le` is `bytes.fromhex(previousblockhash)[::-1]`, i.e. the raw
+little-endian parent ID as it appears inside the header.
 
 A complete reference miner using this exact computation is at
 [`contrib/miner/b3chain-cpuminer.py`](../contrib/miner/b3chain-cpuminer.py).
 
 ---
 
-## 2. Test vectors
+## 3. Test vectors
 
 Implementations **MUST** reproduce every value below bit-for-bit before
 being trusted with mainnet shares.
 
-All hashes are shown in **big-endian display format** (most significant
-byte first) — the same convention used by `b3chain-cli`, block
-explorers, and the BLAKE3 reference implementation. Bytes in memory and
-on the wire are little-endian for header fields.
+The canonical, machine-readable vectors live at
+[`src/test/data/b3pow_consensus_vectors.json`](../src/test/data/b3pow_consensus_vectors.json)
+and ship with `schema_version = 1` and `spec_version = "0x00010101"`.
+Each entry contains `header_hex`, `prev_block_hash_hex`,
+`expected_pow_hash_hex`, `nbits_hex`, and `expected_check_pow`.
+[`contrib/testing/verify-b3pow.py`](../contrib/testing/verify-b3pow.py)
+re-derives every entry from the Python reference and (optionally,
+with `--rpc-port`) re-derives every recent block on a live node.
 
-### 2.1 Single BLAKE3-256
+All hashes are stored in **little-endian** bytes (wire / memory
+convention). When displayed to humans (block explorers, `b3chain-cli`,
+test-vector comments) the convention is **big-endian display hex**
+(most significant byte first) — that's the byte-reverse of the wire
+form.
+
+### 3.1 BLAKE3 primitive (sanity)
 
 ```
 BLAKE3("")        = af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
 BLAKE3("b3chain") = 492530272073ef2fb434ca4d9492bcea09502b24642b7e04021892bdda2aa806
 ```
 
-### 2.2 Double BLAKE3-256 (the PoW primitive)
+These are the unmodified BLAKE3 outputs and only verify that your
+primitive matches the reference; they do **not** validate
+B3PoW-Scratch.
+
+### 3.2 B3PoW-Scratch end-to-end
+
+The full set of header→pow-hash mappings lives in
+[`b3pow_consensus_vectors.json`](../src/test/data/b3pow_consensus_vectors.json).
+Two representative entries:
+
+**Vector `zero_header`** — 80 zero bytes, 32 zero bytes parent:
 
 ```
-BLAKE3(BLAKE3(""))        = 82878ed8a480ee41775636820e05a934ca5c747223ca64306658ee5982e6c227
-BLAKE3(BLAKE3("b3chain")) = f09be63a21ff0bc5646b5ddcadef1c43f8e0e47815793cff909cab0a345396d3
+header_hex            : 00 × 80
+prev_block_hash_hex   : 00 × 32
+expected_pow_hash_hex : (see JSON entry, schema_version=1)
 ```
 
-### 2.3 Full 80-byte block-header vectors
-
-The point of these is to exercise the *exact* serialization a pool will
-hash in production.
-
-**Vector A — 80 zero bytes:**
+**Vector `version1`** — version=1, rest zeros:
 
 ```
-Header (hex):  00000000 00000000000000000000000000000000000000000000000000000000000000000000
-               00000000000000000000000000000000000000000000000000000000000000000000 00000000
-               00000000 00000000
-PoW hash:      fb6d63b21d8c9f215de0e4fd9f4d0e7ed53ff023c7243e76f5a7367b2a4507b6
-ID hash:       14508459b221041eab257d2baaa7459775ba748246c8403609eb708f0e57e74b
+header_hex            : 01000000 00 × 76
+prev_block_hash_hex   : 00 × 32
+expected_pow_hash_hex : (see JSON entry, schema_version=1)
 ```
 
-**Vector B — version=1, rest zeros:**
+> Inline hex values are intentionally omitted to prevent stale copies
+> from drifting away from the JSON ground truth. Always re-derive
+> against `b3pow_consensus_vectors.json`.
+
+### 3.3 Verifying your implementation
+
+The repository ships a verifier that imports the Python reference and
+checks every JSON entry, plus (optionally) live block PoW from a node:
 
 ```
-Header (hex):  01000000 00...00 (version=1 LE in first 4 bytes, then 76 zero bytes)
-PoW hash:      a8b60a455b3576a701ed73ad8ebf838839917a0331bfb6dfa99b77641c858c61
-ID hash:       4ddd9f0855d58a375be5a763e5f51ece853d30525fcd9a3e477c2194fedb549f
+pip3 install blake3
+python3 contrib/testing/verify-b3pow.py                  # vectors only
+python3 contrib/testing/verify-b3pow.py --rpc-port=18545 # + live blocks
 ```
 
-> "PoW hash" is `BLAKE3(BLAKE3(header))`.
-> "ID hash"  is `SHA256(SHA256(header))` — what `b3chaind` returns as
-> the block hash. They are intentionally different.
+The same Python reference is used by:
 
-### 2.4 Verifying your implementation
+- The functional test framework
+  (`test/functional/test_framework/messages.py`).
+- The reference CPU miner
+  (`contrib/miner/b3chain-cpuminer.py`).
+- The RTL parity tests in
+  (`contrib/miner/b3miner-rtl/ref/tests/`).
+- The pool's TypeScript port parity test in
+  (`contrib/testnet/pool/test/b3pow-scratch.spec.ts`).
 
-The repository ships a Python script that hashes any header and
-cross-checks against a running daemon:
+So passing the verifier means your code agrees with consensus, RTL,
+and the production pool.
 
-```
-contrib/testing/verify-blake3-pow.py
-```
+### 3.4 Legacy BLAKE3d vectors
 
-The same hashing helpers are used by the functional test framework
-(`test/functional/test_framework/messages.py::pow_hash_int`) and by the
-reference miner, so passing this script's checks means your code agrees
-with consensus.
+The retired double-BLAKE3 PoW (used in early dev builds before
+B3PoW-Scratch landed) has its vectors at
+[`contrib/testing/verify-blake3-pow.py`](../contrib/testing/verify-blake3-pow.py).
+They are kept only so historical headers can be regenerated for tooling
+tests — **they do not validate any current or future B3Chain block**.
+New code should not consume them.
 
 ---
 
-## 3. References
+## 4. References
 
+- **B3PoW-Scratch v1.1 specification** (normative):
+  [`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md).
+- **B3Chain PoW design rationale**:
+  [`doc/b3chain-pow-design.md`](b3chain-pow-design.md).
+- **B3Chain mining workflow & reference CPU miner**:
+  [`doc/mining.md`](mining.md).
 - **BLAKE3 specification** (canonical): O'Connor, Aumasson, Neves,
   Wilcox-O'Hearn, *"BLAKE3: one function, fast everywhere"*,
   <https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf>.
 - **BLAKE3 reference implementation** (Rust + C):
   <https://github.com/BLAKE3-team/BLAKE3>.
-- **B3Chain PoW design rationale**:
-  [`doc/b3chain-pow-design.md`](b3chain-pow-design.md).
-- **B3Chain mining workflow & reference CPU miner**:
-  [`doc/mining.md`](mining.md).
 - **`getblocktemplate` (BIP 22 / 23)**:
   <https://github.com/bitcoin/bips/blob/master/bip-0022.mediawiki>,
   <https://github.com/bitcoin/bips/blob/master/bip-0023.mediawiki>.
 - **Stratum v1** (de-facto, no formal RFC):
-  <https://reference.cash/mining/stratum-protocol> (community spec; the
-  hash-algorithm substitution above is the only B3Chain deviation).
+  <https://reference.cash/mining/stratum-protocol>. The only B3Chain
+  deviations from this spec are (a) the hash-algorithm substitution
+  above and (b) the requirement that share validators carry a
+  per-parent scratchpad cache.

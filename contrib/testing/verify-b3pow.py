@@ -219,16 +219,18 @@ def test_live_blocks(rpc_port: int) -> None:
     blocks_to_check = [0, 1, min(5, height), min(50, height)]
     blocks_to_check = sorted({b for b in blocks_to_check if b <= height})
 
-    # Build a small pad cache so siblings of the same parent don't redo
-    # the 1 MB init.
+    # Pristine pad cache so siblings of the same parent skip the 1 MB
+    # BLAKE3-XOF init. The reference b3pow_scratch() mutates the pad
+    # in-place per the spec's RMW step, so we must hand out a fresh
+    # copy of the pristine init for every hash.
     pad_cache: dict[bytes, bytes] = {}
 
-    def get_pad(prev: bytes) -> bytes:
+    def get_fresh_pad(prev: bytes) -> bytearray:
         p = pad_cache.get(prev)
         if p is None:
-            p = b3pow_ref.init_scratchpad(prev)
+            p = bytes(b3pow_ref.init_scratchpad(prev))
             pad_cache[prev] = p
-        return p
+        return bytearray(p)
 
     for h in blocks_to_check:
         block_hash_hex = rpc_call("getblockhash", [h])
@@ -247,8 +249,9 @@ def test_live_blocks(rpc_port: int) -> None:
         computed_id = hash_to_hex(double_sha256(header))
         check(f"block {h}: getblockhash == SHA256d(header)", computed_id, block_hash_hex)
 
-        # PoW hash = B3PoW-Scratch(header, prev). Reuse pad per parent.
-        pad = get_pad(prev)
+        # PoW hash = B3PoW-Scratch(header, prev). Reuse the pristine
+        # init per parent, but pass a fresh copy each call.
+        pad = get_fresh_pad(prev)
         pow_hash = b3pow_ref.b3pow_scratch(header, prev, pad=pad).pow_hash
         pow_int = int.from_bytes(pow_hash, "little")
         target = target_from_nbits(int(block["bits"], 16))

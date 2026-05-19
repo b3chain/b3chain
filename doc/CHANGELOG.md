@@ -1,5 +1,55 @@
 # B3Chain Project History
 
+## Launch package — Phase 0 alignment (in progress)
+
+Mining stack and public-facing docs aligned to **B3PoW-Scratch v1.1**,
+removing the audit-flagged split where consensus / RTL / FPGA host had
+moved to Scratch while the pool, miners, and docs still described
+double-BLAKE3. Phase 0 is the credibility gate the rest of the launch
+package depends on.
+
+- **Pool share validator (TypeScript).** New
+  [`contrib/testnet/pool/src/lib/b3pow-scratch.ts`](../contrib/testnet/pool/src/lib/b3pow-scratch.ts)
+  is a bit-exact port of `b3pow_ref.py`; new
+  [`contrib/testnet/pool/src/lib/pad-cache.ts`](../contrib/testnet/pool/src/lib/pad-cache.ts)
+  holds pristine per-parent scratchpads and hands out fresh copies per
+  share (the canonical algorithm mutates its pad). Validator at
+  [`contrib/testnet/pool/src/stratum/share-validator.ts`](../contrib/testnet/pool/src/stratum/share-validator.ts)
+  now calls `b3powScratch(header, prevHashLE, padCopy)` instead of
+  `blake3d(header)`. New parity test
+  [`contrib/testnet/pool/tests/b3pow-scratch.test.ts`](../contrib/testnet/pool/tests/b3pow-scratch.test.ts)
+  reproduces every entry in
+  [`src/test/data/b3pow_consensus_vectors.json`](../src/test/data/b3pow_consensus_vectors.json).
+- **Reference CPU miner.**
+  [`contrib/miner/b3chain-cpuminer.py`](../contrib/miner/b3chain-cpuminer.py)
+  now defaults to B3PoW-Scratch (imports `b3pow_ref` via a sys.path
+  shim), threads a process-shared `PadCache` through the pool and solo
+  loops, and emits `pow_algo` + `prev_hash_le`/`be` in the JSONL
+  `share_submit` event. The retired double-BLAKE3 algorithm remains
+  available behind `--legacy-blake3d` for cross-checking historical
+  vectors (with a stderr warning that such shares cannot be accepted).
+- **GPU miner deprecated.**
+  [`contrib/miner/b3chain-gpuminer/README.md`](../contrib/miner/b3chain-gpuminer/README.md)
+  is now flagged as deprecated. It still computes the retired
+  double-BLAKE3 PoW (B3PoW-Scratch is GPU-hostile by design); the
+  tree is retained as a reference for the previous algorithm only.
+- **Public-facing docs rewritten.**
+  [`README.md`](../README.md),
+  [`doc/b3chain-pow-design.md`](b3chain-pow-design.md),
+  [`doc/mining.md`](mining.md), and
+  [`doc/stratum.md`](stratum.md) now describe B3PoW-Scratch v1.1 as
+  the live algorithm and point at SPEC.md / `b3pow_ref.py` /
+  `b3pow_scratch.cpp` / the TS port for the byte-exact details.
+  Oversell sweep: "ASIC resistance" claims replaced with
+  measured-nuance language ("FPGA-economical, GPU-hostile, not
+  ASIC-proof"). `SPEC.md` §11 now lists every in-tree implementation
+  pointer in one table.
+- **Pad-cache latent bug fix.**
+  [`contrib/testing/verify-b3pow.py`](../contrib/testing/verify-b3pow.py)
+  was caching the post-mix mutated pad. Switched to a pristine cache
+  that hands out a fresh `bytearray` copy per call, matching the new
+  TS / cpuminer pattern. CI parity is unchanged (`17/17` vectors pass).
+
 ## v1.1.1 — B3PoW-Scratch 51%-attack mitigations (current)
 
 `SPEC_VERSION = 0x00010101` (algorithm), `REG_ID_MAGIC = 0xB3110002`

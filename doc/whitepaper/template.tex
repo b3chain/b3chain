@@ -1,0 +1,108 @@
+% B3PoW-Scratch v1.1 whitepaper -- pandoc -> XeLaTeX template.
+%
+% Designed to be small, dependency-light, and reproducible. Builds
+% cleanly with TeX Live 2023+ via:
+%
+%   pandoc --template=template.tex --pdf-engine=xelatex \
+%          B3POW-SCRATCH-WHITEPAPER.md -o whitepaper.pdf
+%
+% Style notes:
+%  - Single-column, ~75-character measure.
+%  - Latin Modern (default TeX font; ships with all distros).
+%  - Margins 1 in all round.
+%  - Hyperlinks blue, no boxes.
+%  - Code listings styled neutrally (no syntax-highlight gymnastics; the
+%    Markdown source's fenced blocks already convey enough structure).
+%  - Numbered sections, full table of contents.
+
+\documentclass[$if(fontsize)$$fontsize$,$endif$11pt]{article}
+
+\usepackage[$if(geometry)$$geometry$$else$margin=1in$endif$]{geometry}
+\usepackage{fontspec}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{fancyvrb}
+\usepackage{graphicx}
+\usepackage{ulem}
+\usepackage[normalem]{ulem}
+\usepackage{titling}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\setmainfont{Latin Modern Roman}
+\setmonofont{Latin Modern Mono}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black,
+  pdftitle={B3PoW-Scratch v1.1 Whitepaper},
+  pdfauthor={B3Chain Contributors},
+  pdfsubject={A memory-hard, FPGA-economical proof-of-work for Bitcoin-derived blockchains},
+  pdfkeywords={proof-of-work, BLAKE3, FPGA, B3Chain, B3PoW-Scratch}
+}
+
+% Listings (code blocks). Quiet, ASCII, no colour-explosion.
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  framerule=0.4pt,
+  framesep=4pt,
+  xleftmargin=0pt,
+  xrightmargin=0pt,
+  rulecolor=\color{black!30},
+  numberstyle=\tiny\color{black!50}
+}
+
+% Pandoc-required passthroughs.
+$if(highlighting-macros)$
+$highlighting-macros$
+$endif$
+
+% Pandoc-required tightlist (lists without paragraph spacing).
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% Pandoc-required \pandocbounded for figures inside table cells.
+\providecommand{\pandocbounded}[1]{#1}
+
+\titleformat{\section}[hang]{\Large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}[hang]{\large\bfseries}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}[hang]{\normalsize\bfseries}{\thesubsubsection.}{0.5em}{}
+
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+\title{$title$}
+\author{$author$}
+\date{$date$}
+
+\begin{document}
+
+\maketitle
+
+$if(abstract)$
+\begin{abstract}
+$abstract$
+\end{abstract}
+$endif$
+
+$if(toc)$
+\tableofcontents
+\vspace{1em}
+\hrule
+\vspace{1em}
+$endif$
+
+$body$
+
+\end{document}
