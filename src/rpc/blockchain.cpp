@@ -1747,6 +1747,219 @@ static RPCHelpMan reconsiderblock()
     };
 }
 
+// b3chain M-14: operator-pinned chain recovery RPCs.  Hidden category
+// to match invalidateblock/reconsiderblock; these are break-glass
+// operator tools, not normal-operation surface.  Doc: see
+// doc/security/RESPONSE-RUNBOOK-51ATTACK.md and
+// doc/security/B3POW-51-ATTACK-ANALYSIS.md M-14.
+static RPCHelpMan finalizeblock()
+{
+    return RPCHelpMan{
+        "finalizeblock",
+        "b3chain M-14: pin a block on the active chain as 'finalized'.  Any "
+        "subsequent candidate that would reorg past this block is rejected "
+        "with `reorg-past-finalized`, regardless of how much PoW it has.\n"
+        "\nThe pin survives node restart.  Use `unfinalizeblock` to clear.\n"
+        "\nMust be a block on the active chain at call time, must not lower "
+        "the finalize height, must not conflict with `-assumevalidcheckpoints`.\n"
+        "\nSee doc/security/RESPONSE-RUNBOOK-51ATTACK.md for the operator "
+        "playbook.\n",
+        {
+            {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hash of the block to finalize"},
+        },
+        RPCResult{RPCResult::Type::NONE, "", ""},
+        RPCExamples{
+            HelpExampleCli("finalizeblock", "\"blockhash\"")
+            + HelpExampleRpc("finalizeblock", "\"blockhash\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    uint256 hash(ParseHashV(request.params[0], "blockhash"));
+
+    CBlockIndex* pblockindex;
+    {
+        LOCK(chainman.GetMutex());
+        pblockindex = chainman.m_blockman.LookupBlockIndex(hash);
+        if (!pblockindex) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+        }
+    }
+    BlockValidationState state;
+    if (!chainman.ActiveChainstate().FinalizeBlock(state, pblockindex)) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    }
+    return UniValue::VNULL;
+},
+    };
+}
+
+static RPCHelpMan unfinalizeblock()
+{
+    return RPCHelpMan{
+        "unfinalizeblock",
+        "b3chain M-14: clear the operator-finalized block pin.  Idempotent "
+        "(no-op if no block is currently finalized).  Persists the clear "
+        "across restart.\n",
+        {},
+        RPCResult{RPCResult::Type::NONE, "", ""},
+        RPCExamples{
+            HelpExampleCli("unfinalizeblock", "")
+            + HelpExampleRpc("unfinalizeblock", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    BlockValidationState state;
+    if (!chainman.ActiveChainstate().UnfinalizeBlock(state)) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    }
+    return UniValue::VNULL;
+},
+    };
+}
+
+static RPCHelpMan parkblock()
+{
+    return RPCHelpMan{
+        "parkblock",
+        "b3chain M-14: exclude a block (and its descendants) from this "
+        "node's chain selection.  Reversible via `unparkblock`.  Unlike "
+        "`invalidateblock`, parking does not assert the block violates "
+        "consensus -- the operator is simply choosing not to follow this "
+        "branch on this node.\n",
+        {
+            {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hash of the block to park"},
+        },
+        RPCResult{RPCResult::Type::NONE, "", ""},
+        RPCExamples{
+            HelpExampleCli("parkblock", "\"blockhash\"")
+            + HelpExampleRpc("parkblock", "\"blockhash\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    uint256 hash(ParseHashV(request.params[0], "blockhash"));
+
+    CBlockIndex* pblockindex;
+    {
+        LOCK(chainman.GetMutex());
+        pblockindex = chainman.m_blockman.LookupBlockIndex(hash);
+        if (!pblockindex) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+        }
+    }
+    BlockValidationState state;
+    if (!chainman.ActiveChainstate().ParkBlock(state, pblockindex)) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    }
+    return UniValue::VNULL;
+},
+    };
+}
+
+static RPCHelpMan unparkblock()
+{
+    return RPCHelpMan{
+        "unparkblock",
+        "b3chain M-14: clear BLOCK_PARKED on this block and its descendants "
+        "and ancestors, then re-activate the best chain.  No-op if the "
+        "block was never parked.\n",
+        {
+            {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hash of the block to unpark"},
+        },
+        RPCResult{RPCResult::Type::NONE, "", ""},
+        RPCExamples{
+            HelpExampleCli("unparkblock", "\"blockhash\"")
+            + HelpExampleRpc("unparkblock", "\"blockhash\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    uint256 hash(ParseHashV(request.params[0], "blockhash"));
+
+    CBlockIndex* pblockindex;
+    {
+        LOCK(chainman.GetMutex());
+        pblockindex = chainman.m_blockman.LookupBlockIndex(hash);
+        if (!pblockindex) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+        }
+    }
+    BlockValidationState state;
+    if (!chainman.ActiveChainstate().UnparkBlock(state, pblockindex)) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    }
+    return UniValue::VNULL;
+},
+    };
+}
+
+static RPCHelpMan getfinalizedblockhash()
+{
+    return RPCHelpMan{
+        "getfinalizedblockhash",
+        "b3chain M-14: returns the current finalization horizon -- the "
+        "deepest block on the active chain that no candidate reorg can "
+        "touch.\n"
+        "\nWhen no operator finalize is in effect, returns the implicit "
+        "horizon at `tip.height - consensus.max_reorg_depth` (M-4).  "
+        "Source field distinguishes the two cases.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR_HEX, "hash",   "block hash at the horizon (\"\" if pre-horizon, e.g. fresh chain)"},
+                {RPCResult::Type::NUM,     "height", "block height at the horizon"},
+                {RPCResult::Type::STR,     "source", "either \"operator\" or \"max_reorg_depth\""},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("getfinalizedblockhash", "")
+            + HelpExampleRpc("getfinalizedblockhash", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    LOCK(chainman.GetMutex());
+
+    UniValue result(UniValue::VOBJ);
+    const Chainstate& active = chainman.ActiveChainstate();
+    const CBlockIndex* finalized = active.m_finalized_block;
+    if (finalized != nullptr) {
+        result.pushKV("hash",   finalized->GetBlockHash().GetHex());
+        result.pushKV("height", finalized->nHeight);
+        result.pushKV("source", "operator");
+        return result;
+    }
+    // Implicit M-4 horizon: tip.height - max_reorg_depth.  Sentinel:
+    // empty hash + height < 0 when the chain is shorter than the cap
+    // (typical during early bootstrap), so the caller can distinguish
+    // "no horizon yet" from "horizon at genesis".
+    const CBlockIndex* tip = active.m_chain.Tip();
+    const auto cap = chainman.GetConsensus().max_reorg_depth;
+    if (tip == nullptr || cap == 0) {
+        result.pushKV("hash",   "");
+        result.pushKV("height", -1);
+        result.pushKV("source", "max_reorg_depth");
+        return result;
+    }
+    const int horizon_height = tip->nHeight - static_cast<int>(cap);
+    if (horizon_height < 0) {
+        result.pushKV("hash",   "");
+        result.pushKV("height", horizon_height);
+        result.pushKV("source", "max_reorg_depth");
+        return result;
+    }
+    const CBlockIndex* horizon = active.m_chain[horizon_height];
+    result.pushKV("hash",   horizon ? horizon->GetBlockHash().GetHex() : std::string{});
+    result.pushKV("height", horizon_height);
+    result.pushKV("source", "max_reorg_depth");
+    return result;
+},
+    };
+}
+
 static RPCHelpMan getchaintxstats()
 {
     return RPCHelpMan{
@@ -3490,6 +3703,12 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &getchainstates},
         {"hidden", &invalidateblock},
         {"hidden", &reconsiderblock},
+        // b3chain M-14: operator-pinned chain recovery RPCs.
+        {"hidden", &finalizeblock},
+        {"hidden", &unfinalizeblock},
+        {"hidden", &parkblock},
+        {"hidden", &unparkblock},
+        {"blockchain", &getfinalizedblockhash},
         {"blockchain", &waitfornewblock},
         {"blockchain", &waitforblock},
         {"blockchain", &waitforblockheight},

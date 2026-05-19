@@ -3863,6 +3863,196 @@ void Chainstate::ResetBlockFailureFlags(CBlockIndex *pindex) {
     }
 }
 
+// b3chain M-14: operator-pinned recovery RPCs.  See
+// doc/security/B3POW-51-ATTACK-ANALYSIS.md M-14 and
+// doc/security/RESPONSE-RUNBOOK-51ATTACK.md.
+//
+// Tier-2 verify-before-done map (.cursor/rules/tiered-verification.mdc):
+//   TRIGGER   -> RPC `finalizeblock` / `unfinalizeblock` / `parkblock`
+//                / `unparkblock` in src/rpc/blockchain.cpp.
+//   PROCESS   -> these four methods.
+//   RESULT    -> (a) m_finalized_block / BLOCK_PARKED bits in memory,
+//                (b) BlockTreeDB::WriteFinalizedBlock persists across
+//                    restart, (c) ChainstateManager::AcceptBlock
+//                    deep-reorg-cap check picks up m_finalized_block.
+//   BYPASS    -> see explicit comment inside each method below.
+bool Chainstate::FinalizeBlock(BlockValidationState& state, CBlockIndex* pindex)
+{
+    AssertLockNotHeld(m_chainstate_mutex);
+    AssertLockNotHeld(::cs_main);
+    assert(pindex);
+
+    LOCK(cs_main);
+
+    // BYPASS 1: cannot finalize the genesis block (already permanent;
+    // finalizing height 0 is semantically a no-op but we reject so the
+    // operator gets a clear error rather than silent success).
+    if (pindex->nHeight == 0) {
+        return state.Invalid(BlockValidationResult::BLOCK_RESULT_UNSET,
+                             "finalize-genesis",
+                             "cannot finalize the genesis block");
+    }
+    // BYPASS 2: pindex must be on the active chain.  Finalizing an
+    // off-chain block would let the operator pin a fork they don't
+    // actually follow, which is a footgun.
+    if (!m_chain.Contains(pindex)) {
+        return state.Invalid(BlockValidationResult::BLOCK_RESULT_UNSET,
+                             "finalize-not-on-active-chain",
+                             strprintf("block %s is not on the active chain",
+                                       pindex->GetBlockHash().ToString()));
+    }
+    // BYPASS 3: refuse to lower the finalize horizon.  Re-finalizing
+    // at a higher block is fine (advances the pin); going backwards
+    // would defeat the point of the pin.
+    if (m_finalized_block != nullptr &&
+        pindex->nHeight < m_finalized_block->nHeight) {
+        return state.Invalid(BlockValidationResult::BLOCK_RESULT_UNSET,
+                             "finalize-lower-than-current",
+                             strprintf("requested height %d < currently finalized height %d",
+                                       pindex->nHeight, m_finalized_block->nHeight));
+    }
+    // BYPASS 4: M-8 emergency-checkpoint conflict (`-assumevalidcheckpoints`).
+    // If a checkpoint is loaded at this height with a different hash,
+    // the two mechanisms disagree about what the canonical chain is.
+    // Refuse the finalize -- the operator must resolve the conflict
+    // (typically by removing or correcting the checkpoint JSON).
+    if (!m_chainman.m_emergency_checkpoints.Empty()) {
+        const auto expected = m_chainman.m_emergency_checkpoints.AtHeight(pindex->nHeight);
+        if (expected.has_value() && *expected != pindex->GetBlockHash()) {
+            return state.Invalid(BlockValidationResult::BLOCK_RESULT_UNSET,
+                                 "finalize-conflicts-with-emergency-checkpoint",
+                                 strprintf("emergency checkpoint at height %d is %s, requested %s",
+                                           pindex->nHeight, expected->ToString(),
+                                           pindex->GetBlockHash().ToString()));
+        }
+    }
+    // BYPASS 5: warn (but accept) if the operator finalizes inside the
+    // typical 6-confirmation window.  This is operator-policy, not a
+    // hard error: regtest tests and one-off recovery flows legitimately
+    // finalize at very small offsets.
+    const CBlockIndex* tip = m_chain.Tip();
+    if (tip != nullptr && tip->nHeight - pindex->nHeight < 6) {
+        LogWarning("FinalizeBlock: finalizing %s at height %d within the "
+                   "typical 6-confirmation window (tip height %d).\n",
+                   pindex->GetBlockHash().ToString(), pindex->nHeight,
+                   tip->nHeight);
+    }
+
+    m_finalized_block = pindex;
+    if (!m_blockman.m_block_tree_db->WriteFinalizedBlock(pindex->GetBlockHash())) {
+        // Not fatal: in-memory state is set, the persistence retry
+        // happens on the next call.  Operator sees the warning via
+        // stderr; the RPC returns success because the requested
+        // policy IS in effect for this process lifetime.
+        LogError("FinalizeBlock: failed to persist finalized hash %s; "
+                 "in-memory state is set but restart will lose it.\n",
+                 pindex->GetBlockHash().ToString());
+    }
+    LogInfo("FinalizeBlock: pinned %s at height %d (operator).\n",
+            pindex->GetBlockHash().ToString(), pindex->nHeight);
+    return true;
+}
+
+bool Chainstate::UnfinalizeBlock(BlockValidationState& state)
+{
+    AssertLockNotHeld(m_chainstate_mutex);
+    AssertLockNotHeld(::cs_main);
+    LOCK(cs_main);
+
+    // Idempotent: unfinalize-when-unfinalized is a no-op, not an error.
+    if (m_finalized_block == nullptr) {
+        return true;
+    }
+    const uint256 prior_hash = m_finalized_block->GetBlockHash();
+    const int prior_height = m_finalized_block->nHeight;
+    m_finalized_block = nullptr;
+    if (!m_blockman.m_block_tree_db->WriteFinalizedBlock(uint256{})) {
+        LogError("UnfinalizeBlock: failed to clear persisted finalized hash; "
+                 "in-memory state is cleared but restart will resurrect.\n");
+    }
+    LogInfo("UnfinalizeBlock: cleared operator pin (was %s at height %d).\n",
+            prior_hash.ToString(), prior_height);
+    return true;
+}
+
+bool Chainstate::ParkBlock(BlockValidationState& state, CBlockIndex* pindex)
+{
+    AssertLockNotHeld(m_chainstate_mutex);
+    AssertLockNotHeld(::cs_main);
+    assert(pindex);
+
+    // Step 1: defer to InvalidateBlock for the heavy lifting -- it
+    // walks back from the tip if pindex is on the active chain,
+    // marks the branch BLOCK_FAILED_VALID/CHILD, and re-activates
+    // best chain afterwards.  ParkBlock is intentionally a thin
+    // wrapper over this proven path so we don't duplicate the
+    // disconnect-tip dance.
+    if (!InvalidateBlock(state, pindex)) {
+        return false;
+    }
+
+    // Step 2: tag with BLOCK_PARKED so UnparkBlock can later
+    // identify which BLOCK_FAILED_* entries are operator-parked
+    // (and thus safe to clear) vs genuinely consensus-invalid (and
+    // thus must keep their failure flags).
+    {
+        LOCK(cs_main);
+        pindex->nStatus |= BLOCK_PARKED;
+        m_blockman.m_dirty_blockindex.insert(pindex);
+        // Tag descendants too: if InvalidateBlock walked back through
+        // a chain segment, every block whose ancestor includes pindex
+        // is parked.
+        for (auto& [_, block_index] : m_blockman.m_block_index) {
+            if (block_index.GetAncestor(pindex->nHeight) == pindex) {
+                block_index.nStatus |= BLOCK_PARKED;
+                m_blockman.m_dirty_blockindex.insert(&block_index);
+            }
+        }
+    }
+    return true;
+}
+
+bool Chainstate::UnparkBlock(BlockValidationState& state, CBlockIndex* pindex)
+{
+    AssertLockNotHeld(m_chainstate_mutex);
+    AssertLockNotHeld(::cs_main);
+    assert(pindex);
+
+    {
+        LOCK(cs_main);
+        if (!(pindex->nStatus & BLOCK_PARKED)) {
+            // BYPASS 1: never parked -- no-op (not an error, mirrors
+            // reconsiderblock semantics).
+            return true;
+        }
+        const int nHeight = pindex->nHeight;
+        // Clear BLOCK_PARKED on this block, its descendants AND its
+        // ancestors (mirrors ResetBlockFailureFlags); also clear the
+        // BLOCK_FAILED_* flags we ourselves added via InvalidateBlock
+        // inside ParkBlock.  BLOCK_FAILED_* flags that were set by
+        // OTHER paths (genuine consensus violation) stay set.
+        for (auto& [_, block_index] : m_blockman.m_block_index) {
+            const bool is_descendant = block_index.GetAncestor(nHeight) == pindex;
+            const bool is_ancestor   = pindex->GetAncestor(block_index.nHeight) == &block_index;
+            if (!is_descendant && !is_ancestor) continue;
+            if (block_index.nStatus & BLOCK_PARKED) {
+                block_index.nStatus &= ~(BLOCK_PARKED | BLOCK_FAILED_MASK);
+                m_blockman.m_dirty_blockindex.insert(&block_index);
+                if (block_index.IsValid(BLOCK_VALID_TRANSACTIONS) &&
+                    block_index.HaveNumChainTxs() &&
+                    setBlockIndexCandidates.value_comp()(m_chain.Tip(), &block_index)) {
+                    setBlockIndexCandidates.insert(&block_index);
+                }
+                if (&block_index == m_chainman.m_best_invalid) {
+                    m_chainman.m_best_invalid = nullptr;
+                }
+            }
+        }
+        m_chainman.RecalculateBestHeader();
+    }
+    return ActivateBestChain(state);
+}
+
 void Chainstate::TryAddBlockIndexCandidate(CBlockIndex* pindex)
 {
     AssertLockHeld(cs_main);
@@ -4619,6 +4809,31 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                                         max_reorg_depth));
                 return false;
             }
+            // b3chain M-14: explicit operator finalize-block pin.  If
+            // an operator has called `finalizeblock <hash>` (see
+            // Chainstate::FinalizeBlock), reject any candidate whose
+            // fork point is below the pin -- even if the candidate
+            // would otherwise be within the M-4 implicit cap.  Same
+            // BLOCK_DEEP_REORG result code so net_processing routes
+            // this to Misbehaving identically.
+            const CBlockIndex* finalized = ActiveChainstate().m_finalized_block;
+            if (finalized != nullptr &&
+                fork != nullptr &&
+                fork->nHeight < finalized->nHeight) {
+                LogError(
+                    "%s: block %s (height %d) would reorg past the "
+                    "operator-finalized block %s at height %d, "
+                    "rejecting as reorg-past-finalized",
+                    __func__, pindex->GetBlockHash().ToString(),
+                    pindex->nHeight,
+                    finalized->GetBlockHash().ToString(),
+                    finalized->nHeight);
+                state.Invalid(BlockValidationResult::BLOCK_DEEP_REORG,
+                              "reorg-past-finalized",
+                              strprintf("reorg fork at height %d below finalized %d",
+                                        fork->nHeight, finalized->nHeight));
+                return false;
+            }
         }
     }
 
@@ -4852,6 +5067,28 @@ bool Chainstate::LoadChainTip()
               m_chain.Height(),
               FormatISO8601DateTime(tip->GetBlockTime()),
               m_chainman.GuessVerificationProgress(tip));
+
+    // b3chain M-14: restore the operator-finalized block from the
+    // block tree DB.  Non-fatal if the persisted hash doesn't resolve
+    // to a known block (e.g. -reindex wiped the index): we log and
+    // leave m_finalized_block null.  Symmetric with the
+    // emergency-checkpoints loader (validation.cpp ChainstateManager
+    // ctor) which similarly degrades gracefully.
+    uint256 finalized_hash;
+    if (m_blockman.m_block_tree_db->ReadFinalizedBlock(finalized_hash) &&
+        !finalized_hash.IsNull()) {
+        CBlockIndex* finalized = m_blockman.LookupBlockIndex(finalized_hash);
+        if (finalized != nullptr) {
+            m_finalized_block = finalized;
+            LogInfo("Loaded operator-finalized block: %s (height %d)\n",
+                    finalized_hash.ToString(), finalized->nHeight);
+        } else {
+            LogWarning("Persisted operator-finalized block %s not found in "
+                       "the block index; ignoring.  Operator may need to "
+                       "re-issue `finalizeblock`.\n",
+                       finalized_hash.ToString());
+        }
+    }
 
     // Ensure KernelNotifications m_tip_block is set even if no new block arrives.
     if (this->GetRole() != ChainstateRole::BACKGROUND) {

@@ -49,6 +49,10 @@ static constexpr uint8_t DB_BLOCK_INDEX{'b'};
 static constexpr uint8_t DB_FLAG{'F'};
 static constexpr uint8_t DB_REINDEX_FLAG{'R'};
 static constexpr uint8_t DB_LAST_BLOCK{'l'};
+// b3chain M-14: operator-pinned finalized block hash (see
+// Chainstate::FinalizeBlock / BlockTreeDB::WriteFinalizedBlock).
+// Key letter 'P' = "pinned" -- 'F' was already taken by DB_FLAG.
+static constexpr uint8_t DB_FINALIZED_BLOCK{'P'};
 // Keys used in previous version that might still be found in the DB:
 // BlockTreeDB::DB_TXINDEX_BLOCK{'T'};
 // BlockTreeDB::DB_TXINDEX{'t'}
@@ -104,6 +108,22 @@ bool BlockTreeDB::ReadFlag(const std::string& name, bool& fValue)
     }
     fValue = ch == uint8_t{'1'};
     return true;
+}
+
+bool BlockTreeDB::WriteFinalizedBlock(const uint256& hash)
+{
+    // The all-zero sentinel means "unfinalized": erase the key rather
+    // than writing zeros, so a subsequent ReadFinalizedBlock returns
+    // false (= no value stored).  Symmetric with WriteReindexing.
+    if (hash.IsNull()) {
+        return Erase(DB_FINALIZED_BLOCK);
+    }
+    return Write(DB_FINALIZED_BLOCK, hash);
+}
+
+bool BlockTreeDB::ReadFinalizedBlock(uint256& hash)
+{
+    return Read(DB_FINALIZED_BLOCK, hash);
 }
 
 bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, const util::SignalInterrupt& interrupt)

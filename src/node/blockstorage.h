@@ -59,6 +59,17 @@ public:
     void ReadReindexing(bool& fReindexing);
     bool WriteFlag(const std::string& name, bool fValue);
     bool ReadFlag(const std::string& name, bool& fValue);
+
+    /** b3chain M-14: persist operator-pinned finalized-block hash (see
+     *  Chainstate::FinalizeBlock).  Passing a zero/null uint256 erases
+     *  the persisted value.  Survives node restart so an operator
+     *  doesn't have to re-finalize after a stop/start cycle. */
+    bool WriteFinalizedBlock(const uint256& hash);
+    /** b3chain M-14: read the persisted finalized-block hash.  Returns
+     *  false if no value is stored (i.e. unfinalized); on true, `hash`
+     *  is the stored value (may be the zero sentinel, which the caller
+     *  must treat as "unfinalized"). */
+    bool ReadFinalizedBlock(uint256& hash);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, const util::SignalInterrupt& interrupt)
         EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 };

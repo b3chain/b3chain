@@ -768,6 +768,46 @@ public:
     /** Remove invalidity status from a block, its descendants and ancestors and reconsider them for activation */
     void ResetBlockFailureFlags(CBlockIndex* pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
+    /** b3chain M-14: operator-pin a block on the active chain so any
+     *  candidate that would force a reorg past it is rejected.  Single
+     *  finalize slot; finalizing again at a higher block overrides.
+     *  See doc/security/B3POW-51-ATTACK-ANALYSIS.md M-14 and the
+     *  bypass enumeration in the implementation. */
+    bool FinalizeBlock(BlockValidationState& state, CBlockIndex* pindex)
+        EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
+        LOCKS_EXCLUDED(::cs_main);
+
+    /** b3chain M-14: clear the operator-finalized block.  Idempotent
+     *  when no block is currently finalized.  Persists the clear so it
+     *  survives restart (see BlockTreeDB::WriteFinalizedBlock with the
+     *  zero sentinel). */
+    bool UnfinalizeBlock(BlockValidationState& state)
+        EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
+        LOCKS_EXCLUDED(::cs_main);
+
+    /** b3chain M-14: operator-park a block (and its descendants).
+     *  Parked blocks are excluded from this node's chain selection,
+     *  reversibly via UnparkBlock.  Implemented as InvalidateBlock plus
+     *  the BLOCK_PARKED flag so we can distinguish operator-parked
+     *  blocks from genuinely-invalid ones on the same chain. */
+    bool ParkBlock(BlockValidationState& state, CBlockIndex* pindex)
+        EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
+        LOCKS_EXCLUDED(::cs_main);
+
+    /** b3chain M-14: clear BLOCK_PARKED on this block and its
+     *  descendants and ancestors, then re-activate the best chain.
+     *  No-op if the block was never parked. */
+    bool UnparkBlock(BlockValidationState& state, CBlockIndex* pindex)
+        EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
+        LOCKS_EXCLUDED(::cs_main);
+
+    /** b3chain M-14: pointer to the operator-finalized block, or
+     *  nullptr if no block is finalized.  Guarded by cs_main; only
+     *  modified by FinalizeBlock / UnfinalizeBlock / startup load.
+     *  See validation.cpp Chainstate::LoadChainTip() for the restore
+     *  path. */
+    const CBlockIndex* m_finalized_block GUARDED_BY(::cs_main){nullptr};
+
     /** Replay blocks that aren't fully applied to the database. */
     bool ReplayBlocks();
 

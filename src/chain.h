@@ -130,6 +130,20 @@ enum BlockStatus : uint32_t {
 
     BLOCK_STATUS_RESERVED    =   256, //!< Unused flag that was previously set on assumeutxo snapshot blocks and their
                                       //!< ancestors before they were validated, and unset when they were validated.
+
+    /**
+     * b3chain M-14: the block is operator-parked on this node only.  Set
+     * by Chainstate::ParkBlock (b3chain RPC `parkblock`), cleared by
+     * Chainstate::UnparkBlock (`unparkblock`).  Operator-only and
+     * node-local: it does NOT propagate over the wire and the block is
+     * not consensus-invalid.  Co-exists with BLOCK_FAILED_VALID so the
+     * existing chain-selection logic skips the parked branch; the
+     * distinct bit lets us reverse the park without disturbing genuine
+     * failure flags on the same chain segment.
+     * See doc/security/B3POW-51-ATTACK-ANALYSIS.md M-14 and
+     * doc/security/RESPONSE-RUNBOOK-51ATTACK.md.
+     */
+    BLOCK_PARKED             =   512,
 };
 
 /** The block chain is a tree shaped structure starting with the
