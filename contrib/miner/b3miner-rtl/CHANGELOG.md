@@ -2,6 +2,20 @@
 
 All notable changes to `b3miner-rtl` are recorded here. Newest entries on top.
 
+## v1.1.3 — cross-reference only (no RTL changes)
+
+The b3chain v1.1.3 maintenance release lands the M-14 operator-pinned
+chain recovery RPCs (`finalizeblock` / `parkblock` /
+`unparkblock` / `unfinalizeblock` / `getfinalizedblockhash`) plus a
+watcher detector (`detect_finalized_drift`).  None of this touches
+the miner side: the RPCs live in the b3chaind RPC server and the
+detector lives in the monitoring daemon.  The RTL reference and
+parity vectors are unchanged.
+
+This entry exists so the b3miner-rtl changelog tracks one-to-one
+with `b3chain/doc/CHANGELOG.md` for cross-reference convenience; the
+authoritative description is the v1.1.3 section there.
+
 ## v1.1.2 — first commit into b3chain-main
 
 The tree authored in this directory had never actually been tracked

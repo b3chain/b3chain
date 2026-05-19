@@ -57,6 +57,7 @@ score (Phase 3.4) and a `max_reorg_depth = 200` consensus rejection
 | M-11 | Address-derivation uniformity CI gate | Pre-genesis hard gate | `ref/tests/test_address_uniformity.py` (new) |
 | M-12 | Diffusion-bound sketch + SPEC §8.F | Documentation gate | [`SPEC.md`](../../contrib/miner/b3miner-rtl/SPEC.md) |
 | M-13 | `powLimit` tightened 4x + post-bootstrap `operating_pow_floor_bits` (F-6 fix) | Pre-genesis hard fork | [`src/kernel/chainparams.cpp`](../../src/kernel/chainparams.cpp) + [`src/pow/lwma3.cpp`](../../src/pow/lwma3.cpp) |
+| M-14 | `finalizeblock` / `unfinalizeblock` / `parkblock` / `unparkblock` operator RPCs + `getfinalizedblockhash` read RPC + `detect_finalized_drift` watcher detector | Operational | [`src/rpc/blockchain.cpp`](../../src/rpc/blockchain.cpp) + [`src/validation.cpp`](../../src/validation.cpp) + [`src/node/blockstorage.cpp`](../../src/node/blockstorage.cpp) + [`contrib/monitoring/51attack-watch.py`](../../contrib/monitoring/51attack-watch.py) |
 
 ### 1.3 What we do not claim
 
@@ -70,6 +71,17 @@ score (Phase 3.4) and a `max_reorg_depth = 200` consensus rejection
   [`SECURITY-ROADMAP.md §7`](SECURITY-ROADMAP.md), maintainer-signed
   checkpoints are deferred. Section 4.3 ships only the *code path*
   (off by default).
+- **No BCH-style automatic finalization at depth 10.** M-14 ships the
+  operator-controlled `finalizeblock` / `parkblock` RPCs (mirroring
+  BCH-N's API surface, see §4.4) but does **not** auto-finalize at any
+  depth. Automatic finalization is rejected in our threat model for
+  the same reason BCH operators have hit it: a healthy network
+  partition that resolves cleanly under PoW becomes a permanent split
+  the moment the deeper branch's last block crosses the auto-final
+  threshold. M-14 finalize is opt-in and reversible (via
+  `unfinalizeblock`), so operators get the recovery ergonomics without
+  the partition-amplifies-to-permanent-split footgun. See §4.4 for
+  the side-by-side comparison.
 
 ---
 
@@ -214,6 +226,48 @@ A capability is a triple (hashrate share, network position, time horizon, capita
   inherited wallet security).
 - Out-of-protocol attacks (exchanges, custodians, regulators).
 
+### 4.4 Comparison with peer chains
+
+The closest sibling chains to b3chain on the "low-hashrate Bitcoin
+fork" axis are Bitcoin Cash (BCH), Ethereum Classic (ETC), and Monero
+(XMR). Each has been the subject of at least one well-documented
+51%-attack incident (BCH May 2019 reorg, ETC August 2020 reorg, XMR
+August 2021 selfish-mining incident). Their deep-reorg policies sit
+at three different points in the design space:
+
+| Chain | Deep-reorg policy | Operator override | Notes |
+|---|---|---|---|
+| **Bitcoin Cash (ABC/BCH-N)** | Automatic finalization at depth 10 (rolling 10-block checkpoint). Any reorg past depth 10 is rejected without operator input. | `finalizeblock` / `parkblock` RPCs (added 2018 ABC; the API surface M-14 borrows). | Has caused at least two documented permanent network partitions during health blockchain partitions (2018-11 and 2020-11). The auto-finality turned recoverable partitions into permanent splits. |
+| **Ethereum Classic** | None at the consensus layer. The August 2020 51%-attack reorged ~7000 blocks (the attacker's depth). Post-incident, the team shipped MESS (Modified Exponential Subjective Scoring) at the client layer — a *score penalty* on deep reorgs, but no hard cap. | None. Recovery from the 2020 attack required exchange coordination, not client features. | The "no cap" position is internally consistent (Bitcoin-style probabilistic finality, longest-work wins) but has been very expensive in practice for low-hashrate chains. |
+| **Monero** | Effective cap of 720 blocks (~24 hours) at the wallet / mempool layer; reorgs above that depth force a full rescan. No consensus-layer rejection. | None. | The 2021 selfish-mining incident demonstrated that without a consensus cap, even a much smaller hashrate share can be profitable under certain conditions. |
+| **b3chain (this release)** | **Soft cap at depth 200 (M-4) at the consensus layer** — any candidate that would reorg past `tip - 200` is rejected with `BLOCK_DEEP_REORG`. *Plus* opt-in operator pin via M-14 (`finalizeblock`) and opt-in checkpoint pin via M-8 (`-assumevalidcheckpoints`). Both opt-ins are reversible. | M-14: `finalizeblock` / `parkblock` / `unparkblock` / `unfinalizeblock` (this release). | The 200-block cap is *deeper* than BCH's 10 on purpose: a partition-induced 200-block split heals; a 200-block 51% reorg is economically infeasible for any realistic attacker against an honest network at our hashrate. The deeper cap trades a tiny worst-case (legit reorg above 200 freezes both branches) for elimination of BCH's "partition → permanent split" failure mode. |
+
+**Why deeper-cap + manual-pin is the right point for b3chain.**
+
+- We are pre-launch with no installed-base of exchanges or custodians
+  to coordinate a manual recovery against. A 10-block auto-finality
+  rule that turned a healable partition into a permanent split would
+  be catastrophic at this stage; a 200-block cap that gives both
+  branches a chance to heal is correct.
+- We expect higher partition risk than BCH did in 2018 because our
+  node count is smaller; this is exactly the regime where BCH's auto-
+  finality went wrong.
+- We retain the BCH operator-ergonomics: `finalizeblock` lets an
+  operator say "we just survived a partition, pin the canonical
+  branch now so a late reorg attempt is rejected immediately" without
+  waiting for a hard fork to lower the M-4 cap. This is the M-14
+  recovery flow.
+- We do NOT inherit BCH's permanent-split risk because M-14 is opt-in
+  per node, not network-wide; the operator can `unfinalizeblock` any
+  time without coordinating with peers.
+
+References:
+- BCH 2018-11 reorg: https://www.coindesk.com/markets/2018/11/15/bitcoin-cash-hash-war-explained-roger-ver-and-jihan-wu-square-off/
+- BCH ABC finalizeblock spec (the API we borrowed): https://reference.cash/protocol/blockchain/finalization
+- ETC August 2020 reorg: https://blog.ethereum-classic.org/etc-network-attack-recovery-recommendations/
+- ETC MESS: ECIP-1100, https://ecips.ethereumclassic.org/ECIPs/ecip-1100
+- Monero 2021 selfish-mining incident: https://www.getmonero.org/2021/01/21/monero-network-update.html
+
 ---
 
 ## 5. Attack vectors
@@ -256,6 +310,10 @@ privately).
 - **M-5 (depth-aware ban)**: stale-tip headers cost progressively
   more peer score, so feeding the attack chain to honest nodes is
   metered.
+- **M-14 (`finalizeblock` operator pin)**: once the legitimate chain
+  has resumed building post-attack, an operator can pin a manual
+  horizon to immediately reject any late-arriving attack-chain
+  candidate, without waiting for the implicit M-4 cap to fire.
 
 **Simulator.** [`contrib/testing/audit/audit-51-attack-sim.py`](../../contrib/testing/audit/audit-51-attack-sim.py)
 (extended in Phase 1).
@@ -282,6 +340,10 @@ selfish wins when this exceeds α, which is the threshold above.
   during which selfish-mining strategy compounds.
 - **M-4 (`max_reorg_depth = 200`)**: caps the maximum number of
   "withheld" blocks before reveal is rejected.
+- **M-14 (`finalizeblock` operator pin)**: after a public reveal
+  confirms the legitimate chain has overtaken the withheld branch,
+  the operator can pin the recovered tip so a subsequent late
+  selfish-reveal is rejected immediately.
 - Cannot eliminate; only price up the attack.
 
 **Simulator.** `contrib/testing/audit/audit-selfish-mining-sim.py` (new).
@@ -368,6 +430,13 @@ private fork.
   block-height heuristics during the most vulnerable weeks.
 - **M-10 (`-paranoid-headers-sync`)** — high-value exchanges may
   require 3-peer confirmation.
+- **M-14 (`finalizeblock` operator pin)** — during the bootstrap
+  window where M-4's 33-hour worst case is largest in absolute risk
+  (block subsidy is highest then, so an attacker has maximum
+  incentive), an operator who has manually verified the canonical
+  chain past a given height can pin it via `finalizeblock <hash>` so
+  any later-arriving deeper fork is rejected immediately, without
+  having to wait for the implicit M-4 cap to fire.
 
 **Simulator.** `contrib/testing/audit/audit-bootstrap-reorg-sim.py` (new).
 
@@ -417,6 +486,10 @@ behind it acts as a unified α actor.
   lets miners propose their own templates, dispersing template power.
 - Public pool registry (off-chain; recommend in launch documentation).
 - **M-4** caps the blast radius even under full pool collusion.
+- **M-14 (`finalizeblock` operator pin)** — once a colluding pool's
+  attack chain has been rejected by M-4, M-14 lets the operator
+  immediately freeze the recovered tip so the colluding pool cannot
+  simply re-attempt the reorg the next block.
 
 **Simulator.** Composes with `audit-51-attack-sim.py` — the existing
 attack simulator treats the attacker hashrate as a black box; a colluding
@@ -520,6 +593,10 @@ transactions. With α = 30% via miner-declared templates, they can
   pool can reject obviously malicious templates.
 - **Out-of-tree:** transparent pool template-rejection policy.
 - **Defensive scope:** **M-4** caps the blast radius.
+- **M-14 (`finalizeblock` / `parkblock` operator pin)** — if a
+  specific block is identified as containing a maliciously-declared
+  template that censors a target, operators can `parkblock <hash>`
+  on their own node to refuse to follow that branch, reversibly.
 
 ---
 
@@ -530,18 +607,18 @@ Compact reference table — see each vector section for derivation.
 
 | Vector | Bootstrap (α=30%) | Maturity (α=30%) | Notes |
 |---|---|---|---|
-| V-1 double-spend, k=6 | $5–15K | $5–20M/day | Cap-ex amortises across many attempts; M-4 caps depth |
-| V-2 selfish mining | $0 (free if you have α) | $0 | M-3 reduces compounding window |
+| V-1 double-spend, k=6 | $5–15K | $5–20M/day | Cap-ex amortises across many attempts; M-4 + M-14 cap depth |
+| V-2 selfish mining | $0 (free if you have α) | $0 | M-3 reduces compounding window; M-14 freezes post-recovery tip |
 | V-3 time-warp | $0 (free pre-M-2) | $0 (impossible post-M-2) | M-2 closes |
 | V-4 difficulty manipulation | $5K | infeasible post-M-3 | M-3 closes |
-| V-5 bootstrap reorg | $1.5–150K | n/a | Most pressing pre-launch risk |
+| V-5 bootstrap reorg | $1.5–150K | n/a | Most pressing pre-launch risk; M-13 + M-14 add operator-pin layer |
 | V-6 FPGA monopoly | inherent | erodes over time | Out-of-protocol problem |
-| V-7 pool collusion | $0 (organisational) | $0 | M-4 caps blast |
+| V-7 pool collusion | $0 (organisational) | $0 | M-4 + M-14 cap blast |
 | V-8 verifier DoS | bandwidth-limited | bandwidth-limited | Defended |
 | V-9 cache-eviction | $10s | $10s | M-6 closes |
 | V-10 memory shortcut | open | open | External audit |
 | V-11 eclipse | $10K | $10K | M-9, M-10 |
-| V-12 Stratum V2 abuse | organisational | organisational | M-4 caps blast |
+| V-12 Stratum V2 abuse | organisational | organisational | M-4 + M-14 cap blast (parkblock) |
 
 ---
 
@@ -568,6 +645,7 @@ are listed as **deferred** with the appropriate roadmap pointer.
 | R-14 | Maintainer-signed checkpoints | High (caps adversarial reorg absolutely) | Ceremony + ongoing | External key ceremony | **Deferred** to [SECURITY-ROADMAP §7](SECURITY-ROADMAP.md) |
 | R-15 | Federation / ChainLocks | Absolute (deterministic finality) | Months + governance | Federation governance | **Out of scope** (would require new governance layer) |
 | R-16 | Continuous benchmark CI | Catches regressions | Already in progress | Internal | **In progress** ([SECURITY-ROADMAP §3](SECURITY-ROADMAP.md)) |
+| R-17 | M-14: `finalizeblock` / `parkblock` operator RPCs + `getfinalizedblockhash` + `detect_finalized_drift` watcher | Medium (operator recovery layer, not preventive) | 1–2 days | Operational, reversible | **Ship in v1.1.3** ([CHANGELOG.md](../CHANGELOG.md)) |
 
 ---
 
@@ -583,9 +661,13 @@ This document records them as **defended**:
 | D1 | Verifier wall-clock budget | [`audit-b3pow-budget.py`](../../contrib/testing/audit/audit-b3pow-budget.py) |
 | D2 | Per-`prev_block_hash` pad LRU cache | [`audit-b3pow-cache.py`](../../contrib/testing/audit/audit-b3pow-cache.py) |
 | D3 | Headers-sync depth cap (256/batch) | [`audit-b3pow-headers-cap.py`](../../contrib/testing/audit/audit-b3pow-headers-cap.py) |
+| D4 | 51%-attack watcher daemon (`deep_fork`, `hashrate_collapse`, `near_reorg_cap`, `finalized_drift`) | [`contrib/monitoring/51attack-watch.py`](../../contrib/monitoring/51attack-watch.py) + Tier-3 docstring + 11 in-process unit tests |
 
 This plan augments D2 with M-6 (2-tier pinned cache) addressing V-9
-which D2 alone did not cover.
+which D2 alone did not cover. v1.1.2 added D4 (the watcher daemon
+with 3 detectors); v1.1.3 (this release) extends D4 with the M-14
+`detect_finalized_drift` detector, completing the operator-recovery
+loop together with the new operator RPCs.
 
 ---
 
@@ -636,6 +718,17 @@ python3 contrib/testing/audit/audit-timewarp-sim.py
 python3 contrib/testing/audit/audit-bootstrap-reorg-sim.py
 python3 contrib/testing/audit/audit-cache-eviction-dos.py
 python3 contrib/testing/audit/audit-fpga-concentration-model.py
+```
+
+M-14 operator-pin functional + unit reproducibility (v1.1.3):
+
+```bash
+# Functional regtest coverage: finalize-then-reorg, park-then-walk-back,
+# unfinalize-then-reorg-succeeds, persistence-survives-restart.
+test/functional/feature_finalizeblock.py
+test/functional/feature_parkblock.py
+# Watcher detector unit tests (8 finalized_drift cases + 3 regression).
+python3 contrib/monitoring/test_51attack_watch_finalized.py
 ```
 
 Last full simulator run: pending first execution.

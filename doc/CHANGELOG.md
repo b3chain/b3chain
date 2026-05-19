@@ -50,7 +50,126 @@ package depends on.
   that hands out a fresh `bytearray` copy per call, matching the new
   TS / cpuminer pattern. CI parity is unchanged (`17/17` vectors pass).
 
-## v1.1.2 — Post-F-6 cleanup + in-house roadmap progress (current)
+## v1.1.3 — Operator-pinned chain recovery RPCs (current)
+
+Single-coherent maintenance release stacked on `be8c1f6c24`.  **No
+consensus change**: the new rejection path piggy-backs on the
+existing `BlockValidationResult::BLOCK_DEEP_REORG` result code so
+`net_processing.cpp` dispatches both flavours (`"deep-reorg-attempt"`
+vs `"reorg-past-finalized"`) to the same `Misbehaving` handler.  No
+chain-ID roll, no genesis re-mine.
+
+Closes the gap that
+[`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md)
+used to point at without backing mechanism: "operator-pinned manual
+recovery" is now a real recipe with in-tree code, persistence, and a
+watcher detector.  See [`B3POW-51-ATTACK-ANALYSIS.md §4.4`](security/B3POW-51-ATTACK-ANALYSIS.md)
+for the BCH / ETC / Monero peer-chain comparison that motivated the
+design.
+
+### Group A — `Chainstate::{Finalize,Unfinalize,Park,Unpark}Block` + 5 new RPCs
+
+- **`finalizeblock <hash>`**: pin a block on the active chain as the
+  finalize horizon.  Any subsequent candidate that would reorg past
+  this block is rejected with `BlockValidationResult::BLOCK_DEEP_REORG`,
+  reason `"reorg-past-finalized"`.  Persisted in
+  [`CBlockTreeDB`](../src/node/blockstorage.cpp) (new `'P'` key) so
+  the pin survives node restart.  Bypass paths enumerated inline in
+  [`src/validation.cpp`](../src/validation.cpp): genesis, off-active,
+  lower-height, M-8 emergency-checkpoint conflict, 6-confirmation
+  warning.
+- **`unfinalizeblock`**: clear the pin (idempotent, persisted).
+- **`parkblock <hash>` / `unparkblock <hash>`**: refuse to follow a
+  branch on this node, reversibly.  Implemented as a thin wrapper
+  over `Chainstate::InvalidateBlock` + the new `BLOCK_PARKED` bit
+  in [`src/chain.h`](../src/chain.h) so unpark can reverse the park
+  without disturbing genuine consensus-failure flags on the same
+  segment.
+- **`getfinalizedblockhash`** (read-only, `"blockchain"` category):
+  returns `{hash, height, source ∈ {operator, max_reorg_depth}}` so
+  monitoring can distinguish the explicit pin from the implicit M-4
+  horizon (tip − `max_reorg_depth`).
+- All four operator RPCs registered as `"hidden"` category, mirroring
+  the existing `invalidateblock` / `reconsiderblock` pair.  The
+  read-only `getfinalizedblockhash` is `"blockchain"` category and
+  safe to advertise to monitoring fleets.
+
+Implementation: commit `1bce9813e6`, 6 files / 541 lines.
+
+### Group B — `detect_finalized_drift` watcher detector
+
+Fourth detector added to
+[`contrib/monitoring/51attack-watch.py`](../contrib/monitoring/51attack-watch.py)
+(in addition to the three landed in v1.1.2):
+
+- `finalized_drift_source_flip` — info-severity, fires on every
+  `finalizeblock` / `unfinalizeblock` (= operator just touched the
+  pin).
+- `finalized_drift_operator_change` — warning, fires on a
+  re-finalize without first unfinalizing.
+- `finalized_drift_horizon_stall` — warning (escalates to critical
+  at 2× threshold), fires when the implicit `max_reorg_depth`
+  horizon does not advance for N consecutive polls while the tip
+  does (= tip stalled vs cap drift).
+
+New CLI flag `--finalized-stall-threshold` (default 5 polls / 2.5
+min at the default 30 s `--interval`).  BYPASS path documented for
+older `b3chaind` without the M-14 RPC: `RpcUnavailable` is logged
+once via `finalized_rpc_missing_logged` and the detector silently
+no-ops for the rest of the watcher process lifetime.  The other
+three detectors keep running.
+
+Implementation: commit `307191d070`, 199 lines.  Sanity tested with
+8 new detector cases + 3 existing-detector regression cases (11/11
+pass) via the in-process Tier-3 verify suite.
+
+### Group C — Threat-model doc enhancements
+
+Updates to
+[`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](security/B3POW-51-ATTACK-ANALYSIS.md):
+
+- `§1.2 mitigations table`: new M-14 row.
+- `§1.3 what we do not claim`: new bullet 4 explaining why we
+  *don't* ship BCH-style automatic finalization at depth 10.
+- `§4.4 Comparison with peer chains` (new): side-by-side BCH /
+  ETC / Monero / b3chain deep-reorg policy table with the
+  rationale for our 200-block cap + opt-in operator pin.
+- `V-1`, `V-2`, `V-5`, `V-7`, `V-12` mitigations: M-14 added to
+  each (with vector-specific phrasing).
+- `§6 cost matrix`: Notes column updated to cite M-4 + M-14
+  on the rows where the operator pin is materially useful.
+- `§7 recommendations matrix`: new R-17 row (M-14, status
+  "Ship in v1.1.3").
+- `§8 defended already`: new D4 row for the watcher daemon
+  (now four detectors including `detect_finalized_drift`).
+- `§10 provenance`: new functional tests + watcher unit tests
+  listed for M-14 reproducibility.
+
+### Group D — Runbook / roadmap / audit / changelog wiring
+
+- [`RESPONSE-RUNBOOK-51ATTACK.md §3.0a`](security/RESPONSE-RUNBOOK-51ATTACK.md):
+  new section *Operator-pinned recovery via M-14 RPCs (USE THIS
+  FIRST)* with shell-line-by-shell-line recipes for the finalize,
+  park, undo, and monitoring flows.  Sits one step BEFORE the
+  existing `§3.1 Emergency checkpoint (LAST RESORT)`.
+- [`SECURITY-ROADMAP.md §10`](SECURITY-ROADMAP.md): new section
+  *Operator-pinned chain recovery RPCs (M-14)*, status
+  `in-progress (RPCs landed in v1.1.3)`, with full scope / expected
+  gain / risks blocks.
+- [`SECURITY-AUDIT.md A-10`](SECURITY-AUDIT.md): new audit row
+  cross-referencing M-14, BLOCK_PARKED, persistence, and the
+  watcher detector.
+
+### Forward references / out of scope
+
+- aserti3-2d DAA (skipped — our LWMA-3 is more reactive to sudden
+  hashrate drops, which is the actual F-3 / V-5 threat model).
+- Avalanche pre-consensus (skipped — would compromise the
+  lightweight-node story; v2.x conversation).
+- Automatic finalization at any depth (explicitly rejected;
+  see §4.4 of the analysis doc).
+
+## v1.1.2 — Post-F-6 cleanup + in-house roadmap progress
 
 Maintenance release stacked on top of `a24b77b60c` (the v1.1.1 F-6 fix).
 No new consensus rules; no genesis re-mine; no chain-ID roll.  Closes

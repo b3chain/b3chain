@@ -102,6 +102,110 @@ Operator actions (mainnet binary, no recompile):
 If the attack persists for more than **3 hours** despite the above,
 escalate to §3.1.
 
+### 3.0a. Operator-pinned recovery via M-14 RPCs (USE THIS FIRST)
+
+Before escalating to §3.1 emergency checkpoint, try the per-node
+M-14 RPCs landed in v1.1.3.  They are **reversible**, **per-node**
+(no network-wide coordination required), and survive restart.  They
+are the right answer when:
+
+- You are confident the active tip on your node is canonical (you've
+  diagnosed the attack and the reorg has not yet happened on your
+  node), AND
+- You want to refuse to accept any incoming candidate that would
+  reorg past a chosen pin point, immediately, without waiting for
+  the implicit M-4 cap (200 blocks ≈ 33 h) to fire.
+
+#### Pin the current tip ("freeze recovery")
+
+After §2 diagnosis confirms the chain you're on is the canonical one
+and the recovery has begun building atop it:
+
+```bash
+# 1. Identify the block to pin.  Conservative choice: 6-deep below
+#    the current tip, so legitimate same-day reorgs are unaffected.
+TIP_HEIGHT=$(b3chain-cli getblockchaininfo | jq .blocks)
+PIN_HEIGHT=$((TIP_HEIGHT - 6))
+PIN_HASH=$(b3chain-cli getblockhash $PIN_HEIGHT)
+echo "Pinning at height $PIN_HEIGHT, hash $PIN_HASH"
+
+# 2. Finalize.
+b3chain-cli finalizeblock "$PIN_HASH"
+
+# 3. Sanity-check: source should now be "operator" and hash should
+#    match PIN_HASH.
+b3chain-cli getfinalizedblockhash
+# -> { "hash": "...", "height": <PIN_HEIGHT>, "source": "operator" }
+```
+
+Any incoming candidate that would reorg past `PIN_HEIGHT` will now
+be rejected with `BlockValidationResult::BLOCK_DEEP_REORG`, reason
+`"reorg-past-finalized"`.  Net effect: same as an `M-4` cap fire at
+the chosen pin point, applied per-node.
+
+#### Park a suspect tip ("refuse to follow")
+
+If you've identified a specific suspect chain (e.g. an attack-chain
+candidate that just arrived on your peer feed), refuse to follow it
+without permanently invalidating it:
+
+```bash
+# Suspect tip from `b3chain-cli getchaintips`
+b3chain-cli parkblock "$SUSPECT_HASH"
+```
+
+This walks back from the active tip if the suspect IS the active
+tip, disconnects to the parent, and marks the suspect (+ all its
+descendants) with the `BLOCK_PARKED` flag.  Chain selection ignores
+parked blocks; they are not propagated as invalid to peers.
+
+#### Undo a finalize / park
+
+Both operations are reversible:
+
+```bash
+# Undo finalizeblock
+b3chain-cli unfinalizeblock
+# (no argument; clears the single pin)
+
+# Undo parkblock
+b3chain-cli unparkblock "$BLOCK_HASH"
+```
+
+`unparkblock` walks the parked chain segment and clears `BLOCK_PARKED`
+and any `BLOCK_FAILED_*` flags ParkBlock set, then re-activates the
+best chain (which may reorg onto the previously-parked branch if it
+has more work).  `unfinalizeblock` is a single-call clear of the
+operator pin.
+
+#### Continuous monitoring
+
+The watcher daemon (`contrib/monitoring/51attack-watch.py`) will
+emit alerts when the pin changes:
+
+- `finalized_drift_source_flip` — informational, fires on every
+  `finalizeblock` / `unfinalizeblock`.
+- `finalized_drift_operator_change` — warning, fires on a
+  re-finalize without first unfinalizing (= "did someone else with
+  RPC access just touch the pin?").
+- `finalized_drift_horizon_stall` — warning, fires when the implicit
+  M-4 horizon stops advancing while tip does (= tip stalled vs cap).
+
+#### When to escalate to §3.1 anyway
+
+M-14 is per-node.  If your goal is **network-wide** rejection of an
+attack chain so unrelated exchanges and SPV providers also refuse
+it, that is what §3.1 (emergency checkpoint) is for, and the two
+mechanisms are intentionally orthogonal:
+
+- M-14 fastest, no coordination, no permanence; can re-finalize at
+  any time.
+- §3.1 slow, requires coordination, but applies network-wide once
+  pools and exchanges all load the same JSON file.
+
+In practice you may want to do M-14 immediately on your own infra
+and start the §3.1 coordination call in parallel.
+
 ### 3.1. Emergency checkpoint (LAST RESORT)
 
 The binary ships **ZERO checkpoints**. The

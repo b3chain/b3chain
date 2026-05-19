@@ -404,6 +404,67 @@ tells us within minutes".
 
 ---
 
+## 10. Operator-pinned chain recovery RPCs (M-14)
+
+| Field | Value |
+|-------|-------|
+| **Status**       | `in-progress (RPCs landed in v1.1.3)` |
+| **Priority**     | Medium (operator recovery layer, not preventive) |
+| **Effort**       | 1–2 person-days for the in-tree work; outstanding follow-ups (tests, ops guide page) tracked in the v1.1.3 plan |
+| **Dependencies** | Existing M-4 deep-reorg cap (already shipped), §9 watcher daemon (already shipped) |
+| **Owner**        | (unassigned) |
+| **In-tree** | [`src/validation.cpp`](../src/validation.cpp) (`Chainstate::{Finalize,Unfinalize,Park,Unpark}Block`), [`src/rpc/blockchain.cpp`](../src/rpc/blockchain.cpp) (5 new RPCs), [`src/node/blockstorage.cpp`](../src/node/blockstorage.cpp) (`WriteFinalizedBlock` / `ReadFinalizedBlock` persistence), [`contrib/monitoring/51attack-watch.py`](../contrib/monitoring/51attack-watch.py) (`detect_finalized_drift`). |
+
+### Scope
+
+Borrow Bitcoin Cash's operator-ergonomics layer for chain recovery
+without inheriting BCH's automatic-finalization footgun.  See
+[`B3POW-51-ATTACK-ANALYSIS.md §4.4`](security/B3POW-51-ATTACK-ANALYSIS.md)
+for the comparative analysis.
+
+In-tree pieces landed in v1.1.3:
+
+- **`finalizeblock <hash>`** — pin a block on the active chain as
+  the "finalize horizon": any subsequent candidate that would reorg
+  past this block is rejected with `BlockValidationResult::BLOCK_DEEP_REORG`,
+  reason `"reorg-past-finalized"`.  Persisted in
+  `CBlockTreeDB`; survives restart.
+- **`unfinalizeblock`** — clear the pin (idempotent).
+- **`parkblock <hash>`** / **`unparkblock <hash>`** — refuse to
+  follow a specific branch on this node, reversibly.  Implemented as
+  `InvalidateBlock` + the new `BLOCK_PARKED` flag bit so unpark can
+  reverse the park without disturbing other failure flags.
+- **`getfinalizedblockhash`** — read RPC returning `{hash, height,
+  source}` where `source` is `"operator"` or `"max_reorg_depth"`.
+  Surfaces both the M-4 implicit horizon and the M-14 explicit pin
+  in one shape.
+- **`detect_finalized_drift`** — fourth detector in the watcher
+  daemon (`§9`); alerts on source flips, operator re-finalizes, and
+  M-4 horizon stalls.
+
+### Expected security gain
+
+Closes the gap that the runbook used to point at without backing
+mechanism: "operator-pinned manual recovery" is now a real recipe in
+[`RESPONSE-RUNBOOK-51ATTACK.md §3.0a`](security/RESPONSE-RUNBOOK-51ATTACK.md).
+Operator can respond to an in-progress 51%-attack at a per-node
+level **without** triggering the slower §3.1 emergency-checkpoint
+coordination call, while keeping §3.1 available for the network-wide
+case.
+
+### Risks
+
+- Operator pin is a single hash; misconfigure it (wrong fork) and
+  the node sticks on the wrong chain.  Mitigated by reversibility
+  (`unfinalizeblock`) and by the in-tree
+  `"finalize-not-on-active-chain"` and
+  `"finalize-conflicts-with-emergency-checkpoint"` BYPASS checks.
+- Watcher false-positives during legitimate operator action (every
+  `finalizeblock` fires `finalized_drift_source_flip` at `info`
+  severity); intentional, since SRE wants to know.
+
+---
+
 ## How this list evolves
 
 1. New items are proposed by anyone, opened as a GitHub issue with the
