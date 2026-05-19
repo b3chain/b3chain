@@ -1,0 +1,29 @@
+%% B3PoW-Scratch v1.1 hardware ranking by hashrate-per-watt
+%% Source: doc/diagrams/hardware-ranking.mmd
+%% Embedded in: doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md §6.4; SPEC.md §8.D.
+%% Stroke: solid = shipped artifact; dashed = order-of-magnitude estimate.
+%% See README.md in this directory for the xychart-beta rationale.
+
+flowchart TB
+    TITLE["Relative hashrate-per-watt on B3PoW-Scratch v1.1<br/>ordering by available evidence<br/>(solid stroke = shipped; dashed = estimate)"]
+
+    subgraph BARS [Hardware ranking]
+        direction TB
+        F["B3Miner-1 (Xilinx Kintex UltraScale+ KU5P FPGA)<br/>reference miner, ~10 W envelope<br/>████████████████████████████ 1.0× (reference)"]
+        A["B3PoW-Scratch ASIC port (hypothetical)<br/>not built; SRAM-area bounded; NRE > 1 M USD<br/>██████████████ optimistic upper bound vs FPGA (per-die, post-NRE)"]
+        C["High-end CPU (AVX-512, e.g. Zen 4)<br/>estimate, pending r0 bench<br/>▌ ~0.001 – 0.01× FPGA per watt"]
+        G["High-end GPU (e.g. RTX 4090)<br/>estimate; 1 MiB working set defeats GPU caches<br/>· below CPU per watt"]
+        F --- A
+        A --- C
+        C --- G
+    end
+
+    TITLE --> BARS
+
+    NOTE["Confidence levels<br/>solid stroke (F): shipped reference, to be bench-measured into r0<br/>dashed stroke (A, C, G): order-of-magnitude estimate only"]
+    BARS --- NOTE
+
+    style F stroke:#1f6feb,stroke-width:2px
+    style A stroke:#8b949e,stroke-width:1px,stroke-dasharray:5 5
+    style C stroke:#8b949e,stroke-width:1px,stroke-dasharray:5 5
+    style G stroke:#8b949e,stroke-width:1px,stroke-dasharray:5 5

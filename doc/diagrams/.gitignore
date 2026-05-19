@@ -1,0 +1,2 @@
+# Rendered diagram artifacts — built locally by `make svg|pdf|all`.
+out/

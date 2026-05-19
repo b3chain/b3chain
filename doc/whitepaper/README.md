@@ -10,17 +10,27 @@ the **executable** reference is
 
 ## Render
 
+The whitepaper embeds five diagrams from [`../diagrams/`](../diagrams/).
+Build those **first** (their `out/` directory is gitignored, so a fresh
+checkout has no SVGs yet); then render the whitepaper:
+
 ```
-make pdf        # B3POW-SCRATCH-WHITEPAPER.pdf via pandoc + xelatex
-make html       # B3POW-SCRATCH-WHITEPAPER.html (self-contained)
-make repro      # SOURCE_DATE_EPOCH-pinned build + SHA256 manifest
-make clean
+cd ../diagrams   && make svg     # → ../diagrams/out/*.svg
+cd ../whitepaper && make pdf     # B3POW-SCRATCH-WHITEPAPER.pdf
+                    make html    # B3POW-SCRATCH-WHITEPAPER.html (self-contained)
+                    make repro   # SOURCE_DATE_EPOCH-pinned build + SHA256 manifest
+                    make clean
 ```
+
+`make pdf` here uses pandoc + XeLaTeX; the pandoc invocation already
+sets `--resource-path=.:../diagrams`, so `![…](../diagrams/out/foo.svg)`
+references resolve correctly.
 
 Build prerequisites:
 
 - Debian/Ubuntu: `sudo apt install pandoc texlive-xetex texlive-fonts-recommended texlive-latex-extra librsvg2-bin`
 - macOS: `brew install pandoc tectonic librsvg`
+- Diagrams (both OSes): `npm install -g @mermaid-js/mermaid-cli`
 
 `make pdf` uses XeLaTeX with the Latin Modern font family that ships
 with every TeX Live distribution; no external font downloads required.

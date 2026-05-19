@@ -91,6 +91,8 @@ properties precisely enough that an independent implementer can build
 a byte-compatible miner, pool validator, or node from this document
 plus the four in-tree references.
 
+![Launch-time deployment topology: testnet seeds, full-node operators, reference pool, CPU + FPGA reference miners, and public services. Source: [`doc/diagrams/system-launch.mmd`](../diagrams/system-launch.mmd).](../diagrams/out/system-launch.svg)
+
 ### What this paper is not
 
 - We do not claim B3PoW-Scratch is "ASIC-proof" or "permanently
@@ -324,6 +326,8 @@ compression, write back `block XOR permuted_msg`, and apply the
 fixed lane-shuffle permutation. The shuffle ensures full
 inter-lane diffusion within `INNER_ROUNDS = 2`.
 
+![Per-hash B3PoW-Scratch data flow with byte sizes labelled at every interface. Source: [`doc/diagrams/algorithm-dataflow.mmd`](../diagrams/algorithm-dataflow.mmd).](../diagrams/out/algorithm-dataflow.svg)
+
 ### 4.4 `init_scratchpad`
 
 ```python
@@ -341,6 +345,8 @@ per-parent cost; downstream nonce-search and validation of sibling
 headers may reuse a pristine copy of the pad (the algorithm's RMW
 mutates the pad, so reuse means handing out a fresh copy each call —
 see §7.1).
+
+![Scratchpad partition view: 1 MiB split into 8 contiguous 128 KiB lane partitions; 64 B per-iteration window with RMW write-back to the same offset. Source: [`doc/diagrams/scratchpad-layout.mmd`](../diagrams/scratchpad-layout.mmd).](../diagrams/out/scratchpad-layout.svg)
 
 ### 4.5 `init_lanes`
 
@@ -674,6 +680,8 @@ develops the per-card cost curves and the crossover analysis.
 the SPEC.md hardware analysis. To-be-measured by
 `contrib/testing/bench/results/r0/`.)
 
+![Hardware ranking by hashrate-per-watt on B3PoW-Scratch. Solid stroke = shipped artifact; dashed = order-of-magnitude estimate pending r0 measurement. Source: [`doc/diagrams/hardware-ranking.mmd`](../diagrams/hardware-ranking.mmd).](../diagrams/out/hardware-ranking.svg)
+
 ---
 
 ## 7. Verification cost on the node
@@ -682,6 +690,8 @@ This is the inverse of the "make mining hard" goal: validating a
 B3PoW-Scratch hash is intentionally non-trivial (16 384 BLAKE3
 rounds + 16 MiB memory traffic). To keep nodes lean we apply three
 mitigations:
+
+![Block-verification code path inside `b3chaind`: header parse, context-free pre-checks, `CheckBlockHeaderPoW`, `b3pow::Hash`, target compare, remainder of the validation pipeline. Filepath labels point at the canonical implementation symbol. Source: [`doc/diagrams/verification-flow.mmd`](../diagrams/verification-flow.mmd).](../diagrams/out/verification-flow.svg)
 
 ### 7.1 Per-parent pad cache
 

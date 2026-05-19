@@ -1,0 +1,38 @@
+%% B3PoW-Scratch v1.1 per-hash data flow
+%% Source: doc/diagrams/algorithm-dataflow.mmd
+%% Embedded in: doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md §4.3 (Top-level pipeline);
+%%               contrib/miner/b3miner-rtl/SPEC.md §5 (Top-level function).
+%% Byte sizes labelled at every interface.
+
+flowchart TB
+    HDR["header (80 B)"]
+    PREV["prev_block_hash (32 B)"]
+    NONCE["nonce = header[76..80] (4 B)"]
+
+    SEED["BLAKE3(header)<br/>→ seed (32 B)"]
+    XOF["init_scratchpad<br/>BLAKE3-XOF(prev_block_hash || u32_le(i))<br/>for i in 0..16 383<br/>→ pad (1 MiB = 16 384 × 64 B)"]
+    LANES0["init_lanes<br/>BLAKE3(seed || u32_le(L)) for L in 0..7<br/>→ lanes[8] (8 × 32 B)"]
+
+    HDR --> SEED
+    HDR --> NONCE
+    PREV --> XOF
+    SEED --> LANES0
+
+    ITER["outer loop r = 0 .. ITERATIONS-1 (2 048)"]
+    DA["derive_addresses(lanes, r)<br/>per lane L:<br/>mixed = lo XOR rotr64((hi XOR r) * ITER_MUL[L], 23)<br/>addr[L] = mixed AND 0x7FF<br/>→ 8 × 11-bit indices"]
+    RD["parallel_read(pad, addr)<br/>8 × 64 B (one per lane,<br/>each from its own 128 KiB partition)"]
+    MIX["mix_step(lanes, blocks)<br/>reduced BLAKE3 compress, INNER_ROUNDS = 2<br/>+ lane_shuffle = (5L+1) mod 8<br/>→ lanes_new (8 × 32 B), blocks_new (8 × 64 B)"]
+    WR["parallel_write(pad, addr,<br/>blocks XOR permuted_msg)<br/>RMW back to same offset"]
+
+    LANES0 --> ITER
+    XOF --> ITER
+    ITER --> DA
+    DA --> RD
+    RD --> MIX
+    MIX --> WR
+    WR -->|"r := r + 1"| ITER
+
+    ITER -->|"r == 2 048"| FIN
+    FIN["BLAKE3(concat(lanes[0..7], 256 B) || nonce, 4 B)"]
+    NONCE --> FIN
+    FIN --> OUT["pow_hash (32 B)"]

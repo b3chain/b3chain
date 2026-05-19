@@ -1,0 +1,32 @@
+%% B3PoW-Scratch v1.1 scratchpad partition view
+%% 1 MiB total = 8 contiguous 128 KiB lane partitions
+%% Source: doc/diagrams/scratchpad-layout.mmd
+%% Embedded in: doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md §4.4 (init_scratchpad);
+%%               contrib/miner/b3miner-rtl/SPEC.md §6.1 / Appendix A.
+
+flowchart TB
+    TOP["pad (1 048 576 B = 1 MiB)<br/>16 384 × 64 B blocks<br/>SCRATCH_BYTES = LANES × LANE_BYTES"]
+
+    subgraph PAD [Scratchpad layout - 8 contiguous partitions]
+        direction TB
+        L0["Lane 0 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L1["Lane 1 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L2["Lane 2 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L3["Lane 3 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L4["Lane 4 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L5["Lane 5 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L6["Lane 6 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L7["Lane 7 partition · 131 072 B · 2 048 × 64 B blocks · addr 0..2047"]
+        L0 --- L1 --- L2 --- L3 --- L4 --- L5 --- L6 --- L7
+    end
+
+    TOP --> PAD
+
+    WIN["Per-iteration window<br/>64 B (one block) per lane<br/>address derived from prior lane state<br/>(see derive_addresses, ITER_MUL[L])"]
+    PAD -.->|"read 8 × 64 B in parallel"| WIN
+    WIN -.->|"mix step (2-round BLAKE3)"| RMW
+    RMW["RMW write-back<br/>pad[L][addr[L]] := block XOR permuted_msg<br/>(same 64 B offset)"]
+    RMW -.->|"writes update the partition in place"| PAD
+
+    NOTE["Iteration count: ITERATIONS = 2 048 per hash<br/>(applied to all 8 lanes in parallel per outer step;<br/>per-lane visits per hash ≈ 2 048 of 2 048 blocks)<br/>Lanes never read across partitions."]
+    PAD --- NOTE

@@ -1,0 +1,28 @@
+%% B3PoW-Scratch v1.1 block-verification code path
+%% Source: doc/diagrams/verification-flow.mmd
+%% Embedded in: doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md §7 (Verification cost on the node);
+%%               doc/SECURITY-INHERITANCE.md.
+%% Filepath labels point at the canonical implementation symbol.
+
+flowchart TB
+    IN["Incoming block / header<br/>(P2P inv→getheaders→headers, or RPC submitblock)"]
+    PARSE["Header parse (80 B)<br/>src/primitives/block.cpp::CBlockHeader"]
+    PRECHK["Context-free pre-checks<br/>src/validation.cpp::CheckBlockHeader<br/>nVersion / nTime sanity, nBits in valid range"]
+    POW["CheckBlockHeaderPoW<br/>src/pow.cpp::CheckBlockHeaderPoW<br/>DeriveTarget(nBits); LRU pad lookup by prev_block_hash;<br/>wall-clock budget scaled by HeaderDepth"]
+    HASH["b3pow::Hash<br/>src/crypto/b3pow_scratch.cpp::b3pow::Hash<br/>(init pad on cache miss; 2 048-iter RMW; final BLAKE3)"]
+    CMP["pow_hash &lt;= target ?<br/>src/pow.cpp::CheckProofOfWorkImpl"]
+    PIPE["Remainder of validation pipeline<br/>src/validation.cpp::CheckBlock<br/>merkle root, tx validation, ContextualCheckBlock"]
+    OK["Accept block<br/>src/validation.cpp::AcceptBlock"]
+    BUDGET["Reject: BLOCK_POW_BUDGET<br/>net_processing → Misbehaving"]
+    BAD["Reject: BLOCK_INVALID_HEADER (high-hash)<br/>or downstream BLOCK_* failure"]
+
+    IN --> PARSE
+    PARSE --> PRECHK
+    PRECHK --> POW
+    POW -->|"budget OK"| HASH
+    POW -.->|"budget exceeded"| BUDGET
+    HASH --> CMP
+    CMP -->|"pow_hash &gt; target"| BAD
+    CMP -->|"pow_hash &lt;= target"| PIPE
+    PIPE -->|"all checks pass"| OK
+    PIPE -.->|"any check fails"| BAD

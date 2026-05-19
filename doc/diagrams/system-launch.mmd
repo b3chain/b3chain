@@ -1,0 +1,53 @@
+%% B3PoW-Scratch v1.1 launch-time deployment topology
+%% Source: doc/diagrams/system-launch.mmd
+%% Embedded in: doc/whitepaper/B3POW-SCRATCH-WHITEPAPER.md §1 (Introduction);
+%%               b3chain-website/testnet.html.
+%% Style notes: solid edges = always-on traffic; dashed = periodic polling.
+
+flowchart LR
+    subgraph SEEDS [Testnet seed nodes]
+        S1["seed1 (166.88.4.250)<br/>b3chaind testnet"]
+        S2["seed2 (151.158.1.22)<br/>b3chaind testnet"]
+        S3["seed3 (151.158.1.60)<br/>b3chaind testnet"]
+    end
+
+    subgraph NODES [External operators]
+        OP["b3chaind full nodes<br/>headers-first IBD"]
+    end
+
+    subgraph POOL [Reference pool stack on seed1]
+        PSTR["Stratum endpoint<br/>:3333"]
+        PVAL["share-validator.ts<br/>b3pow-scratch.ts<br/>pad-cache.ts"]
+        PSTR --> PVAL
+    end
+
+    subgraph MINERS [Reference miners]
+        CPU["CPU reference miner<br/>contrib/miner/b3chain-cpuminer.py"]
+        FPGA["B3Miner-1<br/>KU5P FPGA + ESP32-S3 host"]
+    end
+
+    subgraph PUBLIC [Public services on seed1]
+        WEB["b3chain.org website"]
+        EXP["Block explorer"]
+        FAU["Faucet"]
+        STAT["Status monitor"]
+        WEB --> EXP
+        WEB --> FAU
+        WEB --> STAT
+    end
+
+    S1 <-->|"P2P :18533"| S2
+    S2 <-->|"P2P :18533"| S3
+    S1 <-->|"P2P :18533"| S3
+    S1 <-->|"P2P :18533"| OP
+
+    PVAL -->|"RPC getblocktemplate / submitblock"| S1
+    PSTR -->|"Stratum: mining.notify, mining.set_difficulty"| CPU
+    PSTR -->|"Stratum: mining.notify, mining.set_difficulty"| FPGA
+    CPU -->|"mining.submit (share)"| PSTR
+    FPGA -->|"mining.submit (share)"| PSTR
+
+    EXP -->|"RPC getblock / getblockchaininfo"| S1
+    FAU -->|"RPC sendtoaddress"| S1
+    STAT -->|"RPC getblockchaininfo"| S1
+    STAT -.->|"JSON poll, 60 s"| WEB
