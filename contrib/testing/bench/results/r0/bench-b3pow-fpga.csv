@@ -1,0 +1,2 @@
+timestamp,bench,label,backend,threads,iterations,wall_s,hashes_per_s,ns_per_hash,p50_ms,p95_ms,p99_ms,j_per_hash,note
+2026-05-19T00:00:00Z,bench-b3pow-fpga,b3miner-1-dry,fpga-dry,1,0,0.000000,8000000.0000,125.00,0.0000,0.0000,0.0000,NaN,dry-run synthetic; see doc/analysis/FPGA-FEASIBILITY.md for the algebra
