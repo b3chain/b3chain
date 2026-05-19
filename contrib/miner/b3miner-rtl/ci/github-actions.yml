@@ -1,0 +1,99 @@
+# ============================================================================
+# .github/workflows/b3miner-rtl.yml  (this file is copied or symlinked there)
+#
+# Verilator lint + sim on every PR.  Vivado synth runs on a self-hosted
+# runner labelled `vivado` (which has Vivado ML Standard installed).
+# ============================================================================
+name: b3miner-rtl
+
+on:
+  push:
+    branches: [b3chain-main]
+    paths:
+      - 'contrib/miner/b3miner-rtl/**'
+      - '.github/workflows/b3miner-rtl.yml'
+  pull_request:
+    paths:
+      - 'contrib/miner/b3miner-rtl/**'
+
+defaults:
+  run:
+    working-directory: contrib/miner/b3miner-rtl
+
+jobs:
+  ref-test:
+    name: Python reference
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install -r ref/requirements.txt
+      - name: pytest
+        run: make ref-test
+      - name: Generate vectors
+        run: make vectors
+      - name: Upload vectors
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectors
+          path: contrib/miner/b3miner-rtl/sim/vectors/
+          retention-days: 7
+
+  lint:
+    name: Verilator lint
+    runs-on: ubuntu-22.04
+    needs: ref-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+          verilator --version
+      - name: Lint
+        run: make lint
+
+  sim:
+    name: Verilator simulation
+    runs-on: ubuntu-22.04
+    needs: [ref-test, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+          pip install -r ref/requirements.txt
+      - name: Sim
+        run: make sim
+
+  # Self-hosted runner with Vivado ML Standard, labelled `vivado`.
+  # Comment this job out if no such runner is available.
+  synth:
+    name: Vivado synth + impl
+    runs-on: [self-hosted, vivado]
+    needs: sim
+    if: github.event_name == 'push' && github.ref == 'refs/heads/b3chain-main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synth + impl + bin
+        run: |
+          make synth
+          make impl
+          make bin
+          make report
+      - name: Upload bitstream
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3miner-bitstream
+          path: |
+            contrib/miner/b3miner-rtl/build/artifacts/b3miner.bin
+            contrib/miner/b3miner-rtl/build/artifacts/b3miner.bit
+            contrib/miner/b3miner-rtl/build/reports/summary.txt
+          retention-days: 30

@@ -1,0 +1,99 @@
+# B3PoW-Scratch reference + RTL parity tests
+# Gates pre-genesis changes to the algorithm specification.
+#
+# Triggered on:
+#   - any change under contrib/miner/b3miner-rtl/**
+#   - any change to src/crypto/b3pow_scratch.{h,cpp}
+#   - any change to src/test/data/b3pow_consensus_vectors.json
+#
+# All three must stay byte-identical; otherwise the chain forks.
+
+name: b3miner-rtl
+
+on:
+  pull_request:
+    paths:
+      - 'contrib/miner/b3miner-rtl/**'
+      - 'src/crypto/b3pow_scratch.h'
+      - 'src/crypto/b3pow_scratch.cpp'
+      - 'src/test/data/b3pow_consensus_vectors.json'
+      - '.github/workflows/b3miner-rtl.yml'
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'contrib/miner/b3miner-rtl/**'
+      - 'src/crypto/b3pow_scratch.h'
+      - 'src/crypto/b3pow_scratch.cpp'
+      - 'src/test/data/b3pow_consensus_vectors.json'
+      - '.github/workflows/b3miner-rtl.yml'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python-ref-tests:
+    name: Python reference + uniformity gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      # Standard reference tests (constants, primitives, end-to-end).
+      - name: Run b3pow_ref pytest suite
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python -m pytest -q tests/
+
+      # F-4 uniformity gate (quick mode, ~30 sec) -- catches gross bias
+      # in derive_addresses across the 11-bit address space.
+      - name: Run address-derivation uniformity gate (quick mode)
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python -m pytest -q tests/test_address_uniformity.py
+
+      # Vector parity: regenerate and assert no drift against the
+      # checked-in JSON consumed by the C++ test.
+      - name: Regenerate consensus vectors and check drift
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python gen_vectors.py --out ../sim/vectors \
+                                --consensus-out vectors/consensus_vectors.json
+          # The C++ test consumes a copy under src/test/data/; we expect
+          # the two to match byte-for-byte.
+          diff -q vectors/consensus_vectors.json \
+                   ../../../src/test/data/b3pow_consensus_vectors.json
+
+  # Audit-mode uniformity gate -- run on tagged release candidates only
+  # (~5-10 min wall-clock).  Triggered by tag pushes matching v*.
+  uniformity-audit-mode:
+    name: Audit-mode address uniformity (release gate)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt scipy
+      - name: Run 2^28-sample uniformity gate
+        working-directory: contrib/miner/b3miner-rtl/ref
+        run: |
+          python tests/test_address_uniformity.py --audit
