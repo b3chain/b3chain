@@ -1,0 +1,69 @@
+menu "B3Miner firmware"
+
+    config B3_DEVICE_NAME
+        string "Default mDNS / hostname prefix"
+        default "b3miner"
+
+    config B3_FPGA_SIM
+        bool "Use simulated FPGA backend (no KU5P required)"
+        default n
+        help
+            Replaces the SPI-driven FPGA driver with an in-memory
+            simulator that returns synthetic shares at a fixed rate.
+            Use to bring up Stratum/Ethernet on an ESP32-S3 devkit
+            before KU5P silicon is available.
+
+    config B3_FPGA_SIM_KHS
+        int "Simulated hashrate (kH/s)"
+        depends on B3_FPGA_SIM
+        range 1 100000
+        default 20000
+
+    config B3_FPGA_SIM_SHARE_INTERVAL_MS
+        int "Time between simulated shares (ms)"
+        depends on B3_FPGA_SIM
+        range 100 600000
+        default 10000
+
+    config B3_FPGA_SPI_HOST
+        int "SPI host (SPI2_HOST=1, SPI3_HOST=2)"
+        range 1 2
+        default 2
+
+    config B3_FPGA_SPI_MHZ
+        int "SPI clock MHz to FPGA"
+        range 1 40
+        default 25
+
+    config B3_STRATUM_DEFAULT_URL
+        string "Default pool URL (stratum+tcp://...)"
+        default "stratum+tcp://pool.b3chain.org:3333"
+
+    config B3_STRATUM_DEFAULT_USER
+        string "Default worker user (email.worker)"
+        default "miner@example.com.rig1"
+
+    config B3_STRATUM_DEFAULT_PASS
+        string "Default worker password"
+        default "x"
+
+    config B3_STRATUM_DEFAULT_DIFF
+        int "Assumed share difficulty until set_difficulty"
+        default 65536
+
+    config B3_POW_LEGACY_DOUBLE_BLAKE3
+        bool "Use legacy double-BLAKE3 PoW (current testnet)"
+        default y
+        help
+            Disable when launching B3PoW-Scratch at genesis.
+            FPGA bitstream must match.
+
+    config B3_OTA_UPDATE_URL
+        string "HTTPS manifest URL for OTA (empty = disabled)"
+        default ""
+
+    config B3_WEB_HTTP_PORT
+        int "Local dashboard HTTP port"
+        default 80
+
+endmenu
