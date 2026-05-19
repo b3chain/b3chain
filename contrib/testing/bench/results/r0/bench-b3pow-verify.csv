@@ -1,1 +1,2 @@
 timestamp,bench,label,backend,threads,iterations,wall_s,hashes_per_s,ns_per_hash,p50_ms,p95_ms,p99_ms,j_per_hash,note
+2026-05-19T21:40:19+00:00,bench-b3pow-verify,python-ref-5,python-ref,1,5,1.673681,2.9874,334736140.00,334.7885,336.4504,336.5101,nan,verifier-latency

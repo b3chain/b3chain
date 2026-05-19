@@ -1,0 +1,38 @@
+{
+  "bench": "bench-b3pow-verify",
+  "summary": {
+    "target_p95_ms": 50.0,
+    "observed_p95_ms": 336.45037999376655,
+    "meets_target": false
+  },
+  "host": {
+    "hostname": "DESKTOP-NRQANR8",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.2",
+    "cores": 32,
+    "cpu_model": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "blake3_available": true,
+    "blake3_version": "1.0.8"
+  },
+  "timestamp": "2026-05-19T21:40:19+00:00",
+  "notes": [
+    "corpus_size=5, seed=0xB3110002"
+  ],
+  "rows": [
+    {
+      "bench": "bench-b3pow-verify",
+      "label": "python-ref-5",
+      "backend": "python-ref",
+      "threads": 1,
+      "iterations": 5,
+      "wall_s": 1.6736807000124827,
+      "hashes_per_s": 2.987427649708041,
+      "ns_per_hash": 334736140.00249654,
+      "p50_ms": 334.78849998209625,
+      "p95_ms": 336.45037999376655,
+      "p99_ms": 336.5100759919733,
+      "j_per_hash": NaN,
+      "note": "verifier-latency"
+    }
+  ]
+}

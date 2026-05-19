@@ -1,0 +1,49 @@
+{
+  "bench": "bench-b3pow-cpu",
+  "summary": {},
+  "host": {
+    "hostname": "DESKTOP-NRQANR8",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.2",
+    "cores": 32,
+    "cpu_model": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "blake3_available": true,
+    "blake3_version": "1.0.8"
+  },
+  "timestamp": "2026-05-19T21:40:21+00:00",
+  "notes": [
+    "iterations=2, threads=[1], cold=on, multi=off"
+  ],
+  "rows": [
+    {
+      "bench": "bench-b3pow-cpu",
+      "label": "cold-no-cache",
+      "backend": "python-ref",
+      "threads": 1,
+      "iterations": 2,
+      "wall_s": 0.6805089999688789,
+      "hashes_per_s": 2.9389765603268496,
+      "ns_per_hash": 340254499.9844395,
+      "p50_ms": 340.2489999716636,
+      "p95_ms": 342.2127999685472,
+      "p99_ms": 342.3873599682702,
+      "j_per_hash": NaN,
+      "note": "cold-cache"
+    },
+    {
+      "bench": "bench-b3pow-cpu",
+      "label": "warm-1t",
+      "backend": "python-ref",
+      "threads": 1,
+      "iterations": 2,
+      "wall_s": 0.6605376999941655,
+      "hashes_per_s": 3.027836261302975,
+      "ns_per_hash": 330268849.9970827,
+      "p50_ms": 330.0656999927014,
+      "p95_ms": 331.0680299764499,
+      "p99_ms": 331.15712597500533,
+      "j_per_hash": NaN,
+      "note": "warm-cache"
+    }
+  ]
+}

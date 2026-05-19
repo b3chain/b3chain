@@ -745,8 +745,27 @@ download bandwidth.
 | Full 2 016-block retarget window | ~2 016 × 10 ms = ~20 s single-core; parallelisable across cores |
 
 These are pre-measurement estimates derived from the BLAKE3 SIMD
-throughput numbers in §4.10. Real numbers will land in
-`contrib/testing/bench/results/r0/`.
+throughput numbers in §4.10. Real numbers land in
+[`contrib/testing/bench/results/r0/`](../../contrib/testing/bench/results/r0/);
+the canonical snapshot of the bench output at launch is rendered into
+the chart below.
+
+![Verifier latency at p50 / p95 / p99 across a deterministic 10 000-header corpus. The dashed reference line is the SPEC §8.E p95 < 50 ms target on the C++ consensus impl. The Python-reference row shown here is the correctness floor; the C++ row will populate at first bench-b3pow-cpp run. Source CSV: [`contrib/testing/bench/results/r0/bench-b3pow-verify.csv`](../../contrib/testing/bench/results/r0/bench-b3pow-verify.csv); chart SVG: [`results/r0/charts/verify-latency.svg`](../../contrib/testing/bench/results/r0/charts/verify-latency.svg).](../../contrib/testing/bench/results/r0/charts/verify-latency.svg)
+
+### 7.5 Throughput snapshot
+
+The companion chart below shows full-PoW throughput per backend on a
+log axis. The Python reference is single-digit H/s/core by design (it
+is the correctness floor, not a competitive miner); the C++ row
+populates on first `bench-b3pow-cpp` run; the FPGA row is the
+synthetic placeholder matching the algebraic estimate in
+[`doc/analysis/FPGA-FEASIBILITY.md`](../analysis/FPGA-FEASIBILITY.md)
+and will be replaced by a real B3Miner-1 telemetry row at bring-up.
+
+![Full-PoW throughput per backend, log-x bar chart. Python-ref rows are real measurements; the fpga-dry row is a synthetic placeholder. Source CSVs in [`contrib/testing/bench/results/r0/`](../../contrib/testing/bench/results/r0/); chart SVG: [`results/r0/charts/hashrate-by-backend.svg`](../../contrib/testing/bench/results/r0/charts/hashrate-by-backend.svg).](../../contrib/testing/bench/results/r0/charts/hashrate-by-backend.svg)
+
+Methodology, honesty notes, and reproduction commands are in
+[`contrib/testing/bench/methodology.md`](../../contrib/testing/bench/methodology.md).
 
 ---
 

@@ -21,6 +21,13 @@ from.
   across a deterministic 10 000-header corpus).
 * `*.latest.json` and `*-<ts>.json` — full result blobs per run with
   host metadata.
+* [`charts/`](charts) — **published** SVG charts derived from the
+  CSVs (committed copies, suitable for embedding into the whitepaper
+  PDF and the website). Regenerate with
+  `python3 ../../charts/render-charts.py --run-id r0` and copy the
+  output of `../../charts/out/r0/` here for the next published
+  snapshot. The website mirrors the same SVGs under
+  `b3chain-website/assets/charts/r0/`.
 
 ## Status
 
