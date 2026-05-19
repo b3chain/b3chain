@@ -25,11 +25,12 @@ Last reviewed: not yet (rewritten by maintainer review).
 
 | Field | Value |
 |-------|-------|
-| **Status**       | `proposed` |
+| **Status**       | `proposed (build scaffold ready)` |
 | **Priority**     | High |
-| **Effort**       | 2–4 person-weeks |
+| **Effort**       | 2–4 person-weeks (scaffold landed; upstream PR + harnesses outstanding) |
 | **Dependencies** | OSS-Fuzz Google account; existing `src/test/fuzz/` harnesses |
 | **Owner**        | (unassigned) |
+| **In-tree** | [`contrib/oss-fuzz/b3chain/`](../contrib/oss-fuzz/b3chain/README.md) — drop-in for `google/oss-fuzz:projects/b3chain/`. |
 
 ### Scope
 
@@ -96,10 +97,10 @@ Defends against compromise of any single maintainer's build environment
 
 | Field | Value |
 |-------|-------|
-| **Status**       | `in-progress` |
+| **Status**       | `in-progress (scaffold landed)` |
 | **Priority**     | Medium |
 | **Effort**       | 1 person-week (already started) |
-| **Dependencies** | [`.github/workflows/compare-bench.yml`](../.github/workflows/compare-bench.yml) |
+| **Dependencies** | [`.github/workflows/compare-bench.yml`](../.github/workflows/compare-bench.yml), [`.github/workflows/benchmark.yml`](../.github/workflows/benchmark.yml) |
 | **Owner**        | (current extension PR) |
 
 ### Scope
@@ -108,10 +109,22 @@ The throughput comparison
 [`compare-pow-throughput.py`](../contrib/testing/compare/compare-pow-throughput.py)
 runs on every PR and fails if BLAKE3d throughput regresses by more than
 10% versus a pinned baseline. Already wired up in
-`compare-bench.yml`. Future work:
+`compare-bench.yml`.
 
-- Wire up the block-validation comparison (slower; should run nightly,
-  not per-PR).
+The block-validation + B3PoW-Scratch verifier comparison runs nightly
+(and on every PR touching `src/`, `src/bench/`, `src/crypto/b3pow_scratch.*`,
+`src/pow/`, `src/validation.cpp`, or `src/consensus/`) via
+[`.github/workflows/benchmark.yml`](../.github/workflows/benchmark.yml).
+It builds `bench_bitcoin` for HEAD and HEAD~1 with
+`-DBUILD_BENCH=ON`, runs the focused filter
+`B3PoW.*|CheckBlock.*|ConnectBlock.*`, and asks
+[`contrib/testing/audit/audit-bench-trend.py`](../contrib/testing/audit/audit-bench-trend.py)
+to compare the two CSVs.  A regression > 5% in any tracked benchmark
+fails the job and is surfaced as a markdown table in the GitHub
+Actions job summary.
+
+Future work:
+
 - Add a "result over time" chart to the website.
 - Add an actual physical-power meter to the benchmark machine.
 
@@ -344,11 +357,12 @@ withholding attacks, censorship by individual miners).
 
 | Field | Value |
 |-------|-------|
-| **Status**       | `proposed` |
+| **Status**       | `in-progress (script landed)` |
 | **Priority**     | High (post-mainnet) |
-| **Effort**       | 2–3 person-weeks |
+| **Effort**       | 2–3 person-weeks (watcher + ops guide landed; exchange-feed integration outstanding) |
 | **Dependencies** | Phase 0 / Phase 1 simulators (`audit-51-attack-sim.py`, `audit-selfish-mining-sim.py`, `audit-bootstrap-reorg-sim.py`) shipped (they did); a dedicated monitoring host with redundant b3chain nodes |
 | **Owner**        | (unassigned) |
+| **In-tree** | [`contrib/monitoring/51attack-watch.py`](../contrib/monitoring/51attack-watch.py) — long-running poller + JSONL alerts + optional webhook.  Operator deployment guide: [`51-MONITORING-OPS.md`](security/51-MONITORING-OPS.md). |
 
 ### Scope
 

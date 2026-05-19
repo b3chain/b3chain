@@ -1,0 +1,20 @@
+homepage: "https://b3chain.org/"
+main_repo: 'https://github.com/b3chain/b3chain.git'
+language: c++
+primary_contact: "security@b3chain.org"
+auto_ccs:
+  # Add maintainer GitHub-handle-derived emails here when onboarded.
+sanitizers:
+  - address
+  - undefined
+  # Memory sanitizer enabled after the libcxx / boost MSan-clean
+  # baseline lands (tracked under SECURITY-ROADMAP §1).
+  # - memory
+architectures:
+  - x86_64
+selective_unpack: true
+fuzzing_engines:
+  - libfuzzer
+  # afl + honggfuzz to be added once libfuzzer is green on
+  # ClusterFuzz (avoid landing a multi-engine project that fails on
+  # day 1).

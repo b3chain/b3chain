@@ -1,0 +1,162 @@
+# B3PoW-Scratch + consensus-hot-path benchmark trend
+#
+# Catches silent performance regressions in the verifier and block-
+# validation pipelines.  Builds release with -DBUILD_BENCH=ON for HEAD
+# and HEAD~1, runs bench_bitcoin with a focused filter, then asks
+# contrib/testing/audit/audit-bench-trend.py to compare the two CSVs.
+# A regression of more than the configured threshold (default 5%) in
+# any tracked benchmark fails the job and is surfaced as a markdown
+# table in the GitHub Actions job summary.
+#
+# SECURITY-ROADMAP §3 (in-house benchmark CI scaffold).
+
+name: benchmark-trend
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'src/bench/**'
+      - 'src/crypto/b3pow_scratch.*'
+      - 'src/pow/**'
+      - 'src/validation.cpp'
+      - 'src/consensus/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/benchmark.yml'
+      - 'contrib/testing/audit/audit-bench-trend.py'
+  push:
+    branches:
+      - 'b3chain-main'
+  schedule:
+    # Nightly drift watch -- 03:30 UTC.  Runs against b3chain-main HEAD
+    # vs b3chain-main HEAD~1 so a slow drift across many merged PRs is
+    # surfaced even when no single PR triggered the per-PR job.
+    - cron: '30 3 * * *'
+
+defaults:
+  run:
+    shell: bash
+
+# Allow only one concurrent benchmark run per ref so a fast PR push
+# doesn't queue up redundant runs that share a runner.
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench-trend:
+    name: bench_bitcoin trend (HEAD vs HEAD~1)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The benchmark binary is large to build; do not block PRs that
+    # only touch docs / contrib by gating on doc-only changes.  The
+    # `paths` filter above already keeps doc-only PRs from triggering.
+    env:
+      THRESHOLD_PERCENT: '5.0'
+      # Focused filter: only the benchmarks that exercise consensus-
+      # critical code paths.  Adjust here when adding new B3PoW or
+      # block-validation benchmarks.
+      BENCH_FILTER: 'B3PoW.*|CheckBlock.*|ConnectBlock.*'
+
+    steps:
+      - name: Checkout HEAD with one parent
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libssl-dev libevent-dev libboost-dev \
+            libsqlite3-dev libdb++-dev python3
+          cmake --version
+          ninja --version
+
+      # ---------------------------------------------------------------
+      # Pass 1: HEAD~1 (baseline)
+      # ---------------------------------------------------------------
+      - name: Checkout baseline (HEAD~1)
+        run: git checkout --detach HEAD~1
+
+      - name: Configure baseline
+        run: |
+          cmake -B build -G Ninja \
+            -DBUILD_BENCH=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_GUI=OFF \
+            -DBUILD_WALLET=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build baseline bench_bitcoin
+        run: cmake --build build --target bench_bitcoin -j "$(nproc)"
+
+      - name: Run baseline benchmarks
+        run: |
+          mkdir -p bench-out
+          ./build/bin/bench_bitcoin \
+            -filter="${BENCH_FILTER}" \
+            -min-time=200 \
+            -output-csv=bench-out/baseline.csv
+
+      # ---------------------------------------------------------------
+      # Pass 2: HEAD (proposed)
+      # ---------------------------------------------------------------
+      - name: Checkout HEAD
+        run: git checkout --detach "${{ github.sha }}"
+
+      - name: Reconfigure for HEAD (incremental)
+        run: |
+          # Build directory persists across the checkout because we
+          # operate on a detached HEAD in-place.  CMake will detect
+          # the source-tree changes and rebuild only what's needed.
+          cmake -B build -G Ninja \
+            -DBUILD_BENCH=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_GUI=OFF \
+            -DBUILD_WALLET=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build HEAD bench_bitcoin
+        run: cmake --build build --target bench_bitcoin -j "$(nproc)"
+
+      - name: Run HEAD benchmarks
+        run: |
+          ./build/bin/bench_bitcoin \
+            -filter="${BENCH_FILTER}" \
+            -min-time=200 \
+            -output-csv=bench-out/head.csv
+
+      # ---------------------------------------------------------------
+      # Compare + gate
+      # ---------------------------------------------------------------
+      - name: Compare baseline vs HEAD
+        id: trend
+        run: |
+          python3 contrib/testing/audit/audit-bench-trend.py \
+            --baseline bench-out/baseline.csv \
+            --head     bench-out/head.csv \
+            --threshold "${THRESHOLD_PERCENT}" \
+            --markdown-out bench-out/summary.md
+          echo "Wrote bench-out/summary.md"
+
+      - name: Publish summary to job page
+        if: always()
+        run: |
+          if [ -f bench-out/summary.md ]; then
+            cat bench-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Benchmark trend" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "_(summary file not produced; see job logs)_" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Archive CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-csvs-${{ github.sha }}
+          path: bench-out/
+          retention-days: 30
