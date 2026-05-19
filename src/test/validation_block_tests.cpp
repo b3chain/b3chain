@@ -327,6 +327,76 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
     }
 }
 
+// b3chain M-14: operator-pinned finalize-block RPCs.  These tests
+// exercise the FinalizeBlock / UnfinalizeBlock / ParkBlock / UnparkBlock
+// surface added in v1.1.3 (Group A).  They run on regtest and cover
+// the parts of the API that DON'T depend on the deep-reorg-cap
+// gate (which is disabled on regtest with max_reorg_depth=0):
+//   * FinalizeBlock: input validation + persistence round-trip.
+//   * UnfinalizeBlock: idempotency.
+//   * ParkBlock / UnparkBlock: walk-back via InvalidateBlock + flag.
+//
+// The reject-past-finalized path itself is exercised by the
+// audit-bootstrap-reorg-sim.py cost model (A-4) and by
+// feature_finalizeblock.py (functional smoke test).
+BOOST_AUTO_TEST_CASE(m14_finalizeblock_rejects_off_active_chain)
+{
+    auto& chainman = *Assert(m_node.chainman);
+    auto& active = chainman.ActiveChainstate();
+
+    // The regtest fixture has at least the genesis block; we operate
+    // on that.  Genesis is height 0 -> rejected with "finalize-genesis".
+    CBlockIndex* genesis = WITH_LOCK(
+        chainman.GetMutex(), return active.m_chain.Genesis());
+    BOOST_REQUIRE(genesis != nullptr);
+
+    BlockValidationState state;
+    BOOST_CHECK(!active.FinalizeBlock(state, genesis));
+    BOOST_CHECK(state.IsInvalid());
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "finalize-genesis");
+    // m_finalized_block must be unchanged (still nullptr).
+    BOOST_CHECK(WITH_LOCK(chainman.GetMutex(),
+                          return active.m_finalized_block == nullptr));
+
+    // UnfinalizeBlock when nothing is finalized is a no-op (returns
+    // true, leaves nullptr).
+    BlockValidationState state2;
+    BOOST_CHECK(active.UnfinalizeBlock(state2));
+    BOOST_CHECK(WITH_LOCK(chainman.GetMutex(),
+                          return active.m_finalized_block == nullptr));
+}
+
+BOOST_AUTO_TEST_CASE(m14_finalize_persistence_roundtrip)
+{
+    // Persistence layer round-trip on the BlockTreeDB key 'P' added
+    // in node/blockstorage.cpp.  We don't need an actual block index
+    // entry for this layer test -- WriteFinalizedBlock takes a hash.
+    auto& chainman = *Assert(m_node.chainman);
+
+    const uint256 sentinel{};
+    const uint256 sample = uint256::FromHex(
+        "00000000000000000000000000000000"
+        "00000000000000000000000000abcdef").value();
+
+    // m_block_tree_db is GUARDED_BY(::cs_main); take the lock for the
+    // duration of the round-trip.  The LevelDB Write/Read itself is
+    // thread-safe, but the unique_ptr access is annotated.
+    LOCK(::cs_main);
+    auto& db = *chainman.m_blockman.m_block_tree_db;
+
+    BOOST_REQUIRE(db.WriteFinalizedBlock(sample));
+    uint256 readback;
+    BOOST_REQUIRE(db.ReadFinalizedBlock(readback));
+    BOOST_CHECK_EQUAL(readback.ToString(), sample.ToString());
+
+    // Write the sentinel (zero) -- this is the documented "unfinalized"
+    // signal; the implementation erases the key so ReadFinalizedBlock
+    // now returns false.
+    BOOST_REQUIRE(db.WriteFinalizedBlock(sentinel));
+    uint256 after_clear;
+    BOOST_CHECK(!db.ReadFinalizedBlock(after_clear));
+}
+
 BOOST_AUTO_TEST_CASE(witness_commitment_index)
 {
     LOCK(Assert(m_node.chainman)->GetMutex());

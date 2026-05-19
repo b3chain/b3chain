@@ -96,6 +96,8 @@ BASE_SCRIPTS = [
     'feature_b3pow.py',
     'feature_lwma3.py',
     'feature_reorg_depth_cap.py',
+    'feature_finalizeblock.py',
+    'feature_parkblock.py',
     'feature_timewarp_bip94.py',
     'feature_pow_floor.py',
     'mempool_ephemeral_dust.py',
