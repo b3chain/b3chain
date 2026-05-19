@@ -97,6 +97,7 @@ BASE_SCRIPTS = [
     'feature_lwma3.py',
     'feature_reorg_depth_cap.py',
     'feature_timewarp_bip94.py',
+    'feature_pow_floor.py',
     'mempool_ephemeral_dust.py',
     'wallet_conflicts.py',
     'p2p_opportunistic_1p1c.py',

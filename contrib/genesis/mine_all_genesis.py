@@ -145,12 +145,14 @@ def main():
 
     pubkey_hex = "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"
 
+    # b3chain F-6 fix (M-13): production chains use the tightened
+    # powLimit = 0x1d7fffff (4x stricter).  Regtest unchanged.
     networks = [
-        ("mainnet",  1739145600, 0x1e01ffff),
-        ("testnet",  1739145601, 0x1e01ffff),
+        ("mainnet",  1739145600, 0x1d7fffff),
+        ("testnet",  1739145601, 0x1d7fffff),
         ("regtest",  1739145602, 0x207fffff),
-        ("testnet4", 1739145603, 0x1e01ffff),
-        ("signet",   1739145604, 0x1e01ffff),
+        ("testnet4", 1739145603, 0x1d7fffff),
+        ("signet",   1739145604, 0x1d7fffff),
     ]
 
     for name, nTime, nBits in networks:

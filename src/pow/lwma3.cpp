@@ -145,9 +145,37 @@ unsigned int CalculateLwma3Target(const CBlockIndex* pindexLast,
     Assume(denom > 0);
     arith_uint256 new_target = numerator / denom;
 
-    // Step 5: clamp to powLimit.
-    if (new_target > pow_limit) {
-        new_target = pow_limit;
+    // Step 5: clamp.
+    //
+    // Two-tier floor (b3chain F-6 fix / M-13):
+    //   - During the early-difficulty guard window
+    //     (next_height <= nEarlyDifficultyGuardHeight), clamp only to
+    //     powLimit (consensus floor) so a low-hashrate cold start can
+    //     still reach minimum difficulty.
+    //   - After the guard window, clamp to operating_pow_floor_bits if
+    //     configured (a stricter soft floor that closes the F-6
+    //     min-difficulty exploit window; see
+    //     doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6).
+    //
+    // The consensus floor is ALWAYS powLimit (enforced by CheckProofOfWork
+    // via DeriveTarget); the operating floor is enforced transitively
+    // through PermittedDifficultyTransition because GetNextWorkRequired
+    // (which calls us) never emits a target wider than the floor.
+    arith_uint256 effective_floor = pow_limit;
+    const int next_height = pindexLast->nHeight + 1;
+    if (params.operating_pow_floor_bits != 0 &&
+        params.nEarlyDifficultyGuardHeight > 0 &&
+        next_height > params.nEarlyDifficultyGuardHeight) {
+        arith_uint256 op_floor;
+        bool overflow{false};
+        bool negative{false};
+        op_floor.SetCompact(params.operating_pow_floor_bits, &negative, &overflow);
+        if (!negative && !overflow && op_floor != 0 && op_floor < pow_limit) {
+            effective_floor = op_floor;
+        }
+    }
+    if (new_target > effective_floor) {
+        new_target = effective_floor;
     }
     if (new_target == 0) {
         // Sanity floor.

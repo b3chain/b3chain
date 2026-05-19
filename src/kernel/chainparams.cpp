@@ -94,9 +94,18 @@ public:
         consensus.CSVHeight = 0;
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
-        // b3chain: BLAKE3 is ~10x faster than SHA-256d, so we use a wider powLimit.
-        // Capped at 0x1e01ffff to ensure 4x difficulty adjustment doesn't overflow uint256.
-        consensus.powLimit = uint256{"000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        // b3chain F-6 fix (M-13): consensus floor tightened 4x from the
+        // original 0x1e01ffff to 0x1d7fffff.  The prior comment claimed
+        // "BLAKE3 is ~10x faster than SHA-256d, so we use a wider
+        // powLimit" -- that was incorrect: B3PoW-Scratch is memory-hard
+        // (1 MB scratchpad, ~49 us/hash on KU5P), so per-hash cost is
+        // actually HIGHER than SHA-256d, and the wider powLimit was
+        // unjustified.  At the new floor, 1 KU5P FPGA (20.4 KH/s) solves
+        // a minimum-difficulty block in ~27 min, closing the F-6
+        // "tens-of-seconds" exploit window without breaking realistic
+        // launch-hashrate bootstrap (5 boards = ~5.5 min/block at floor).
+        // See doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6.
+        consensus.powLimit = uint256{"0000007fffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
@@ -113,6 +122,12 @@ public:
         consensus.b3pow_cache_depth = 8;
         // b3chain M-3 (V-4): LWMA-3 difficulty adjustment.  See src/pow/lwma3.h.
         consensus.use_lwma3 = true;
+        // b3chain F-6 fix (M-13): post-bootstrap DAA operating floor,
+        // 2x stricter than powLimit (= 8x stricter than the original
+        // 0x1e01ffff).  LWMA-3 will not emit a target wider than this
+        // once height > nEarlyDifficultyGuardHeight.  See
+        // src/pow/lwma3.cpp step 5.
+        consensus.operating_pow_floor_bits = 0x1d3fffff;
         // b3chain M-4 (F-3): cap reorg depth to bound the blast radius
         // of any 51% attack.  200 blocks ~ 33 hours at 600s spacing.
         consensus.max_reorg_depth = 200;
@@ -146,10 +161,13 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateGenesisBlock(1739145600, 18975524, 0x1e01ffff, 1, 50 * COIN);
+        // b3chain F-6 fix (M-13): genesis re-mined at the tightened
+        // powLimit = 0x1d7fffff (4x stricter than the original 0x1e01ffff).
+        // See contrib/genesis/mine_all_genesis.py.
+        genesis = CreateGenesisBlock(1739145600, 89222440, 0x1d7fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"b32521b577317c19b5a1eb895b94c1d9b2f771cc9d174d7a4f11cab40833f603"});
-        assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
+        assert(consensus.hashGenesisBlock == uint256{"b6cdeba06d5b4c98df9db07c58d0d7ca50866b855ab3ca470382a7d19b52a9e6"});
+        assert(genesis.hashMerkleRoot == uint256{"a3e989c3afe53b750b3a668b7eef73109961252ace3470a0b50065195adc1e4f"});
 
         // b3chain: no DNS seeds yet (will be added when seed nodes are live)
         vFixedSeeds.clear();
@@ -196,7 +214,9 @@ public:
         consensus.CSVHeight = 0;
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        // b3chain F-6 fix (M-13): consensus floor tightened 4x.  See
+        // mainnet rationale and doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6.
+        consensus.powLimit = uint256{"0000007fffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -211,6 +231,9 @@ public:
         // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
         consensus.use_lwma3 = true;
         consensus.max_reorg_depth = 200;
+        // b3chain F-6 fix (M-13): post-bootstrap DAA operating floor.  See
+        // mainnet rationale and src/pow/lwma3.cpp step 5.
+        consensus.operating_pow_floor_bits = 0x1d3fffff;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -238,10 +261,11 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateGenesisBlock(1739145601, 2275226, 0x1e01ffff, 1, 50 * COIN);
+        // b3chain F-6 fix (M-13): testnet genesis re-mined at new powLimit.
+        genesis = CreateGenesisBlock(1739145601, 22405111, 0x1d7fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"});
-        assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
+        assert(consensus.hashGenesisBlock == uint256{"4b3f758b306086eca0a95c68020ab74cb87c652b1788780fa3235306bb3d4006"});
+        assert(genesis.hashMerkleRoot == uint256{"a3e989c3afe53b750b3a668b7eef73109961252ace3470a0b50065195adc1e4f"});
 
         // Phase 8a testnet bootstrap: DNS seed (round-robin A record
         // returning the operator-run seed nodes) plus the BIP155-encoded
@@ -289,7 +313,9 @@ public:
         consensus.CSVHeight = 0;
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        // b3chain F-6 fix (M-13): consensus floor tightened 4x.  See
+        // mainnet rationale and doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6.
+        consensus.powLimit = uint256{"0000007fffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -304,6 +330,9 @@ public:
         // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
         consensus.use_lwma3 = true;
         consensus.max_reorg_depth = 200;
+        // b3chain F-6 fix (M-13): post-bootstrap DAA operating floor.  See
+        // mainnet rationale and src/pow/lwma3.cpp step 5.
+        consensus.operating_pow_floor_bits = 0x1d3fffff;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -332,10 +361,11 @@ public:
         m_assumed_blockchain_size = 22;
         m_assumed_chain_state_size = 2;
 
-        genesis = CreateGenesisBlock(1739145603, 131538, 0x1e01ffff, 1, 50 * COIN);
+        // b3chain F-6 fix (M-13): testnet4 genesis re-mined at new powLimit.
+        genesis = CreateGenesisBlock(1739145603, 23025286, 0x1d7fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"2f304539c8d9c0069236a83b442c5a7f1b3bd9e04595b66ee95b9205e5cfb5c2"});
-        assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
+        assert(consensus.hashGenesisBlock == uint256{"eb3fd63c95062962d2fb42ac3dcbc2056eefb8b3209858a1d400cf2b565ea1a0"});
+        assert(genesis.hashMerkleRoot == uint256{"a3e989c3afe53b750b3a668b7eef73109961252ace3470a0b50065195adc1e4f"});
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -419,7 +449,9 @@ public:
         consensus.enforce_BIP94 = true;
         consensus.fPowNoRetargeting = false;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        // b3chain F-6 fix (M-13): consensus floor tightened 4x.  See
+        // mainnet rationale and doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6.
+        consensus.powLimit = uint256{"0000007fffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         // b3chain: B3PoW-Scratch v1.1 verifier (Finding 4 / mitigations D1+D2).
         consensus.b3pow_verify_budget_ms = 50;
         // b3chain M-6 (F-5 fix): 8-entry total (5 LRU + 3 pinned).
@@ -427,6 +459,9 @@ public:
         // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
         consensus.use_lwma3 = true;
         consensus.max_reorg_depth = 200;
+        // b3chain F-6 fix (M-13): post-bootstrap DAA operating floor.  See
+        // mainnet rationale and src/pow/lwma3.cpp step 5.
+        consensus.operating_pow_floor_bits = 0x1d3fffff;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -451,10 +486,11 @@ public:
         nDefaultPort = 38333;
         nPruneAfterHeight = 1000;
 
-        genesis = CreateGenesisBlock(1739145604, 20266759, 0x1e01ffff, 1, 50 * COIN);
+        // b3chain F-6 fix (M-13): signet genesis re-mined at new powLimit.
+        genesis = CreateGenesisBlock(1739145604, 24911779, 0x1d7fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"28c02b591ae7226d904fe5c62fc8f5b206e7877d6bf87c8e9d96e505fd9ee0d8"});
-        assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
+        assert(consensus.hashGenesisBlock == uint256{"d30df57fdaebdb8090ff90f18357d2497a5ba4b083aa748a458c087254075ed7"});
+        assert(genesis.hashMerkleRoot == uint256{"a3e989c3afe53b750b3a668b7eef73109961252ace3470a0b50065195adc1e4f"});
 
         m_assumeutxo_data = {};
 

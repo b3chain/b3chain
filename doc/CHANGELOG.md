@@ -32,7 +32,7 @@ for incident response.
   2-round full-diffusion proof of the `LANE_SHUFFLE = (5L + 1) mod 8`
   permutation.
 
-### Consensus layer (M-2, M-3, M-4, M-8, F-2, F-3)
+### Consensus layer (M-2, M-3, M-4, M-8, M-13, F-2, F-3, F-6)
 
 - **M-2 / F-2 — BIP94 timewarp mitigation.** `consensus.enforce_BIP94 = true`
   on mainnet/testnet/signet (Bitcoin Core's default is mainnet-off).
@@ -62,6 +62,23 @@ for incident response.
   mismatching hash at that height via new
   `BlockValidationResult::BLOCK_CHECKPOINT`.  Operational procedure
   is in [`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](security/RESPONSE-RUNBOOK-51ATTACK.md).
+- **M-13 / F-6 — `powLimit` tightened 4× + post-bootstrap operating
+  floor.** `consensus.powLimit` reduced from `0x1e01ffff` to
+  `0x1d7fffff` on mainnet/testnet/signet/testnet4 (regtest unchanged).
+  New `consensus.operating_pow_floor_bits = 0x1d3fffff` (2× stricter
+  than `powLimit`) enforced by LWMA-3 once height past
+  `nEarlyDifficultyGuardHeight`.  Defends F-6 by lifting the per-board
+  minimum-difficulty solve time from ≈ 411 s to ≈ 1644 s under the
+  consensus floor and ≈ 3290 s under the operating floor; collapses
+  the F-6 exploit window to ≤ 1 block before LWMA-3 retargets upward.
+  **Pre-genesis change** — all four production genesis blocks re-mined
+  at the new floor (`b6cdeba0…`, `4b3f758b…`, `eb3fd63c…`,
+  `d30df57f…`); contrib helpers
+  [`mine_all_genesis.py`](../contrib/genesis/mine_all_genesis.py),
+  [`gen_vectors.py`](../contrib/miner/b3miner-rtl/ref/gen_vectors.py)
+  updated and re-run.  See
+  [`src/kernel/chainparams.cpp`](../src/kernel/chainparams.cpp),
+  [`src/pow/lwma3.cpp`](../src/pow/lwma3.cpp) step 5.
 
 ### Cache and verifier hardening (M-5, M-6, M-7, F-5)
 
@@ -132,7 +149,7 @@ in CSV for `k ∈ [1, 12]` and `α ∈ [0.30, 0.60]`.
 
 ### Finding-to-fix-to-test map
 
-(Mitigation IDs match `doc/security/B3POW-51-ATTACK-ANALYSIS.md` §1.2 M-1..M-12.)
+(Mitigation IDs match `doc/security/B3POW-51-ATTACK-ANALYSIS.md` §1.2 M-1..M-13.)
 
 | Finding | Severity | Fix (mitigation) | Test |
 |---|---|---|---|
@@ -141,7 +158,7 @@ in CSV for `k ∈ [1, 12]` and `α ∈ [0.30, 0.60]`.
 | **F-3** No reorg-depth cap | High | **M-4**: `consensus.max_reorg_depth = 200`; new `BLOCK_DEEP_REORG` + `Misbehaving("deep-reorg-attempt")`; **M-5** depth-aware ban-score in HEADERS handler | `contrib/testing/audit/audit-bootstrap-reorg-sim.py` (A-4 PASS, 5/5 height scenarios); functional `test/functional/feature_reorg_depth_cap.py`; validation reject site `BLOCK_DEEP_REORG` in `src/validation.cpp::AcceptBlock` |
 | **F-4** SPEC §8.E uniformity gate missing | Medium (pre-genesis) | **M-11** uniformity CI gate + **M-12** SPEC §8.F diffusion sketch | `contrib/miner/b3miner-rtl/ref/tests/test_address_uniformity.py` (1 PASS, 33 s, p > 1e-5 Bonferroni); wired in `.github/workflows/b3miner-rtl.yml` |
 | **F-5** Cache evictable under hostile header flood | Medium | **M-6**: 2-tier pinned LRU (3 pinned slots); raise `b3pow_cache_depth` 4 → 8; pin tip + 2 ancestors on every `UpdateTip` | `src/test/b3pow_cache_tests.cpp` (4 new cases: `pin_protects_from_eviction`, `pin_capacity_overflow_demotes_oldest`, `pinned_capacity_clamped_below_depth`, `unpin_allows_eviction`); `contrib/testing/audit/audit-b3pow-cache-pinning.py` (A-7 PASS, 0 / 10 000 tip evictions); `contrib/testing/audit/audit-cache-eviction-dos.py` (A-5 PASS, 3/3 checks) |
-| **F-6** `powLimit = 0x1e01ffff` (~10× wider than Bitcoin's) | Low–Medium | **M-3**: LWMA-3 retargets every block, so a momentary hashrate dip cannot land a 2016-block minimum-difficulty window an attacker can exploit (closes the exploit window F-6 describes).  The wide powLimit itself is preserved by design (compensates for B3PoW being ~10× faster per pad than SHA-256d).  Defence in depth: **M-7** depth-asymmetric verifier budget bounds the CPU cost of any deep-fork header sequence built at minimum difficulty | `src/test/lwma3_tests.cpp` (5 cases, including +10× / -10× hashrate shocks); `test/functional/feature_lwma3.py` (dispatch smoke); `contrib/testing/audit/audit-bootstrap-reorg-sim.py` exposes the minimum-difficulty cost frontier |
+| **F-6** `powLimit = 0x1e01ffff` (~10× wider than Bitcoin's) | Low–Medium | **M-13** (new): `consensus.powLimit` tightened 4× to `0x1d7fffff` on mainnet/testnet/signet/testnet4 (regtest unchanged); new `consensus.operating_pow_floor_bits = 0x1d3fffff` enforced by LWMA-3 once height > `nEarlyDifficultyGuardHeight` (a defence-in-depth post-bootstrap floor 2× stricter than `powLimit`). All four production genesis blocks re-mined at the new floor (pre-genesis, chain ID rolls). Continues to lean on **M-3** (LWMA-3 retargets every block) and **M-7** (depth-asymmetric verifier budget) for defence-in-depth. | `src/test/pow_tests.cpp::get_next_work_pow_limit` (updated expected_nbits) + new `operating_pow_floor_invariant`; `src/test/lwma3_tests.cpp` T7-T10 (`operating_pow_floor_steady_state`, `_disabled_in_bootstrap`, `_disabled_zero`, `_wider_than_powlimit_ignored`); `test/functional/feature_pow_floor.py` (smoke + bypass-path pin); `contrib/testing/audit/audit-bootstrap-reorg-sim.py` regenerated with `effective_floor_nbits` + per-board / honest min-diff solve time columns |
 
 ### Verifier budget (also added but not finding-driven)
 

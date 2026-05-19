@@ -151,6 +151,23 @@ struct Params {
      *  (regtest default).  Bypass paths (IBD, assumevalid) are
      *  explicitly enumerated in validation.cpp. */
     int max_reorg_depth{0};
+    /** b3chain F-6 fix: post-bootstrap DAA floor (mitigation M-13).
+     *  After the early-difficulty guard window ends (height >
+     *  nEarlyDifficultyGuardHeight), the LWMA-3 retarget will not
+     *  emit a target wider than this compact-nBits floor.  This is a
+     *  stricter "operating" floor sitting on top of the absolute
+     *  consensus floor (powLimit), defending against minimum-difficulty
+     *  exploit windows during steady-state hashrate dips.  Must be
+     *  <= powLimit (enforced as a static invariant by
+     *  `src/test/pow_tests.cpp::sanity_check_chainparams` for every
+     *  shipped chain, and a runtime guard in
+     *  `src/pow/lwma3.cpp` silently falls back to `powLimit` if a
+     *  misconfigured chain decodes wider than powLimit so a malformed
+     *  operating floor can never WIDEN the effective floor).  0 =
+     *  disabled (floor falls back to powLimit, the legacy behaviour;
+     *  used on regtest).  See src/pow/lwma3.cpp step 5 and
+     *  doc/security/B3POW-51-ATTACK-ANALYSIS.md F-6. */
+    uint32_t operating_pow_floor_bits{0};
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};

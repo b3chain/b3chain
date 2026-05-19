@@ -146,6 +146,13 @@ Active mitigations:
 
 - LWMA-3 retargets every block, so within ~30 blocks (~5 h at 1000 s)
   difficulty falls to match the surviving hashrate.
+- **M-13 (F-6 fix) bounds the floor.** During the collapse, LWMA-3
+  cannot widen the target past `operating_pow_floor_bits = 0x1d3fffff`
+  (post-bootstrap) or `powLimit = 0x1d7fffff` (during the early
+  guard).  So even at the floor, one B3Miner-1 board still needs
+  ≈ 27 min (powLimit) or ≈ 55 min (operating floor) to find a block.
+  This caps how much "free hashrate" an attacker can extract from
+  a coordinated drop-out by hiding a private fork at the floor.
 
 Operator actions:
 
@@ -239,6 +246,8 @@ These do require a recompile (consensus parameters):
 | `consensus.enforce_BIP94` | true | M-2 / F-2 |
 | `consensus.b3pow_cache_depth` | 8 | M-6 / F-5 |
 | `consensus.b3pow_verify_budget_ms` | 50 | D1/D2 |
+| `consensus.powLimit` | `0x1d7fffff` | M-13 / F-6 |
+| `consensus.operating_pow_floor_bits` | `0x1d3fffff` | M-13 / F-6 |
 
 ## 9. Contact
 

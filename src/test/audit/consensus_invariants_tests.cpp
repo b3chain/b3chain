@@ -98,7 +98,7 @@ BOOST_AUTO_TEST_CASE(audit_block_id_and_pow_hash_differ)
     h.hashPrevBlock.SetNull();
     h.hashMerkleRoot.SetNull();
     h.nTime = 1739145600;
-    h.nBits = 0x1e01ffff;
+    h.nBits = 0x1d7fffff; // post-F-6 fix mainnet powLimit
     h.nNonce = 0;
 
     bool budget_exceeded = false;

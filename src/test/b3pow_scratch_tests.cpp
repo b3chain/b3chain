@@ -129,11 +129,12 @@ BOOST_AUTO_TEST_CASE(consensus_vectors_match_python_ref)
         // expected_check_pow is the pure pow_hash <= target boolean
         // (i.e. without any chain-params powLimit ceiling).  We compute
         // it directly here because the per-entry nbits intentionally
-        // spans across mainnet (0x1e01ffff) and regtest (0x207fffff)
-        // pow limits, and calling CheckProofOfWork with a single
-        // chain's params would force-fail entries whose nbits exceeds
-        // that chain's powLimit.  The C++/Python parity contract is
-        // only on the (hash, target) comparison.
+        // spans across mainnet (0x1d7fffff, post-F-6 fix), regtest
+        // (0x207fffff), and synthetic tight (0x03000001) pow limits,
+        // and calling CheckProofOfWork with a single chain's params
+        // would force-fail entries whose nbits exceeds that chain's
+        // powLimit.  The C++/Python parity contract is only on the
+        // (hash, target) comparison.
         unsigned int nbits = ParseNBits(entry["nbits_hex"].get_str());
         bool expected_pass = entry["expected_check_pow"].get_bool();
         arith_uint256 target;

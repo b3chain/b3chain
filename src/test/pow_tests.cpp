@@ -37,20 +37,23 @@ BOOST_AUTO_TEST_CASE(get_next_work)
     BOOST_CHECK(PermittedDifficultyTransition(chainParams->GetConsensus(), pindexLast.nHeight+1, pindexLast.nBits, expected_nbits));
 }
 
-/* Test the constraint on the upper bound for next work (capped at b3chain powLimit) */
+/* Test the constraint on the upper bound for next work (capped at b3chain powLimit).
+ *
+ * Note: post-F-6 fix (M-13) the mainnet powLimit was tightened 4x from
+ * 0x1e01ffff to 0x1d7fffff; this test reflects that consensus floor. */
 BOOST_AUTO_TEST_CASE(get_next_work_pow_limit)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    // Simulate a retarget where difficulty is already at powLimit (0x1e01ffff)
-    // and the actual timespan triggers the 4x clamped maximum adjustment.
-    // Result should still be capped at powLimit.
+    // Simulate a retarget where difficulty is already at powLimit (0x1d7fffff,
+    // post-F-6 fix) and the actual timespan triggers the 4x clamped maximum
+    // adjustment.  Result should still be capped at powLimit.
     CBlockIndex pindexLast;
     pindexLast.nHeight = 2015;
-    pindexLast.nBits = 0x1e01ffff;
+    pindexLast.nBits = 0x1d7fffff;
     // Set times so actual timespan >> 4x target (triggers max 4x easement)
     pindexLast.nTime = 1739145600 + 4 * 14 * 24 * 60 * 60 + 1; // well over 4x target
     int64_t nLastRetargetTime = 1739145600; // retarget epoch start
-    unsigned int expected_nbits = 0x1e01ffffU; // capped at powLimit
+    unsigned int expected_nbits = 0x1d7fffffU; // capped at powLimit
     BOOST_CHECK_EQUAL(CalculateNextWorkRequired(&pindexLast, nLastRetargetTime, chainParams->GetConsensus()), expected_nbits);
     BOOST_CHECK(PermittedDifficultyTransition(chainParams->GetConsensus(), pindexLast.nHeight+1, pindexLast.nBits, expected_nbits));
 }
@@ -189,6 +192,18 @@ void sanity_check_chainparams(const ArgsManager& args, ChainType chain_type)
         arith_uint256 targ_max{UintToArith256(uint256{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"})};
         targ_max /= consensus.nPowTargetTimespan*4;
         BOOST_CHECK(UintToArith256(consensus.powLimit) < targ_max);
+    }
+
+    // b3chain F-6 fix (M-13): if an operating_pow_floor is configured, its
+    // decoded target must be no wider than powLimit (otherwise the runtime
+    // clamp in CalculateLwma3Target would silently fall back to powLimit,
+    // masking the misconfiguration).
+    if (consensus.operating_pow_floor_bits != 0) {
+        arith_uint256 op_floor;
+        bool of_neg = false, of_over = false;
+        op_floor.SetCompact(consensus.operating_pow_floor_bits, &of_neg, &of_over);
+        BOOST_CHECK(!of_neg && !of_over && op_floor != 0);
+        BOOST_CHECK(op_floor <= UintToArith256(consensus.powLimit));
     }
 }
 
@@ -574,7 +589,7 @@ BOOST_AUTO_TEST_CASE(CheckBlockHeaderPoW_bad_nbits_fails_precheck)
     header.hashPrevBlock.SetNull();
     header.hashMerkleRoot.SetNull();
     header.nTime = 1700000000;
-    // Mainnet powLimit is 0x1e01ffff; 0x207fffff is *above* it.
+    // Mainnet powLimit is 0x1d7fffff (post-F-6 fix); 0x207fffff is *above* it.
     header.nBits = 0x207fffff;
     header.nNonce = 0;
 

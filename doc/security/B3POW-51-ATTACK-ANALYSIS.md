@@ -56,6 +56,7 @@ score (Phase 3.4) and a `max_reorg_depth = 200` consensus rejection
 | M-10 | `-paranoid-headers-sync` flag (3-peer confirmation requirement) | Operational | [`src/net_processing.cpp`](../../src/net_processing.cpp) |
 | M-11 | Address-derivation uniformity CI gate | Pre-genesis hard gate | `ref/tests/test_address_uniformity.py` (new) |
 | M-12 | Diffusion-bound sketch + SPEC §8.F | Documentation gate | [`SPEC.md`](../../contrib/miner/b3miner-rtl/SPEC.md) |
+| M-13 | `powLimit` tightened 4x + post-bootstrap `operating_pow_floor_bits` (F-6 fix) | Pre-genesis hard fork | [`src/kernel/chainparams.cpp`](../../src/kernel/chainparams.cpp) + [`src/pow/lwma3.cpp`](../../src/pow/lwma3.cpp) |
 
 ### 1.3 What we do not claim
 
@@ -344,7 +345,22 @@ FPGA inventory has parity hashrate and can reorg arbitrarily.
 
 Numbers assume B3Miner-1 KU5P at ~$1.5k/board and 20 KH/s/board.
 
+**Finding (F-6).** Pre-fix the b3chain `powLimit = 0x1e01ffff` was
+≈ 10× wider than Bitcoin's `0x1d00ffff`. A single B3Miner-1 board
+(20.4 KH/s) solves a *minimum-difficulty* block in ≈ 411 s; a 16-board
+cluster solves it in ≈ 25 s. That is a "floor", not a steady-state
+spacing, but any momentary hashrate dip during retarget that landed the
+DAA at the floor would expose a window an attacker could amplify into a
+private fork.
+
 **Mitigations.**
+- **M-13 (`powLimit` 4× tighter + post-bootstrap operating floor)** —
+  consensus floor `0x1d7fffff` lifts per-board min-diff solve time to
+  ≈ 1644 s (≈ 27 min); the post-bootstrap operating floor `0x1d3fffff`
+  doubles that again to ≈ 3290 s (≈ 55 min), so the F-6 exploit
+  window collapses to a single block at most before LWMA-3 retargets
+  difficulty upward. See `audit-bootstrap-reorg-sim.py` for the
+  per-height cost frontier under the new floors.
 - **M-3 (LWMA-3)** — limits retarget-exploitation window.
 - **M-4 (`max_reorg_depth = 200`)** — caps blast radius at ~33 hours.
 - **M-5 (depth-aware ban)** — prices feeding the attack chain.
@@ -547,10 +563,11 @@ are listed as **deferred** with the appropriate roadmap pointer.
 | R-9 | M-9, M-10: anti-eclipse | Medium | Hours | Operational | **Ship in this plan** |
 | R-10 | M-11: uniformity gate | Mandatory pre-genesis | Days | CI gate | **Ship in this plan** |
 | R-11 | M-12: diffusion sketch | Documentation | Hours | Documentation | **Ship in this plan** |
-| R-12 | External audit | Mandatory pre-launch | $40–120K, 4–8 weeks | External party | **Deferred** to [SECURITY-ROADMAP §4](SECURITY-ROADMAP.md) |
-| R-13 | Maintainer-signed checkpoints | High (caps adversarial reorg absolutely) | Ceremony + ongoing | External key ceremony | **Deferred** to [SECURITY-ROADMAP §7](SECURITY-ROADMAP.md) |
-| R-14 | Federation / ChainLocks | Absolute (deterministic finality) | Months + governance | Federation governance | **Out of scope** (would require new governance layer) |
-| R-15 | Continuous benchmark CI | Catches regressions | Already in progress | Internal | **In progress** ([SECURITY-ROADMAP §3](SECURITY-ROADMAP.md)) |
+| R-12 | M-13: F-6 powLimit tighten + operating floor | High (closes F-6 min-diff exploit window) | Hours (genesis re-mine) | Pre-genesis hard fork | **Ship in this plan** |
+| R-13 | External audit | Mandatory pre-launch | $40–120K, 4–8 weeks | External party | **Deferred** to [SECURITY-ROADMAP §4](SECURITY-ROADMAP.md) |
+| R-14 | Maintainer-signed checkpoints | High (caps adversarial reorg absolutely) | Ceremony + ongoing | External key ceremony | **Deferred** to [SECURITY-ROADMAP §7](SECURITY-ROADMAP.md) |
+| R-15 | Federation / ChainLocks | Absolute (deterministic finality) | Months + governance | Federation governance | **Out of scope** (would require new governance layer) |
+| R-16 | Continuous benchmark CI | Catches regressions | Already in progress | Internal | **In progress** ([SECURITY-ROADMAP §3](SECURITY-ROADMAP.md)) |
 
 ---
 

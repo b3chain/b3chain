@@ -4,12 +4,12 @@
   "entries": [
     {
       "name": "genesis_mainnet_template",
-      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e248b2101",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1d286d5105",
       "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
-      "expected_pow_hash_hex": "737db4bb86d4fbd16761c338aee726eaff9fe36eb4a08b3e9319e9173c060b52",
-      "nbits_hex": "0x1e01ffff",
+      "expected_pow_hash_hex": "50c8c8def866529c7637868d175ec80dafcc59ed5a375abb8b2fdb5b53a15c77",
+      "nbits_hex": "0x1d7fffff",
       "expected_check_pow": false,
-      "notes": "Mainnet genesis template (zero merkle_root -- recompute post-chainparams-rewire).  Locks the JSON schema."
+      "notes": "Mainnet genesis template post-F-6 fix (zero merkle_root placeholder; the real on-chain merkle is in chainparams.cpp). Locks the JSON schema."
     },
     {
       "name": "genesis_regtest",
@@ -22,46 +22,46 @@
     },
     {
       "name": "mainnet_target_loose_pass",
-      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1defbeadde",
       "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
-      "expected_pow_hash_hex": "0fdb24c541a86c67bd793b400ce7f7640785a32948d6944a59b527bb2d6e8c78",
-      "nbits_hex": "0x1e01ffff",
+      "expected_pow_hash_hex": "5c889fa7c5be894c135b4c1348cddb14beeef2dc5295613afc6ba68fe9ee9c37",
+      "nbits_hex": "0x1d7fffff",
       "expected_check_pow": false,
-      "notes": "Mainnet powLimit (0x1e01ffff).  expected_check_pow is computed from the actual pow_hash -- the C++ port must agree byte-for-byte on the hash *and* on the boolean."
+      "notes": "Mainnet powLimit (0x1d7fffff, post-F-6 fix).  expected_check_pow is computed from the actual pow_hash -- the C++ port must agree byte-for-byte on the hash *and* on the boolean."
     },
     {
       "name": "mainnet_target_tight_fail",
-      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1defbeadde",
       "prev_block_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
-      "expected_pow_hash_hex": "0fdb24c541a86c67bd793b400ce7f7640785a32948d6944a59b527bb2d6e8c78",
+      "expected_pow_hash_hex": "5c889fa7c5be894c135b4c1348cddb14beeef2dc5295613afc6ba68fe9ee9c37",
       "nbits_hex": "0x03000001",
       "expected_check_pow": false,
       "notes": "Synthetic tight target (target=1) -- expected to fail with overwhelming probability."
     },
     {
       "name": "nontrivial_prev",
-      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff011eefbeadde",
+      "header_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1defbeadde",
       "prev_block_hash_hex": "deadbeefcafebabe0badf00dc0ffee00abcdef0123456789fedcba9876543210",
-      "expected_pow_hash_hex": "ef13bb0dfebbd5f508c22764586b8f329a640d25b658e525dc13f45611a19687",
-      "nbits_hex": "0x1e01ffff",
+      "expected_pow_hash_hex": "4d82fe20390d36016f2ee9a0cfd447e92cac70528047f653db719862ed3931bf",
+      "nbits_hex": "0x1d7fffff",
       "expected_check_pow": false,
       "notes": "Same header as mainnet_target_loose_pass but non-zero prev_block_hash; pow_hash MUST differ."
     },
     {
       "name": "cache_pair_nonce_0",
-      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e00000000",
+      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1d00000000",
       "prev_block_hash_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "expected_pow_hash_hex": "8736f8607e2da22f93a2fa45040dbea20a423cec25b0994ee6d817e261bcb160",
-      "nbits_hex": "0x1e01ffff",
+      "expected_pow_hash_hex": "c9b61079e2e50c4dacc51af107043d4a0b47c84945bc8d6d1df6b801b6430313",
+      "nbits_hex": "0x1d7fffff",
       "expected_check_pow": false,
       "notes": "Cache-pair member 1 (nonce=0) -- shares prev_block_hash with cache_pair_nonce_1."
     },
     {
       "name": "cache_pair_nonce_1",
-      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff011e01000000",
+      "header_hex": "010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1d01000000",
       "prev_block_hash_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "expected_pow_hash_hex": "6052403bee42b081c2e0e94c98957d7062ca2d3e9b84b3e2763b0b90c90f9fb3",
-      "nbits_hex": "0x1e01ffff",
+      "expected_pow_hash_hex": "fa6993083b67ebb0a4876f65d94ded886fb75e46cab7f4283ca7c13abbf89e18",
+      "nbits_hex": "0x1d7fffff",
       "expected_check_pow": false,
       "notes": "Cache-pair member 2 (nonce=1) -- C++ test asserts this is served from the cache after member 1."
     }

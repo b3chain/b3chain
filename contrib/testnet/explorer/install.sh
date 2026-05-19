@@ -148,8 +148,9 @@ if [ -f "$COIN" ]; then
     sed -i 's|"main": "#F7931A"|"main": "#2563eb"|'                          "$COIN"
     # Genesis hashes -> B3Chain values. Upstream uses a mix of TAB and
     # SPACE separators after the colon, so match any whitespace.
-    sed -i -E 's|("main":[[:space:]]+)"000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"|\1"b32521b577317c19b5a1eb895b94c1d9b2f771cc9d174d7a4f11cab40833f603"|' "$COIN"
-    sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"|' "$COIN"
+    # b3chain F-6 fix (M-13): genesis re-mined at new powLimit = 0x1d7fffff.
+    sed -i -E 's|("main":[[:space:]]+)"000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"|\1"b6cdeba06d5b4c98df9db07c58d0d7ca50866b855ab3ca470382a7d19b52a9e6"|' "$COIN"
+    sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"4b3f758b306086eca0a95c68020ab74cb87c652b1788780fa3235306bb3d4006"|' "$COIN"
     sed -i -E 's|("regtest":[[:space:]]+)"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"|\1"8c19b11553c449cfe6f8b00c830b8e34249529fd9521cb4825541df9b0372de4"|' "$COIN"
     # Strip Bitcoin-specific mining-pool registry URLs (avoids 30s
     # startup hangs trying to reach raw.githubusercontent.com just to

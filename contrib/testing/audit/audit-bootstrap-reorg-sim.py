@@ -63,13 +63,40 @@ POWER_USD_PER_KWH     = 0.10
 HOSTING_OVERHEAD_FRAC = 0.25            # 25% extra on top of power
 ATTACK_HORIZON_DAYS   = 7
 
+# b3chain F-6 fix (M-13): consensus floor (powLimit) and post-bootstrap
+# operating floor (operating_pow_floor_bits) from kernel/chainparams.cpp.
+# These determine the minimum-difficulty attacker-amplification floor
+# at the bootstrap heights modelled below.
+POW_LIMIT_NBITS              = 0x1d7fffff   # tier-1 consensus floor (4x stricter than original 0x1e01ffff)
+OPERATING_POW_FLOOR_NBITS    = 0x1d3fffff   # tier-2 soft floor (2x stricter than powLimit)
+TARGET_SPACING_SEC           = 600          # nPowTargetSpacing on mainnet
+
+
+def _nbits_to_target(nbits: int) -> int:
+    size = (nbits >> 24) & 0xFF
+    word = nbits & 0x007FFFFF
+    return word >> (8 * (3 - size)) if size <= 3 else word << (8 * (size - 3))
+
+
+def _min_diff_solve_seconds(hashrate_hs: float, nbits: int) -> float:
+    """Expected per-block solve time (seconds) when difficulty is at the
+    given compact nBits floor and hashrate is `hashrate_hs` H/s."""
+    target = _nbits_to_target(nbits)
+    p_hit_per_hash = target / (1 << 256)
+    if hashrate_hs <= 0 or p_hit_per_hash == 0:
+        return float("inf")
+    return 1.0 / (hashrate_hs * p_hit_per_hash)
+
 # Heights -> honest network hashrate (Hz) at that point in the bootstrap.
+# The last entry crosses nEarlyDifficultyGuardHeight (= 10_000) so the
+# F-6 operating floor (0x1d3fffff) is exercised in the cost table.
 DEFAULT_HEIGHTS: list[tuple[int, float]] = [
-    (   100,    10_000),
-    (   500,    50_000),
-    ( 1_000,   100_000),
-    ( 5_000,   500_000),
-    (10_000, 1_000_000),
+    (    100,    10_000),
+    (    500,    50_000),
+    (  1_000,   100_000),
+    (  5_000,   500_000),
+    ( 10_000, 1_000_000),
+    ( 50_000, 2_000_000),   # post-bootstrap: F-6 operating floor active
 ]
 
 
@@ -91,7 +118,7 @@ def attacker_required_hs(honest_hs: float, horizon_days: int) -> float:
     return honest_hs * 1.10           # 10% margin
 
 
-def cost_model(honest_hs: float) -> dict:
+def cost_model(honest_hs: float, height: int) -> dict:
     attacker_hs = attacker_required_hs(honest_hs, ATTACK_HORIZON_DAYS)
     boards = math.ceil(attacker_hs / BOARD_HS_HZ)
     capex = boards * BOARD_USD
@@ -101,6 +128,18 @@ def cost_model(honest_hs: float) -> dict:
     daily_total = daily_power * (1 + HOSTING_OVERHEAD_FRAC)
     horizon_opex = daily_total * ATTACK_HORIZON_DAYS
 
+    # b3chain F-6 fix (M-13): per-board min-difficulty solve time at the
+    # consensus floor (powLimit) and at the post-bootstrap operating
+    # floor.  Heights <= nEarlyDifficultyGuardHeight (= 10_000) are
+    # bounded only by the tier-1 floor; heights past that are bounded by
+    # the (stricter) tier-2 floor.
+    EARLY_DIFFICULTY_GUARD_HEIGHT = 10_000
+    effective_floor_nbits = POW_LIMIT_NBITS
+    if height > EARLY_DIFFICULTY_GUARD_HEIGHT:
+        effective_floor_nbits = OPERATING_POW_FLOOR_NBITS
+    floor_solve_1board = _min_diff_solve_seconds(BOARD_HS_HZ, effective_floor_nbits)
+    floor_solve_honest = _min_diff_solve_seconds(honest_hs, effective_floor_nbits)
+
     return {
         "attacker_hs_required_hz": attacker_hs,
         "boards_required": boards,
@@ -108,6 +147,9 @@ def cost_model(honest_hs: float) -> dict:
         "opex_per_day_usd": daily_total,
         "opex_horizon_usd": horizon_opex,
         "total_cost_usd": capex + horizon_opex,
+        "effective_floor_nbits": effective_floor_nbits,
+        "floor_solve_1board_sec": floor_solve_1board,
+        "floor_solve_honest_sec": floor_solve_honest,
     }
 
 
@@ -119,6 +161,11 @@ def emit_csv(out_path: Path, rows: list[dict]) -> None:
             "height", "honest_hs_hz", "attacker_hs_required_hz",
             "boards_required", "capex_usd",
             "opex_per_day_usd", "opex_horizon_usd", "total_cost_usd",
+            # b3chain F-6 fix (M-13): per-board and honest-cluster
+            # solve time at the effective min-difficulty floor.
+            "effective_floor_nbits_hex",
+            "floor_solve_1board_sec",
+            "floor_solve_honest_sec",
         ])
         for r in rows:
             w.writerow([
@@ -128,6 +175,9 @@ def emit_csv(out_path: Path, rows: list[dict]) -> None:
                 f"{r['opex_per_day_usd']:.2f}",
                 f"{r['opex_horizon_usd']:.2f}",
                 f"{r['total_cost_usd']:.0f}",
+                f"0x{r['effective_floor_nbits']:08x}",
+                f"{r['floor_solve_1board_sec']:.1f}",
+                f"{r['floor_solve_honest_sec']:.1f}",
             ])
     print(BOLD(f"Wrote bootstrap-reorg CSV -> {out_path}"))
 
@@ -167,7 +217,7 @@ def main() -> int:
     print("-" * 92)
     rows = []
     for h, honest_hs in DEFAULT_HEIGHTS:
-        m = cost_model(honest_hs)
+        m = cost_model(honest_hs, h)
         row = {"height": h, "honest_hs_hz": honest_hs, **m}
         rows.append(row)
         print(f"{h:>8} | {int(honest_hs):>11} | "
@@ -176,6 +226,18 @@ def main() -> int:
               f"{int(m['capex_usd']):>9} | "
               f"{m['opex_per_day_usd']:>10.2f} | "
               f"{int(m['total_cost_usd']):>11}")
+
+    print()
+    print(BOLD("F-6 minimum-difficulty floor (post-fix, M-13)"))
+    print(f"{'height':>8} | {'effective floor':>17} | "
+          f"{'1-board min-diff s/blk':>22} | "
+          f"{'honest min-diff s/blk':>22}")
+    print("-" * 82)
+    for row in rows:
+        print(f"{row['height']:>8} | "
+              f"0x{row['effective_floor_nbits']:08x}{'':>7} | "
+              f"{row['floor_solve_1board_sec']:>22.1f} | "
+              f"{row['floor_solve_honest_sec']:>22.1f}")
 
     # Sanity checks
     for row in rows:
@@ -192,16 +254,25 @@ def main() -> int:
     print()
     print(BOLD("Mitigations applied by this plan"))
     print(DIM("""
-        M-3 LWMA-3            : retargets in ~10 hours, so the attacker's
-                                private chain difficulty rises with their
-                                hashrate within hours, not weeks.
-        M-4 max_reorg_depth   : caps maximum reorg depth at 200 blocks
-                                (~33 hours), independent of cap-ex.
-        M-5 depth-aware ban   : peer score increments per stale-tip
-                                header, throttling the reveal step.
-        M-8 checkpoint stub   : operators can opt-in to checkpoints
-                                during the most vulnerable bootstrap
-                                weeks (off by default).
+        M-3  LWMA-3              : retargets in ~10 hours, so the attacker's
+                                   private chain difficulty rises with their
+                                   hashrate within hours, not weeks.
+        M-4  max_reorg_depth     : caps maximum reorg depth at 200 blocks
+                                   (~33 hours), independent of cap-ex.
+        M-5  depth-aware ban     : peer score increments per stale-tip
+                                   header, throttling the reveal step.
+        M-8  checkpoint stub     : operators can opt-in to checkpoints
+                                   during the most vulnerable bootstrap
+                                   weeks (off by default).
+        M-13 powLimit + op floor : (F-6 fix) consensus floor tightened 4x
+                                   to 0x1d7fffff; post-bootstrap LWMA-3
+                                   clamps at 0x1d3fffff (2x stricter than
+                                   powLimit).  Both floors lift the
+                                   minimum-difficulty solve time for any
+                                   given hashrate cluster (see table
+                                   above) -- attacks that relied on
+                                   landing min-difficulty windows now
+                                   pay 4x-8x more wall-clock time.
     """).strip())
 
     return r.finish()
