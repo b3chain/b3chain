@@ -1,0 +1,15 @@
+[Unit]
+Description=Run B3Chain testnet status exporter every 60 s
+Documentation=https://github.com/b3chain/b3chain/blob/b3chain-main/contrib/testnet/status-monitor/README.md
+
+[Timer]
+# Fire 30 s after boot so the network and b3chaind are ready, then
+# every 60 s afterwards. AccuracySec=10s keeps wakeups cheap; this is
+# not a strict-deadline job.
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=b3chain-status.service
+
+[Install]
+WantedBy=timers.target

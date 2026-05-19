@@ -1,0 +1,22 @@
+[Unit]
+Description=B3Chain testnet status JSON exporter
+Documentation=https://github.com/b3chain/b3chain/blob/b3chain-main/contrib/testnet/status-monitor/README.md
+After=network-online.target b3chaind-testnet.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=www-data
+ExecStart=/usr/bin/python3 /opt/b3chain-status/status-monitor.py --config /etc/b3chain-status.conf
+# Output is written atomically (mkstemp + os.replace); ensure the
+# nginx-served target directory exists and is writable by the
+# deploy:www-data group.
+UMask=0022
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
