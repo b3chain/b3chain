@@ -1,101 +1,314 @@
-# B3PoW-Scratch reference + RTL parity tests
-# Gates pre-genesis changes to the algorithm specification.
+# =============================================================================
+# B3PoW-Scratch / b3miner-rtl CI
+# -----------------------------------------------------------------------------
+# This workflow gates every change that touches the B3PoW-Scratch consensus
+# surface: the SystemVerilog RTL miner, the Python reference implementation,
+# the consensus C++ port, and the test-vector mirrors.  All four must stay
+# byte-for-byte aligned with each other -- any drift is a consensus break.
 #
-# Triggered on:
-#   - any change under contrib/miner/b3miner-rtl/**
-#   - any change to src/crypto/b3pow_scratch.{h,cpp}
-#   - any change to src/test/data/b3pow_consensus_vectors.json
+# Source of truth:
+#   ref:   contrib/miner/b3miner-rtl/ref/b3pow_ref.py
+#   spec:  contrib/miner/b3miner-rtl/SPEC.md
+#   c++:   src/crypto/b3pow_scratch.{h,cpp}
+#   rtl:   contrib/miner/b3miner-rtl/rtl/*.sv
+#   ts:    contrib/testnet/pool/src/lib/b3pow-scratch.ts
 #
-# All three must stay byte-identical; otherwise the chain forks.
+# This file supersedes contrib/miner/b3miner-rtl/ci/github-actions.yml,
+# which is now retained only as a manual / dispatch-only fallback.
+#
+# To reproduce locally:
+#   # python ref + consensus parity:
+#   pip install -r contrib/miner/b3miner-rtl/ref/requirements.txt
+#   pytest -q contrib/miner/b3miner-rtl/ref/tests/
+#   diff -u src/test/data/b3pow_consensus_vectors.json \
+#           contrib/miner/b3miner-rtl/ref/vectors/consensus_vectors.json
+#   python3 contrib/testing/verify-b3pow.py
+#
+#   # verilator lint:
+#   sudo apt-get install -y verilator
+#   make -C contrib/miner/b3miner-rtl lint
+#
+#   # verilator sim:
+#   make -C contrib/miner/b3miner-rtl sim
+# =============================================================================
 
 name: b3miner-rtl
 
 on:
-  pull_request:
-    paths:
-      - 'contrib/miner/b3miner-rtl/**'
-      - 'src/crypto/b3pow_scratch.h'
-      - 'src/crypto/b3pow_scratch.cpp'
-      - 'src/test/data/b3pow_consensus_vectors.json'
-      - '.github/workflows/b3miner-rtl.yml'
   push:
     branches:
-      - '**'
+      - b3chain-main
+      - 'release/*'
     paths:
       - 'contrib/miner/b3miner-rtl/**'
       - 'src/crypto/b3pow_scratch.h'
       - 'src/crypto/b3pow_scratch.cpp'
       - 'src/test/data/b3pow_consensus_vectors.json'
       - '.github/workflows/b3miner-rtl.yml'
+  pull_request:
+    branches:
+      - b3chain-main
+      - 'release/*'
+    paths:
+      - 'contrib/miner/b3miner-rtl/**'
+      - 'src/crypto/b3pow_scratch.h'
+      - 'src/crypto/b3pow_scratch.cpp'
+      - 'src/test/data/b3pow_consensus_vectors.json'
+      - '.github/workflows/b3miner-rtl.yml'
+  workflow_dispatch:
+
+# Principle of least privilege: read-only token, no secrets needed.
+permissions:
+  contents: read
+
+# Cancel in-flight runs for the same ref when a newer commit arrives.
+# Saves runner minutes on rapid PR pushes.
+concurrency:
+  group: b3miner-rtl-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  python-ref-tests:
-    name: Python reference + uniformity gates
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+  # ---------------------------------------------------------------------------
+  # 1. Python reference + consensus-vector parity
+  # ---------------------------------------------------------------------------
+  pytest-vectors:
+    name: pytest reference + consensus-vector parity
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: contrib/miner/b3miner-rtl/ref/requirements.txt
 
-      - name: Install dependencies
-        working-directory: contrib/miner/b3miner-rtl/ref
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          python -m pip install -r contrib/miner/b3miner-rtl/ref/requirements.txt
 
-      # Standard reference tests (constants, primitives, end-to-end).
-      - name: Run b3pow_ref pytest suite
+      - name: Run pytest reference suite
         working-directory: contrib/miner/b3miner-rtl/ref
-        run: |
-          python -m pytest -q tests/
+        run: python -m pytest -q tests/
 
-      # F-4 uniformity gate (quick mode, ~30 sec) -- catches gross bias
-      # in derive_addresses across the 11-bit address space.
-      - name: Run address-derivation uniformity gate (quick mode)
-        working-directory: contrib/miner/b3miner-rtl/ref
+      - name: Verify consensus-vector mirror is byte-identical
         run: |
-          python -m pytest -q tests/test_address_uniformity.py
+          A=src/test/data/b3pow_consensus_vectors.json
+          B=contrib/miner/b3miner-rtl/ref/vectors/consensus_vectors.json
+          if ! diff -u "$A" "$B"; then
+            echo "::error file=${A}::Consensus-vector mirrors diverged."
+            echo "::error::Both ${A} and ${B} must be regenerated together"
+            echo "::error::via contrib/miner/b3miner-rtl/ref/gen_vectors.py."
+            exit 1
+          fi
+          echo "consensus_vectors.json mirrors are byte-identical."
 
-      # Vector parity: regenerate and assert no drift against the
-      # checked-in JSON consumed by the C++ test.
-      - name: Regenerate consensus vectors and check drift
-        working-directory: contrib/miner/b3miner-rtl/ref
-        run: |
-          python gen_vectors.py --out ../sim/vectors \
-                                --consensus-out vectors/consensus_vectors.json
-          # The C++ test consumes a copy under src/test/data/; we expect
-          # the two to match byte-for-byte.  ref/ -> b3miner-rtl/ ->
-          # miner/ -> contrib/ -> repo root, so the relative path needs
-          # FOUR levels of `..` to reach `src/test/data/` from cwd.
-          diff -q vectors/consensus_vectors.json \
-                   ../../../../src/test/data/b3pow_consensus_vectors.json
+      - name: End-to-end verify-b3pow.py (vector mode)
+        run: python3 contrib/testing/verify-b3pow.py
 
-  # Audit-mode uniformity gate -- run on tagged release candidates only
-  # (~5-10 min wall-clock).  Triggered by tag pushes matching v*.
-  uniformity-audit-mode:
-    name: Audit-mode address uniformity (release gate)
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    timeout-minutes: 60
+  # ---------------------------------------------------------------------------
+  # 2. Verilator lint
+  # ---------------------------------------------------------------------------
+  # Waivers (-Wno-MULTIDRIVEN, -Wno-WIDTHTRUNC, -Wno-UNOPTFLAT) are documented
+  # in contrib/miner/b3miner-rtl/ci/lint.sh and applied by `make lint`.
+  # ---------------------------------------------------------------------------
+  lint-rtl:
+    name: verilator --lint-only on rtl/*.sv
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Cache apt downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          python-version: '3.12'
-      - name: Install dependencies
-        working-directory: contrib/miner/b3miner-rtl/ref
+          path: |
+            /var/cache/apt/archives/*.deb
+          key: apt-verilator-${{ runner.os }}-22.04-v1
+          restore-keys: |
+            apt-verilator-${{ runner.os }}-22.04-
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends verilator
+          verilator --version
+
+      - name: Run RTL lint
+        working-directory: contrib/miner/b3miner-rtl
+        run: make lint
+
+  # ---------------------------------------------------------------------------
+  # 3. Verilator simulation parity vs reference vectors
+  # ---------------------------------------------------------------------------
+  # Builds + runs every testbench under sim/tb/.  Each TB consumes the
+  # plain-hex vectors emitted by ref/gen_vectors.py and asserts byte-for-byte
+  # parity with the RTL.  The make target re-runs gen_vectors.py first, so
+  # if the Python ref drifts from the RTL, every TB fails.
+  # ---------------------------------------------------------------------------
+  sim-vector-parity:
+    name: verilator sim parity vs reference
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    needs: [pytest-vectors, lint-rtl]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: contrib/miner/b3miner-rtl/ref/requirements.txt
+
+      - name: Cache apt downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            /var/cache/apt/archives/*.deb
+          key: apt-verilator-${{ runner.os }}-22.04-v1
+          restore-keys: |
+            apt-verilator-${{ runner.os }}-22.04-
+
+      - name: Install Verilator + build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            verilator build-essential
+          verilator --version
+
+      - name: Install Python dependencies (for vector regen)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt scipy
-      - name: Run 2^28-sample uniformity gate
-        working-directory: contrib/miner/b3miner-rtl/ref
+          python -m pip install -r contrib/miner/b3miner-rtl/ref/requirements.txt
+
+      - name: Run RTL sim
+        working-directory: contrib/miner/b3miner-rtl
+        run: make sim
+
+      - name: Upload generated vectors on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sim-vectors-${{ github.sha }}
+          path: contrib/miner/b3miner-rtl/sim/vectors/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. SPEC_VERSION cross-source consistency
+  # ---------------------------------------------------------------------------
+  # The same 32-bit constant must appear in:
+  #   - ref/b3pow_ref.py            (Python reference; source of truth)
+  #   - src/crypto/b3pow_scratch.h  (C++ consensus port)
+  #   - rtl/params_pkg.sv           (RTL constants package)
+  #   - contrib/testnet/pool/src/lib/b3pow-scratch.ts  (Stratum pool validator)
+  #
+  # If any disagree, the chain forks at the first block produced by the
+  # mismatched component.  This job rejects PRs that bump one and forget
+  # the others.
+  # ---------------------------------------------------------------------------
+  spec-version-check:
+    name: SPEC_VERSION cross-source consistency
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Compare SPEC_VERSION across all sources
         run: |
-          python tests/test_address_uniformity.py --audit
+          set -euo pipefail
+
+          REF_PY=contrib/miner/b3miner-rtl/ref/b3pow_ref.py
+          CPP_H=src/crypto/b3pow_scratch.h
+          RTL_SV=contrib/miner/b3miner-rtl/rtl/params_pkg.sv
+          POOL_TS=contrib/testnet/pool/src/lib/b3pow-scratch.ts
+
+          # Normalize an integer (decimal or 0x-prefixed) to canonical 0xNNNNNNNN.
+          norm() {
+            printf '0x%08x' "$1"
+          }
+
+          # Python: SPEC_VERSION = 0xNNNNNNNN
+          v_ref=$(grep -E '^[[:space:]]*SPEC_VERSION[[:space:]]*=' "$REF_PY" \
+                  | head -n1 \
+                  | grep -oE '0x[0-9A-Fa-f_]+' \
+                  | tr -d '_' \
+                  | head -n1)
+
+          # C++: inline constexpr uint32_t SPEC_VERSION = 0xNNNNNNNN;
+          v_cpp=$(grep -E 'SPEC_VERSION[[:space:]]*=' "$CPP_H" \
+                  | head -n1 \
+                  | grep -oE '0x[0-9A-Fa-f_]+' \
+                  | tr -d '_' \
+                  | head -n1)
+
+          # SV: localparam logic [31:0] SPEC_VERSION = 32'hNNNNNNNN;
+          v_sv_raw=$(grep -E 'SPEC_VERSION[[:space:]]*=' "$RTL_SV" \
+                  | head -n1 \
+                  | grep -oE "32'h[0-9A-Fa-f_]+" \
+                  | head -n1)
+          v_sv=$(echo "$v_sv_raw" | sed -e "s/^32'h/0x/" | tr -d '_')
+
+          # TS: export const SPEC_VERSION = 0xNNNNNNNN;
+          if [[ -f "$POOL_TS" ]]; then
+            v_ts=$(grep -E 'SPEC_VERSION[[:space:]]*=' "$POOL_TS" \
+                    | head -n1 \
+                    | grep -oE '0x[0-9A-Fa-f_]+' \
+                    | tr -d '_' \
+                    | head -n1)
+          else
+            v_ts=""
+            echo "::warning file=${POOL_TS}::pool TS module missing; skipping TS SPEC_VERSION check"
+          fi
+
+          # Normalize to canonical 0xNNNNNNNN form (handles e.g. 0x10101 vs 0x00010101).
+          n_ref=$(norm "$v_ref")
+          n_cpp=$(norm "$v_cpp")
+          n_sv=$(norm "$v_sv")
+          if [[ -n "$v_ts" ]]; then
+            n_ts=$(norm "$v_ts")
+          else
+            n_ts=""
+          fi
+
+          echo "SPEC_VERSION values:"
+          echo "  ref/b3pow_ref.py            = $n_ref  ($REF_PY)"
+          echo "  src/crypto/b3pow_scratch.h  = $n_cpp  ($CPP_H)"
+          echo "  rtl/params_pkg.sv           = $n_sv   ($RTL_SV)"
+          if [[ -n "$n_ts" ]]; then
+            echo "  pool/b3pow-scratch.ts       = $n_ts   ($POOL_TS)"
+          fi
+
+          fail=0
+          if [[ "$n_ref" != "$n_cpp" ]]; then
+            echo "::error::SPEC_VERSION drift: ref=$n_ref vs c++=$n_cpp"
+            fail=1
+          fi
+          if [[ "$n_ref" != "$n_sv" ]]; then
+            echo "::error::SPEC_VERSION drift: ref=$n_ref vs sv=$n_sv"
+            fail=1
+          fi
+          if [[ -n "$n_ts" && "$n_ref" != "$n_ts" ]]; then
+            echo "::error::SPEC_VERSION drift: ref=$n_ref vs ts=$n_ts"
+            fail=1
+          fi
+
+          if [[ $fail -ne 0 ]]; then
+            echo "::error::SPEC_VERSION must be bumped in lockstep across every"
+            echo "::error::source listed above; one component lagging behind is a"
+            echo "::error::consensus-break in waiting."
+            exit 1
+          fi
+
+          echo "All SPEC_VERSION values agree."

@@ -1,5 +1,7 @@
 # b3miner-rtl
 
+[![rtl ci](https://github.com/b3chain/b3chain/actions/workflows/b3miner-rtl.yml/badge.svg?branch=b3chain-main)](https://github.com/b3chain/b3chain/actions/workflows/b3miner-rtl.yml)
+
 FPGA RTL tree for the **B3Miner-1**, the reference hardware miner for
 B3PoW-Scratch v1.1. B3Miner-1 is engineered to be the most economical
 production miner for this algorithm at launch — a custom B3PoW ASIC
@@ -101,6 +103,56 @@ b3miner-rtl/
 | HW-in-loop bring-up | Open | requires Avnet AES-XCKU5P eval board |
 
 ---
+
+## CI
+
+The active CI workflow for this subtree lives at the repo top level:
+
+[`.github/workflows/b3miner-rtl.yml`](../../../.github/workflows/b3miner-rtl.yml)
+
+It auto-runs on every `push` to `b3chain-main` (and any `release/*`
+branch) and on every `pull_request` targeting those branches whose
+diff touches **any** of:
+
+- `contrib/miner/b3miner-rtl/**`
+- `src/crypto/b3pow_scratch.{h,cpp}`
+- `src/test/data/b3pow_consensus_vectors.json`
+- the workflow file itself
+
+Four jobs gate the merge:
+
+| Job | What it checks |
+|---|---|
+| `pytest-vectors` | `ref/tests/` pytest suite + the `consensus_vectors.json` mirror at `src/test/data/` is byte-identical to the one at `ref/vectors/` + `contrib/testing/verify-b3pow.py` |
+| `lint-rtl` | `verilator --lint-only -Wall` over every `rtl/*.sv` file via `make lint` |
+| `sim-vector-parity` | Builds + runs every Verilator TB under `sim/tb/` against the regenerated reference vectors via `make sim` |
+| `spec-version-check` | `SPEC_VERSION` agrees byte-for-byte across `ref/b3pow_ref.py`, `src/crypto/b3pow_scratch.h`, `rtl/params_pkg.sv`, and `contrib/testnet/pool/src/lib/b3pow-scratch.ts` |
+
+To reproduce each gate locally from this directory:
+
+```
+# pytest reference suite
+pip install -r ref/requirements.txt
+pytest -q ref/tests/
+
+# consensus-vector mirror parity
+diff -u ../../../src/test/data/b3pow_consensus_vectors.json \
+        ref/vectors/consensus_vectors.json
+
+# end-to-end vector verifier
+python3 ../../testing/verify-b3pow.py
+
+# verilator lint (apt install verilator first)
+make lint
+
+# verilator sim parity
+make sim
+```
+
+The legacy per-subtree workflow at
+[`ci/github-actions.yml`](ci/github-actions.yml) is preserved for
+external mirrors but is now `workflow_dispatch:`-only and never fires
+automatically. Add new gates to the top-level workflow, not there.
 
 ## See also
 

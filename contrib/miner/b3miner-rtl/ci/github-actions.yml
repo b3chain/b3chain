@@ -1,20 +1,23 @@
-# ============================================================================
-# .github/workflows/b3miner-rtl.yml  (this file is copied or symlinked there)
+# =============================================================================
+# LEGACY workflow -- kept for archival reference only.
 #
-# Verilator lint + sim on every PR.  Vivado synth runs on a self-hosted
-# runner labelled `vivado` (which has Vivado ML Standard installed).
-# ============================================================================
-name: b3miner-rtl
+# The active CI for this subtree lives at:
+#
+#     .github/workflows/b3miner-rtl.yml
+#
+# That workflow gates push + pull_request on b3chain-main / release/*
+# branches and is the only one GitHub Actions auto-runs.  This file is
+# now wired to `workflow_dispatch:` only so it never fires automatically;
+# it is preserved so external mirrors / forks that historically copied
+# this file into their own .github/workflows/ keep working until they
+# migrate to the new layout.
+#
+# DO NOT add new gates here.  Add them to the main workflow file above.
+# =============================================================================
+name: b3miner-rtl (legacy, manual only)
 
 on:
-  push:
-    branches: [b3chain-main]
-    paths:
-      - 'contrib/miner/b3miner-rtl/**'
-      - '.github/workflows/b3miner-rtl.yml'
-  pull_request:
-    paths:
-      - 'contrib/miner/b3miner-rtl/**'
+  workflow_dispatch:
 
 defaults:
   run:
@@ -79,7 +82,7 @@ jobs:
     name: Vivado synth + impl
     runs-on: [self-hosted, vivado]
     needs: sim
-    if: github.event_name == 'push' && github.ref == 'refs/heads/b3chain-main'
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Synth + impl + bin
