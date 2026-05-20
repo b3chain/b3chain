@@ -31,7 +31,7 @@ import time
 import unittest
 
 try:
-    import blake3 as _blake3
+    import blake3 as _blake3  # type: ignore[import-not-found]
     def _blake3_hash(data):
         return _blake3.blake3(data).digest()
 except ImportError:
@@ -50,7 +50,7 @@ _B3POW_REF_DIR = os.path.normpath(os.path.join(
 if _B3POW_REF_DIR not in sys.path:
     sys.path.insert(0, _B3POW_REF_DIR)
 try:
-    import b3pow_ref as _b3pow_ref
+    import b3pow_ref as _b3pow_ref  # type: ignore[import-not-found]
 except ImportError as _e:
     raise ImportError(
         "Failed to import b3pow_ref from "
@@ -61,7 +61,7 @@ except ImportError as _e:
 # Per-process pad cache keyed by (prev_block_hash_bytes).  Each pad is
 # 1 MB, so we keep at most a handful around (matches the C++ node's
 # Consensus::Params::b3pow_cache_depth default of 4).
-_B3POW_PAD_CACHE = {}
+_B3POW_PAD_CACHE: dict = {}
 _B3POW_PAD_CACHE_DEPTH = 4
 
 def _b3pow_get_pad(prev_block_hash_bytes):

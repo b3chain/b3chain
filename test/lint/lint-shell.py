@@ -28,6 +28,12 @@ DISABLED = [
     'SC2164', # cd without `|| exit`
     'SC1090', # shellcheck can't follow non-constant source
     'SC1091', # sourced file does not exist (build-time generated)
+    # b3chain audit/operator scripts source common helper libraries
+    # via `. lib/audit_common.sh`, which expose helper functions
+    # (e.g. `audit_step_log`, `audit_log_pass`) that callers may use
+    # but the dispatcher script itself doesn't always invoke directly.
+    # SC2329 ("This function is never invoked") is noise on those.
+    'SC2329',
 ]
 
 def check_shellcheck_install():
