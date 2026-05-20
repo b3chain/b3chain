@@ -163,8 +163,16 @@ FUZZ_TARGET(b3pow_random_header, .init = initialize_pow)
     //    are well-formed -- only the hash matters.
     std::array<uint8_t, b3pow::HEADER_BYTES> raw{};
     const auto sample = fdp.ConsumeBytes<uint8_t>(b3pow::HEADER_BYTES);
-    std::memcpy(raw.data(), sample.data(),
-                std::min(sample.size(), raw.size()));
+    // Guard against empty inputs: `std::vector::data()` returns a
+    // null pointer when the vector is empty, and memcpy with a null
+    // source pointer is UB even when n==0 (UBSan flags it as
+    // "null pointer passed as argument 2, which is declared to never
+    // be null").  No-op the copy in that case; `raw` is already
+    // zero-initialised above.
+    if (!sample.empty()) {
+        std::memcpy(raw.data(), sample.data(),
+                    std::min(sample.size(), raw.size()));
+    }
 
     // 2) Random prev_block_hash, 32 bytes (drained from fuzz input).
     uint256 prev_hash;

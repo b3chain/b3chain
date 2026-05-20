@@ -107,13 +107,27 @@ target_link_libraries(bitcoinkernel
   PRIVATE
     core_interface
     secp256k1_objs
+    # b3chain: emergency_checkpoints.cpp parses operator-supplied
+    # JSON via UniValue, so the kernel needs to link against
+    # univalue.  No upstream Bitcoin Core kernel source uses
+    # UniValue, so this is purely a b3chain addition.
+    univalue
     $<$<PLATFORM_ID:Windows>:bcrypt>
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
   PUBLIC
     Boost::headers
 )
 
-target_include_directories(bitcoinkernel PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/leveldb/include>)
+target_include_directories(bitcoinkernel PRIVATE
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/leveldb/include>
+  # b3chain: see univalue link above; the header lives next to
+  # the generated target_include_directories of the univalue target,
+  # but we add the explicit BUILD_INTERFACE path here to avoid relying
+  # on transitive include propagation through `univalue` (the
+  # univalue target itself only exports its include dir as PUBLIC,
+  # which is fine, but we duplicate the path for clarity).
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/univalue/include>
+)
 
 # libbitcoinkernel requires default symbol visibility, explicitly
 # specify that here so that things still work even when user
