@@ -22,11 +22,17 @@ if ! command -v "$VERILATOR" >/dev/null 2>&1; then
     exit 127
 fi
 
-# Newest unified-lint mode (Verilator 5.x).  Treat warnings as errors except
-# the ones we accept by design:
+# Newest unified-lint mode.  Treat warnings as errors except the ones we
+# accept by design.  We use the broad `-Wno-WIDTH` form rather than the
+# narrower `-Wno-WIDTHTRUNC` because Verilator 4.x (shipped on Ubuntu
+# 22.04, where the GitHub Actions `ubuntu-22.04` runner installs from
+# apt) does not recognise `-Wno-WIDTHTRUNC` and aborts with
+# `%Error: Unknown warning specified: -Wno-WIDTHTRUNC`.  Verilator 5.x
+# accepts `-Wno-WIDTH` too -- it implies WIDTHTRUNC + WIDTHEXPAND --
+# so the broader form is forward-compatible.
 WAIVERS=(
     -Wno-MULTIDRIVEN   # FF reset in async-reset clause is intentional
-    -Wno-WIDTHTRUNC    # explicit narrowing in some places (commented in RTL)
+    -Wno-WIDTH         # explicit narrowing in some places (commented in RTL)
     -Wno-UNOPTFLAT     # combinational state-machine feedback loops
 )
 
