@@ -21,7 +21,11 @@
 #include <chrono>
 #include <cstdint>
 
-CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams);
+// `GetBlockSubsidy` is declared in <validation.h> (already included
+// above).  We deliberately do not forward-declare it again here:
+// `-Werror=redundant-decls` (32-bit ARM, several other CI builds)
+// rejects a second declaration of a function already visible in the
+// translation unit's preprocessed source.
 
 BOOST_FIXTURE_TEST_SUITE(consensus_invariants_tests, BasicTestingSetup)
 

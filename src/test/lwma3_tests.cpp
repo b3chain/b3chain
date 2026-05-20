@@ -50,15 +50,15 @@ double TargetRatio(uint32_t a, uint32_t b)
     tb.SetCompact(b);
     if (tb == 0) return 0.0;
     // Avoid floating-point overflow on huge 256-bit targets: shift both
-    // sides down by enough bits to fit in a uint64_t.
-    int shift = 0;
+    // sides down by enough bits to fit in a uint64_t.  The ratio is
+    // invariant under simultaneous right-shifts of numerator and
+    // denominator, so we don't need to remember the shift count.
     arith_uint256 max_u64 = arith_uint256(std::numeric_limits<uint64_t>::max());
     arith_uint256 ta_w = ta;
     arith_uint256 tb_w = tb;
     while (ta_w > max_u64 || tb_w > max_u64) {
         ta_w >>= 1;
         tb_w >>= 1;
-        ++shift;
     }
     return static_cast<double>(ta_w.GetLow64()) / static_cast<double>(tb_w.GetLow64());
 }
