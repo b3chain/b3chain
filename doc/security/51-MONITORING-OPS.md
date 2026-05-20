@@ -309,11 +309,11 @@ Detector armed-status on seed1 (as of refresh):
 | 6 | `finalized_drift_source_flip` | **dormant** | `getfinalizedblockhash` missing on pre-v1.1.3 `b3chaind`; auto-arms once b3chaind is upgraded + watcher restarted |
 | 7 | `finalized_drift_operator_change` | **dormant** | same |
 | 8 | `finalized_drift_horizon_stall` | **dormant** | same |
-| 9 | `deep_reorg_log` | **silenced** | `deploy` user cannot read `/var/lib/b3chain/.b3chain/testnet3/debug.log` (0600 b3chain:b3chain); see "Log-tail perm gap" caveat |
-| 10 | `pow_budget_storm` | **silenced** | same |
+| 9 | `deep_reorg_log` | armed (since 2026-05-20 01:04 UTC) | log-tail perm gap fixed via `usermod -aG b3chain deploy` + posix ACL on `testnet3/` (see Known operational caveats below) |
+| 10 | `pow_budget_storm` | armed (since 2026-05-20 01:04 UTC) | same |
 | - | `rpc_down` | armed | housekeeping |
 
-5 of 10 detectors are live polling testnet; the other 5 require either a `b3chaind` upgrade or a one-time perm change to activate.  The watcher's startup banner in `journalctl -u b3chain-51watch` enumerates the current armed-set on every restart, so the operator always has a ground-truth view.
+7 of 10 detectors are live polling testnet; the remaining 3 (the M-14 `finalized_drift_*` family) require a `b3chaind` upgrade to v1.1.3+ to activate.  The watcher's startup banner in `journalctl -u b3chain-51watch` enumerates the current armed-set on every restart, so the operator always has a ground-truth view (look for `log_tailer=on` after the perm-gap fix).
 
 Notes for seed1:
 
@@ -339,25 +339,31 @@ Notes for seed1:
 
 ### Known operational caveats
 
-- **Log-tail perm gap** (silences `deep_reorg_log` + `pow_budget_storm`
-  on seed1).  `b3chaind` writes `debug.log` as `b3chain:b3chain 0600`,
-  but the watcher runs as `deploy`, which is not in the `b3chain`
-  group.  The unit already passes `--debug-log
-  /var/lib/b3chain/.b3chain/testnet3/debug.log` so the watcher tries
-  the right path; the `_LogTailer` catches `PermissionError` and logs
-  a single stderr warning ("log tailer disabled: ... Permission
-  denied"), then continues with the 5 RPC detectors armed.  Fix
-  (one-time, no service-restart needed beyond the watcher):
+- **Log-tail perm gap — RESOLVED on seed1 (2026-05-20)** (kept here as
+  the canonical first-time-install recipe for future seed boxes).
+  `b3chaind` writes `debug.log` as `b3chain:b3chain 0600`, so the
+  `deploy`-run watcher needs explicit access.  The recipe below
+  joins `deploy` to the `b3chain` group, installs `acl` if missing
+  (Ubuntu 22.04 doesn't ship it by default), and adds POSIX ACL
+  entries so the rotated `debug.log` keeps the group-read bit.
+  One-time install, no `b3chaind` restart needed:
   ```sh
-  sudo usermod -aG b3chain deploy            # deploy joins b3chain group
+  sudo apt-get install -y acl                # Ubuntu 22.04 omits acl by default
+  sudo usermod -aG b3chain deploy
+  sudo setfacl -m g:b3chain:rX /var/lib/b3chain
   sudo setfacl -m g:b3chain:rX /var/lib/b3chain/.b3chain
   sudo setfacl -m g:b3chain:rX /var/lib/b3chain/.b3chain/testnet3
   sudo setfacl -m g:b3chain:r  /var/lib/b3chain/.b3chain/testnet3/debug.log
   sudo setfacl -d -m g:b3chain:r /var/lib/b3chain/.b3chain/testnet3   # inherit on rotation
   sudo systemctl restart b3chain-51watch.service                       # picks up new group
   ```
+  Acceptance test:
+  ```sh
+  sudo -u deploy test -r /var/lib/b3chain/.b3chain/testnet3/debug.log && echo OK
+  sudo journalctl -u b3chain-51watch -n 5 | grep -q 'log tailer attached' && echo TAILER_OK
+  ```
   The watcher's hardening directive `ReadOnlyPaths=/var/lib/b3chain/.b3chain`
-  already permits the systemd-side read; only the Unix DAC perms are blocking.
+  already permits the systemd-side read; only the Unix DAC perms were blocking.
 - **rpcpassword visible in `/proc/<pid>/cmdline`**: systemd expands
   `${RPCPASSWORD}` from `EnvironmentFile=` into the `ExecStart=`
   command line before `exec(2)`, so the password is visible via `ps
