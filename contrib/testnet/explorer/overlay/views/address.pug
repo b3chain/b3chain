@@ -51,7 +51,7 @@ block content
 			//- Fun / miner-payout alert (preserves upstream behavior).
 			if (payoutAddressForMiner)
 				+funAlert
-					span This looks like a miner payout address for 
+					span This looks like a miner payout address for
 					span.fw-bold #{payoutAddressForMiner.name}
 			else if (global.specialAddresses && global.specialAddresses[address] && global.specialAddresses[address].type == "fun")
 				- var saInfo = global.specialAddresses[address].addressInfo;

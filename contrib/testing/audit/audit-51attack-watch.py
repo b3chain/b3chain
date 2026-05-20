@@ -30,11 +30,9 @@ specific failure mode where logrotate would silently drop events.
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import sys
 import tempfile
-import time
 from collections import deque
 from pathlib import Path
 

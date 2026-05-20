@@ -196,7 +196,7 @@ def test_live_blocks(rpc_port: int) -> None:
         ]
         for cp in cookie_paths:
             if os.path.isfile(cp):
-                cred = open(cp).read().strip()
+                cred = open(cp, encoding="utf-8").read().strip()
                 req.add_header(
                     "Authorization",
                     "Basic " + base64.b64encode(cred.encode()).decode(),
@@ -295,7 +295,7 @@ def main() -> None:
     if FAIL:
         print(f" \033[31m{FAIL} test(s) failed\033[0m")
         sys.exit(1)
-    print(f" \033[32mAll tests passed!\033[0m")
+    print(" \033[32mAll tests passed!\033[0m")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Shared bash helpers for B3Chain Phase 11 audit shell scripts.
 # Source from another script:
 #     source "$(dirname "$0")/lib/audit_common.sh"
 
+export LC_ALL=C
 if [ -t 1 ] && [ -z "$NO_COLOR" ]; then
     AUDIT_RED='\033[0;31m'; AUDIT_GREEN='\033[0;32m'
     AUDIT_YELLOW='\033[0;33m'; AUDIT_BOLD='\033[1m'; AUDIT_DIM='\033[2m'

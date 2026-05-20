@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Deque, Dict, List, Optional
+from typing import Deque, List, Optional
 
 from PyQt6.QtCore import (
     QObject, QProcess, QProcessEnvironment, Qt, QTimer,
@@ -36,7 +36,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QColor, QFont, QTextCursor
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
+    QApplication, QComboBox, QFileDialog, QFrame,
     QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QSpinBox, QSplitter, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
@@ -491,18 +491,18 @@ def _save_session(out_dir: str, runner: MiningRunner,
         shutil.copyfile(runner.jsonl_path,
                         os.path.join(out_dir, "shares.jsonl"))
     else:
-        open(os.path.join(out_dir, "shares.jsonl"), "w").close()
+        open(os.path.join(out_dir, "shares.jsonl"), "w", encoding="utf-8").close()
 
     # 3. session-summary.json
     summary = _build_summary(session)
-    with open(os.path.join(out_dir, "session-summary.json"),
-              "w", encoding="utf-8") as f:
+    summary_json_path = os.path.join(out_dir, "session-summary.json")
+    with open(summary_json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
     # 4. session-summary.md
     md = _render_markdown(summary, session)
-    with open(os.path.join(out_dir, "session-summary.md"),
-              "w", encoding="utf-8") as f:
+    summary_md_path = os.path.join(out_dir, "session-summary.md")
+    with open(summary_md_path, "w", encoding="utf-8") as f:
         f.write(md)
 
 
@@ -575,7 +575,7 @@ def _render_markdown(summary: dict, session: MiningSession) -> str:
         out.append("")
         out.append(f"- Seq: {last['seq']}")
         out.append(f"- Status: {'ACCEPTED' if last['accepted'] else 'REJECTED'}"
-                   + (f"  (block!)" if last.get('is_block') else ""))
+                   + ("  (block!)" if last.get('is_block') else ""))
         out.append(f"- Job: `{last['job_id']}`")
         out.append(f"- ntime: {last['ntime']}")
         out.append(f"- nonce: 0x{last['nonce']:08x}")
@@ -587,7 +587,7 @@ def _render_markdown(summary: dict, session: MiningSession) -> str:
         out.append("")
 
     if session.last_disconnect_reason:
-        out.append(f"## Last disconnect")
+        out.append("## Last disconnect")
         out.append("")
         out.append(f"- Reason: {session.last_disconnect_reason}")
         out.append("")

@@ -59,7 +59,6 @@ class ReorgDepthCapTest(BitcoinTestFramework):
         self.sync_blocks()
         assert_equal(node_a.getblockcount(), 10)
         assert_equal(node_b.getblockcount(), 10)
-        common_tip = node_a.getbestblockhash()
 
         self.log.info("Stage 3: disconnect; each node extends in private")
         self.disconnect_nodes(0, 1)

@@ -55,7 +55,7 @@ from tests.mining_dashboard import (  # noqa: E402
     MiningConfig, MiningDashboard, MiningRunner,
 )
 from tests.mining_parsers import (  # noqa: E402
-    JSONLTail, ProgressEvent, ShareEvent, parse_jsonl_line,
+    JSONLTail, ProgressEvent, ShareEvent,
 )
 
 

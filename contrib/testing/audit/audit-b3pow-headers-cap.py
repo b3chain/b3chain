@@ -41,7 +41,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 
-from audit_common import AuditResult, repo_root  # type: ignore
+from audit_common import AuditResult, repo_root  # type: ignore # noqa: E402
 
 
 def static_constant_defined(r: AuditResult) -> tuple[int | None, str]:

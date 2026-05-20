@@ -82,7 +82,6 @@ Common flags:
 """
 
 import argparse
-import base64
 import dataclasses
 import datetime as _dt
 import http.client
@@ -497,7 +496,7 @@ def read_cookie(datadir: str) -> tuple:
         else:
             return None, None
 
-    with open(cookie_path, "r") as f:
+    with open(cookie_path, "r", encoding="utf-8") as f:
         cookie = f.read().strip()
     user, password = cookie.split(":", 1)
     return user, password
@@ -1423,12 +1422,12 @@ def _print_share_dump_pre(s: Share) -> None:
     print(f"  coinbase_txid (BE)  : {cb_txid_be}")
     print(f"  merkle_root  (BE)   : {merkle_be}")
     print(f"  header (80 B)       : {ver} {prev} {merkle} {nt} {nb} {nn}")
-    print(f"                        \\--ver--/\\------------- prev (LE) -------------/"
-          f"\\------------ merkle (LE) ------------/\\-ntime-/\\-bits-/\\-nonce-/")
+    print("                        \\--ver--/\\------------- prev (LE) -------------/"
+          "\\------------ merkle (LE) ------------/\\-ntime-/\\-bits-/\\-nonce-/")
     print(f"  PoW hash (LE)       : {s.pow_le.hex()}")
     print(f"  PoW hash (BE)       : {pow_be}")
     print(f"  block_hash (BE)     : {block_be}")
-    print(f"                        (SHA256d, identity hash for explorer)")
+    print("                        (SHA256d, identity hash for explorer)")
     print(f"  share_target  (BE)  : {share_tgt_be}")
     print(f"  share_difficulty    : {s.share_difficulty:.6f}")
     print(f"  network_target(BE)  : {net_tgt_be}")
@@ -1436,7 +1435,7 @@ def _print_share_dump_pre(s: Share) -> None:
     print(f"  pow_int / share_tgt : {ratio_share:.6f}  (lower = better, must be <= 1)")
     print(f"  pow_int / net_tgt   : {ratio_block:.6g}")
     print(f"  is_block            : {str(s.is_block).lower()}")
-    print(f"  ----- mining.submit -----")
+    print("  ----- mining.submit -----")
     sys.stdout.flush()
 
 
@@ -1451,14 +1450,14 @@ def _print_share_dump_post(s: Share, accepted: bool, error: Any,
         print(f"  <- (no response)     rtt={rtt_ms:.1f} ms  error={error!r}")
     if accepted:
         if s.is_block:
-            print(f"  status              : ACCEPTED  *** BLOCK ACCEPTED ***  "
-                  f"(server validated against share + network targets)")
+            print("  status              : ACCEPTED  *** BLOCK ACCEPTED ***  "
+                  "(server validated against share + network targets)")
         else:
-            print(f"  status              : ACCEPTED  "
-                  f"(server validated against share target)")
+            print("  status              : ACCEPTED  "
+                  "(server validated against share target)")
     else:
         print(f"  status              : REJECTED  error={error!r}")
-    print(f"  ====================================================================")
+    print("  ====================================================================")
 
     pow_be = s.pow_le[::-1].hex()
     elapsed_for_job = max(time.time() - s.found_at + 1e-9, 1e-9)
@@ -1780,7 +1779,7 @@ def pool_mining_loop(args, state: 'MinerState') -> None:
         else "B3PoW-Scratch v1.1 (1 MiB pad, 8 lanes, 2048 iters)"
     )
 
-    print(f"b3chain CPU miner -- pool mode")
+    print("b3chain CPU miner -- pool mode")
     print(f"  Pool:    {args.stratum}  ({'TLS' if use_tls else 'TCP'})")
     print(f"  User:    {args.user}")
     print(f"  Threads: {args.threads}")
@@ -1987,7 +1986,7 @@ Examples:
     # Set up shared state + signal handler (used by both modes).
     state = MinerState()
 
-    def signal_handler(sig, frame):
+    def signal_handler(sig, _frame):
         print("\nStopping miner...")
         state.running = False
         state.stopping.set()
@@ -2051,7 +2050,7 @@ Examples:
         info = rpc.call("getblockchaininfo")
         chain = info.get("chain", "unknown")
         blocks = info.get("blocks", 0)
-        print(f"b3chain CPU miner")
+        print("b3chain CPU miner")
         print(f"  Chain:   {chain}")
         print(f"  Height:  {blocks}")
         print(f"  Address: {args.coinbaseaddr}")
@@ -2092,7 +2091,7 @@ Examples:
             t.join(timeout=5)
 
     elapsed = time.time() - start_time
-    print(f"\nMining summary:")
+    print("\nMining summary:")
     print(f"  Runtime:      {elapsed:.1f}s")
     print(f"  Blocks found: {state.blocks_found}")
     print(f"  Total hashes: {state.total_hashes:,}")

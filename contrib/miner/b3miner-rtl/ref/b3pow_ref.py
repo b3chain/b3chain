@@ -21,7 +21,6 @@ Dependencies: pure-Python `blake3` (PyPI).  See requirements.txt.
 """
 from __future__ import annotations
 
-import hashlib
 import struct
 from dataclasses import dataclass
 from typing import List, Tuple

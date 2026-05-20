@@ -87,8 +87,8 @@ def b3pow_hash(header_bytes, prev_block_hash_bytes):
     return _b3pow_ref.b3pow_scratch(header_bytes, prev_block_hash_bytes,
                                     pad=pad).pow_hash
 
-from test_framework.crypto.siphash import siphash256
-from test_framework.util import assert_equal
+from test_framework.crypto.siphash import siphash256  # noqa: E402
+from test_framework.util import assert_equal  # noqa: E402
 
 MAX_LOCATOR_SZ = 101
 MAX_BLOCK_WEIGHT = 4000000

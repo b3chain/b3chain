@@ -176,7 +176,8 @@ def main() -> int:
                 latest = json.loads((results_dir() / "latest.json").read_text(encoding="utf-8"))
                 child_rows = latest.get("pow-throughput-portable", {}).get("rows", [])
                 for r in child_rows:
-                    rr = dict(r); rr["algo"] = rr["algo"] + "-portable"
+                    rr = dict(r)
+                    rr["algo"] = rr["algo"] + "-portable"
                     result.add_row(**rr)
             except (FileNotFoundError, json.JSONDecodeError):
                 pass

@@ -165,7 +165,7 @@ def main():
         target = uint256_from_compact(nBits)
 
         print(f"  Merkle root: {merkle_root[::-1].hex()}")
-        print(f"  Mining...")
+        print("  Mining...")
 
         nNonce, pow_hash, identity_hash, elapsed = mine_genesis(merkle_root, nTime, nBits, target)
 

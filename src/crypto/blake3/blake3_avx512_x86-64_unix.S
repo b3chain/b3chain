@@ -2643,7 +2643,7 @@ _blake3_xof_many_avx512:
         vmovdqu XMMWORD PTR [r9+0x10],xmm1
         vmovdqu XMMWORD PTR [r9+0x20],xmm2
         vmovdqu XMMWORD PTR [r9+0x30],xmm3
-        ret    
+        ret
 .p2align 6
 2:
         push   rbp
@@ -3587,10 +3587,10 @@ _blake3_xof_many_avx512:
         test   r10,r10
         jne    2f
 9:
-        vzeroupper 
+        vzeroupper
         mov    rsp,rbp
         pop    rbp
-        ret    
+        ret
 2:
         test   r10,0x8
         je     2f

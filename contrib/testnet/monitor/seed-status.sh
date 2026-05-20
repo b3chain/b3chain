@@ -26,6 +26,7 @@
 #
 # Run from cron: every 5 minutes.
 
+export LC_ALL=C
 set -uo pipefail
 
 CFG=/etc/b3chain/seed-status.env

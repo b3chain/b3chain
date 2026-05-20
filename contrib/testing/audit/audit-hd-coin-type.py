@@ -19,7 +19,6 @@ spinning up a mainnet datadir, but the static check verifies the literal
 appears in source and the wallet code path uses it correctly.
 """
 
-import re
 import sys
 from pathlib import Path
 

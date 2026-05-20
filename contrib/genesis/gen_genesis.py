@@ -119,7 +119,6 @@ def serialize_block_header(nVersion: int, hashPrevBlock: bytes, hashMerkleRoot: 
 def mine_genesis(nVersion: int, hashPrevBlock: bytes, hashMerkleRoot: bytes,
                  nTime: int, nBits: int, target: int) -> tuple:
     """Mine the genesis block: find nNonce such that double_blake3(header) <= target."""
-    target_bytes = target.to_bytes(32, byteorder='big')
     nNonce = 0
     start = time.time()
     while nNonce < 2**32:

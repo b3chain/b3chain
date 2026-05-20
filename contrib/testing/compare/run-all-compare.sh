@@ -6,6 +6,7 @@
 # Run every empirical comparison in the BLAKE3-vs-SHA-256 suite.
 # Saves JSON to results/, prints a one-line headline per comparison.
 
+export LC_ALL=C
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

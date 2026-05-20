@@ -52,7 +52,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
 from audit_common import (  # type: ignore
-    AuditResult, RegtestNode, RpcError, ensure_wallet, BOLD, GREEN, RED, YELLOW, DIM,
+    AuditResult, RegtestNode, RpcError, ensure_wallet, BOLD, DIM,
 )
 
 

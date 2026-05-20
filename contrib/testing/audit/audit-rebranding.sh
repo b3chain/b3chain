@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) 2026 The B3Chain Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -16,6 +16,7 @@
 #     bash contrib/testing/audit/audit-rebranding.sh           # grep only
 #     RERUN_TESTS=1 bash contrib/testing/audit/audit-rebranding.sh
 
+export LC_ALL=C
 set -uo pipefail
 
 # Locate repo root

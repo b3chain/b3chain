@@ -6,6 +6,7 @@
 # always_comb/always_ff drift, and most obvious linter issues -- all before any
 # simulation tries to elaborate.  Runs in seconds; first line of defence.
 # ============================================================================
+export LC_ALL=C
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

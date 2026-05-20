@@ -50,7 +50,7 @@ def main() -> int:
         return 1
 
     if SYNC_WORD not in data[:1024]:
-        print(f"ERROR: Xilinx sync word AA 99 55 66 not found in first 1 KB.",
+        print("ERROR: Xilinx sync word AA 99 55 66 not found in first 1 KB.",
               file=sys.stderr)
         return 1
     sync_off = data[:1024].index(SYNC_WORD)

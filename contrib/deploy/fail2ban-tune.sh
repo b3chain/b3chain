@@ -14,6 +14,7 @@
 # Run without --ignore-ip to just adopt the new threshold (10 retries,
 # 5-minute ban) without whitelisting any extra IPs.
 
+export LC_ALL=C
 set -euo pipefail
 if [ "$EUID" -ne 0 ]; then echo "must run as root" >&2; exit 2; fi
 

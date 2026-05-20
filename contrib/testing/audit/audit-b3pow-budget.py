@@ -42,7 +42,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 
-from audit_common import AuditResult, repo_root  # type: ignore
+from audit_common import AuditResult, repo_root  # type: ignore # noqa: E402
 
 
 def static_consensus_param_has_budget(r: AuditResult) -> None:
@@ -69,7 +69,7 @@ def static_chainparams_sets_positive_budget(r: AuditResult) -> None:
     nonzero = [int(x) for x in assigns if int(x) > 0]
     r.expect(
         len(assigns) > 0 and len(nonzero) == len(assigns),
-        f"[H-1.1] all chain consensus blocks set b3pow_verify_budget_ms > 0",
+        "[H-1.1] all chain consensus blocks set b3pow_verify_budget_ms > 0",
         f"assignments={assigns}",
     )
 

@@ -19,6 +19,7 @@
 #
 # Run as root on seed1 AFTER b3chaind-testnet is bootstrapped and
 # answering RPC at 127.0.0.1:18534. Idempotent (safe to re-run).
+export LC_ALL=C
 set -euo pipefail
 
 # Opt-in: pass --enable to actually `systemctl enable --now` the service.

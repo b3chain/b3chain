@@ -4,6 +4,7 @@
 # blocks paying coinbase to a wallet-managed address.
 #
 # Run as root on the seed-1 host AFTER b3chaind-testnet is bootstrapped.
+export LC_ALL=C
 set -euo pipefail
 
 if [ "$EUID" -ne 0 ]; then

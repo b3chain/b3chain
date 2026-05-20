@@ -26,6 +26,7 @@
 #   1  generic failure
 #   2  prerequisite missing (run as root, etc.)
 
+export LC_ALL=C
 set -euo pipefail
 
 REF="b3chain-main"

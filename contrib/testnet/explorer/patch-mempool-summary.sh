@@ -3,6 +3,7 @@
 # install.sh sections "Rate-limiter skip list" and "Defensive patch for
 # an upstream empty-mempool crash") to a deployed explorer without a
 # full reinstall. Idempotent.
+export LC_ALL=C
 set -euo pipefail
 
 APPJS=/var/lib/b3chain-explorer/node_modules/btc-rpc-explorer/app.js

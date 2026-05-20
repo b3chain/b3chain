@@ -3,6 +3,7 @@
 # ci/sim.sh -- run every testbench under Verilator.  Each TB returns 0 on
 # success, !=0 on failure.
 # ============================================================================
+export LC_ALL=C
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

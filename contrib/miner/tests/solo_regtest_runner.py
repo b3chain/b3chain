@@ -16,7 +16,6 @@ exits 0 on success, non-zero otherwise. Stdout is the streamable log.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import socket
@@ -109,7 +108,7 @@ def run_solo_regtest(emit) -> Tuple[bool, str]:
     metric = ""
     ok = False
     try:
-        emit(f"  starting b3chaind...")
+        emit("  starting b3chaind...")
         daemon_proc = subprocess.Popen(
             daemon_cmd,
             stdout=subprocess.PIPE,
@@ -196,7 +195,7 @@ def run_solo_regtest(emit) -> Tuple[bool, str]:
         miner_cmd = [
             sys.executable, MINER_SCRIPT,
             "--regtest",
-            f"--rpcconnect=127.0.0.1",
+            "--rpcconnect=127.0.0.1",
             f"--rpcport={rpc_port}",
             f"--rpcuser={rpc_user}",
             f"--rpcpassword={rpc_pass}",

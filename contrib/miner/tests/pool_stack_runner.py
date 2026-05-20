@@ -30,9 +30,7 @@ This runner is opt-in: the UI gates it behind a "Include slow tests" checkbox.
 
 from __future__ import annotations
 
-import json
 import os
-import platform
 import shutil
 import socket
 import subprocess

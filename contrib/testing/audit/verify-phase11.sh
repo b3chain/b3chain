@@ -20,6 +20,7 @@
 #   B3CHAIN_SKIP_AUDITS=1            don't re-run the heavy audits (3-10)
 #   B3CHAIN_SKIP_CTEST=1             skip the C++ ctest check (11)
 
+export LC_ALL=C
 set -uo pipefail
 
 # ---------------------------------------------------------------------------

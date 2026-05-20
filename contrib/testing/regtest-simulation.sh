@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # =============================================================================
 # B3Chain Multi-Node Regtest Simulation
 # =============================================================================
@@ -9,6 +9,7 @@
 # =============================================================================
 
 # Auto-detect the build directory: prefer build/bin, fall back to build/src
+export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [ -n "$BINDIR" ]; then

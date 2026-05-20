@@ -25,7 +25,6 @@ import dataclasses
 import os
 import re
 import sys
-import time
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from . import capability_check

@@ -41,7 +41,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 
-from audit_common import (  # type: ignore
+from audit_common import (  # type: ignore # noqa: E402
     AuditResult,
     RegtestNode,
     ensure_wallet,

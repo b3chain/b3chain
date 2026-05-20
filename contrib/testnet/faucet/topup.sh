@@ -9,6 +9,7 @@
 # Configured via /etc/b3chain-faucet/topup.env. Logs to syslog AND
 # /var/log/b3chain-faucet/topup.log.
 
+export LC_ALL=C
 set -uo pipefail
 
 CFG=/etc/b3chain-faucet/topup.env

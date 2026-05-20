@@ -21,7 +21,6 @@ from __future__ import annotations
 import struct
 
 import b3pow_ref as ref
-import pytest
 from blake3 import blake3 as upstream_blake3
 
 

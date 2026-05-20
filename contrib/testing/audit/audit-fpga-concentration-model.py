@@ -35,7 +35,6 @@ Outputs:
 
 import argparse
 import csv
-import math
 import sys
 from pathlib import Path
 
@@ -159,7 +158,7 @@ def write_gini_svg(out_path: Path, series_map: dict[str, list[dict]]) -> None:
     }
 
     parts: list[str] = []
-    parts.append(f'<?xml version="1.0" encoding="UTF-8"?>')
+    parts.append('<?xml version="1.0" encoding="UTF-8"?>')
     parts.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
                  f'viewBox="0 0 {width} {height}">')
     parts.append('<style>'

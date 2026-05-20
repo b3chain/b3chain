@@ -1,10 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) 2026 The B3Chain Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
 # Run every B3Chain Phase 11 audit in sequence and print a summary table.
 
+export LC_ALL=C
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

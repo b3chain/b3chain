@@ -4,6 +4,7 @@
 # b3chaind-testnet.service running and answering RPC at 127.0.0.1:18534.
 #
 # Run as root.
+export LC_ALL=C
 set -euo pipefail
 
 if [ "$EUID" -ne 0 ]; then

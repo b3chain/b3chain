@@ -53,7 +53,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
-from audit_common import AuditResult, BOLD, DIM, GREEN, RED  # type: ignore
+from audit_common import AuditResult, BOLD, DIM  # type: ignore
 
 
 BOARD_HS_HZ           = 20_400          # B3Miner-1 KU5P hashes per second

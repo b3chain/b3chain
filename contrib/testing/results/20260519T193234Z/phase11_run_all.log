@@ -182,7 +182,7 @@ AUDIT RESULT: PASS  [W-2]
    ⓘ  chain with the most work, the public chain is reorged out and any
    ⓘ  transactions that were confirmed only on the public chain are
    ⓘ  reversed.
-   ⓘ  
+   ⓘ
    ⓘ  On regtest, "hashrate" doesn't really exist — every block is
    ⓘ  instantly mined.  We simulate hashrate dominance by simply having
    ⓘ  the attacker mine more blocks while their cluster is disconnected
@@ -236,7 +236,7 @@ AUDIT RESULT: PASS  [W-2]
    ⓘ  On a real network this requires sustained majority hashrate
    ⓘ  for the duration of the attack (~60 min for 6 confirmations on
    ⓘ  a 10-min-target chain).
-   ⓘ  
+   ⓘ
    ⓘ  DEFENCES:
    ⓘ  - Wait for more confirmations for high-value transactions.
    ⓘ  Probability of successful reorg drops exponentially with
@@ -247,7 +247,7 @@ AUDIT RESULT: PASS  [W-2]
    ⓘ  - For developers: design protocols that are reorg-aware
    ⓘ  (e.g. coinbase maturity is 100 blocks for exactly this
    ⓘ  reason).
-   ⓘ  
+   ⓘ
    ⓘ  See doc/SECURITY-AUDIT.md and the live demo page on
    ⓘ  b3chain.org/testing/51-attack.html for more details.
 

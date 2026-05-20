@@ -20,6 +20,7 @@
 #   B3CHAIN_INHERIT_QUICK=1 bash ...     # only ctest, skip functional
 #   B3CHAIN_INHERIT_LOGS=/path bash ...  # use cached logs instead of re-running
 
+export LC_ALL=C
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

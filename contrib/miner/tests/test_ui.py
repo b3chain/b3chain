@@ -40,12 +40,12 @@ try:
         QObject, QProcess, QProcessEnvironment, Qt, QThread, QTimer,
         pyqtSignal, pyqtSlot,
     )
-    from PyQt6.QtGui import QAction, QFont, QIcon, QPalette, QColor
+    from PyQt6.QtGui import QFont, QColor
     from PyQt6.QtWidgets import (
-        QApplication, QCheckBox, QFileDialog, QGridLayout, QHBoxLayout,
+        QApplication, QCheckBox, QGridLayout, QHBoxLayout,
         QHeaderView, QLabel, QMainWindow, QMessageBox, QProgressBar,
         QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
-        QTextEdit, QToolButton, QVBoxLayout, QWidget,
+        QTextEdit, QVBoxLayout, QWidget,
     )
 except ImportError as e:  # pragma: no cover -- launcher should pip-install this
     print("ERROR: PyQt6 is not installed. Did you launch via run_tests_ui.bat?",
@@ -682,12 +682,18 @@ class MainWindow(QMainWindow):
         passed = failed = skipped = errored = pending = running = 0
         total_s = 0.0
         for r in self._results.values():
-            if r.status == PASS: passed += 1
-            elif r.status == FAIL: failed += 1
-            elif r.status == SKIP: skipped += 1
-            elif r.status == ERROR: errored += 1
-            elif r.status == RUNNING: running += 1
-            else: pending += 1
+            if r.status == PASS:
+                passed += 1
+            elif r.status == FAIL:
+                failed += 1
+            elif r.status == SKIP:
+                skipped += 1
+            elif r.status == ERROR:
+                errored += 1
+            elif r.status == RUNNING:
+                running += 1
+            else:
+                pending += 1
             total_s += r.duration_s or 0.0
         if running:
             prefix = f"running ({running})"

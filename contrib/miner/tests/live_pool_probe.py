@@ -18,7 +18,7 @@ import json
 import socket
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 LIVE_HOST = "pool.b3chain.org"
 LIVE_PORT = 3333
@@ -33,7 +33,7 @@ def run_live_pool_probe(emit) -> Tuple[bool, str]:
         emit(f"  {LIVE_HOST} -> {addr}")
     except OSError as e:
         emit(f"SKIP: DNS lookup failed: {e}")
-        return False, f"skipped: DNS failed"
+        return False, "skipped: DNS failed"
 
     t0 = time.time()
     try:

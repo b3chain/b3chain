@@ -18,6 +18,15 @@ from lint_ignore_dirs import SHARED_EXCLUDED_SUBTREES
 
 
 EXCLUDED_DIRS = ["contrib/devtools/bitcoin-tidy/",
+                 # b3chain: vendored upstream BLAKE3 reference impl uses
+                 # quote-form #include "blake3.h" (sibling header within
+                 # the vendored tree), per upstream convention.
+                 "src/crypto/blake3/",
+                 # b3chain: ESP-IDF firmware project for the b3miner
+                 # reference miner.  Uses ESP-IDF's quoted #include
+                 # convention for component-local headers and is built
+                 # via idf.py, not the Bitcoin Core CMake matrix.
+                 "contrib/miner/b3miner-firmware/",
                 ] + SHARED_EXCLUDED_SUBTREES
 
 EXPECTED_BOOST_INCLUDES = [

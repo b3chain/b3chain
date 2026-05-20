@@ -30,7 +30,6 @@ CSV output: contrib/testing/audit/results/r0/cache_pinning.csv
 import argparse
 import collections
 import csv
-import os
 import re
 import sys
 from pathlib import Path

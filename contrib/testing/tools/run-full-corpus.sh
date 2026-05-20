@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) 2026 The B3Chain Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -13,6 +13,7 @@
 #   $RESULTS/<script>.log    (full stdout/stderr from each script)
 #   $RESULTS/summary.json    (one JSON object per script)
 
+export LC_ALL=C
 set -u
 
 if [ $# -lt 1 ]; then

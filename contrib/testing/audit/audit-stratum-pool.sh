@@ -19,6 +19,7 @@
 # Environment:
 #   B3CHAIN_SKIP_NODE=1   skip the Node-test based checks (P-1d, P-2c, P-3a, P-4a)
 
+export LC_ALL=C
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

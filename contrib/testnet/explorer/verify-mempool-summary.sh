@@ -3,6 +3,7 @@
 # drives in the browser. Exercises the empty-mempool path that used to
 # crash with `TypeError: Cannot set properties of undefined (setting
 # 'buckets')` before the install.sh defensive patch.
+export LC_ALL=C
 set -uo pipefail
 trap '' PIPE
 

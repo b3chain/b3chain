@@ -14,7 +14,6 @@ Provides:
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import platform
@@ -81,7 +80,8 @@ class Timer:
         self._t0 = time.perf_counter()
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, _exc_type, exc, _tb):
+        del exc
         self.elapsed = time.perf_counter() - self._t0
 
 

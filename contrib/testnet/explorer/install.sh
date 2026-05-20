@@ -6,6 +6,7 @@
 #
 # Run as root on the seed-1 host AFTER b3chaind-testnet is bootstrapped
 # and answering RPC at 127.0.0.1:18534.
+export LC_ALL=C
 set -euo pipefail
 
 if [ "$EUID" -ne 0 ]; then

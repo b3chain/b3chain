@@ -9,7 +9,6 @@ from the same data for easy email/paste.
 
 from __future__ import annotations
 
-import dataclasses
 import datetime
 import importlib.util
 import json
@@ -89,7 +88,7 @@ def build_report(
 
 def render_markdown(report: dict) -> str:
     out: List[str] = []
-    out.append(f"# b3chain CPU miner test report")
+    out.append("# b3chain CPU miner test report")
     out.append("")
     out.append(f"- **Timestamp:** {report['ts']}")
     out.append(f"- **OS:** {report['host']['os']}  ({report['host']['machine']})")
@@ -98,7 +97,7 @@ def render_markdown(report: dict) -> str:
     out.append("")
 
     s = report["summary"]
-    out.append(f"## Summary")
+    out.append("## Summary")
     out.append("")
     out.append(f"- PASS: **{s['passed']}**")
     out.append(f"- FAIL: **{s['failed']}**")

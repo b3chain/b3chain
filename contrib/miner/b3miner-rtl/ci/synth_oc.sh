@@ -8,6 +8,7 @@
 #
 # Requires Vivado on PATH.  Skips gracefully on hosts without it.
 # ============================================================================
+export LC_ALL=C
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

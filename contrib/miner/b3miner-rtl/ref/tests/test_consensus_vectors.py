@@ -27,9 +27,6 @@ from __future__ import annotations
 
 import json
 import re
-import struct
-import subprocess
-import sys
 from pathlib import Path
 
 import b3pow_ref as ref

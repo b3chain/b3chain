@@ -21,6 +21,7 @@
 #   RPC_PASSWORD=...
 #   COINBASE_ADDR=tb31q...
 
+export LC_ALL=C
 set -uo pipefail
 
 ENV_FILE=${ENV_FILE:-/etc/b3chain/miner.env}

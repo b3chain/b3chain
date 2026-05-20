@@ -19,6 +19,16 @@ HEADER_ID_PREFIX = 'BITCOIN_'
 HEADER_ID_SUFFIX = '_H'
 
 EXCLUDE_FILES_WITH_PREFIX = ['contrib/devtools/bitcoin-tidy',
+                             # b3chain: vendored upstream BLAKE3 reference
+                             # implementation (https://github.com/BLAKE3-team/BLAKE3)
+                             # uses upstream's BLAKE3_H / BLAKE3_IMPL_H guards,
+                             # not Bitcoin Core's BITCOIN_*_H convention.
+                             'src/crypto/blake3/',
+                             # b3chain: ESP-IDF firmware project for the
+                             # b3miner reference miner.  Uses `#pragma once`
+                             # per ESP-IDF convention and is built with
+                             # idf.py, not the Bitcoin Core CMake matrix.
+                             'contrib/miner/b3miner-firmware/',
                              'src/crypto/ctaes',
                              'src/tinyformat.h',
                              'src/bench/nanobench.h',

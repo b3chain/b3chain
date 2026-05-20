@@ -189,7 +189,11 @@ def main() -> int:
         with ThreadPoolExecutor(max_workers=t) as pool, Timer() as tm:
             futures = [pool.submit(measure_warm_thread, per_thread)
                        for _ in range(t)]
-            sub_walls = [f.result()[0] for f in futures]
+            # Drain wall results so the threads finish before tm.elapsed
+            # is read; we don't keep the per-thread walls because the
+            # outer Timer captures the aggregate wall time.
+            for f in futures:
+                f.result()
             sub_lats: list[float] = []
             for f in futures:
                 sub_lats.extend(f.result()[1])  # type: ignore[index]

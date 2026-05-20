@@ -33,7 +33,6 @@ functional test feature_b3pow.py exercises that path.
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import sys
@@ -42,7 +41,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 
-from audit_common import AuditResult, repo_root  # type: ignore
+from audit_common import AuditResult, repo_root  # type: ignore # noqa: E402
 
 
 def static_consensus_param_has_cache_depth(r: AuditResult) -> None:
@@ -68,7 +67,7 @@ def static_chainparams_sets_positive_depth(r: AuditResult) -> None:
     nonzero = [int(x) for x in assigns if int(x) > 0]
     r.expect(
         len(assigns) > 0 and len(nonzero) == len(assigns),
-        f"[H-1.2] every chainparams sets b3pow_cache_depth > 0",
+        "[H-1.2] every chainparams sets b3pow_cache_depth > 0",
         f"assignments={assigns}",
     )
 

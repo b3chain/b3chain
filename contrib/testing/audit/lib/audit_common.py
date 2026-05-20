@@ -198,7 +198,7 @@ class RegtestNode:
         # Capture stderr so we can show diagnostic logs when b3chaind
         # crashes during startup; pipe it into a file under the workdir.
         self._stderr_path = self.workdir / "b3chaind.stderr.log"
-        self._stderr_fh = open(self._stderr_path, "w")
+        self._stderr_fh = open(self._stderr_path, "w", encoding="utf-8")
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -215,7 +215,7 @@ class RegtestNode:
                     # Surface the last few lines of b3chaind's stderr.
                     tail = ""
                     try:
-                        with open(self._stderr_path, "r") as f:
+                        with open(self._stderr_path, "r", encoding="utf-8") as f:
                             tail = "".join(f.readlines()[-30:])
                     except Exception:
                         pass
@@ -249,7 +249,8 @@ class RegtestNode:
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, _exc_type, exc, _tb):
+        del exc
         self.cleanup()
 
 

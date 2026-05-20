@@ -57,7 +57,6 @@ class FinalizeBlockTest(BitcoinTestFramework):
         self.connect_nodes(0, 1)
         self.generatetoaddress(node_a, 10, addr_a)
         self.sync_blocks()
-        common_tip = node_a.getbestblockhash()
         assert_equal(node_a.getblockcount(), 10)
 
         # 2) finalizeblock on a known active-chain hash succeeds.

@@ -477,6 +477,11 @@ fn get_pathspecs_exclude_whitespace() -> Vec<String> {
             "src/qt/locale",
             "contrib/windeploy/win-codesign.cert",
             "doc/README_windows.txt",
+            // b3chain: matplotlib-generated bench result SVGs.  matplotlib
+            // emits trailing spaces inside SVG path data; the files are
+            // checked in artifacts, not hand-edited source.
+            "contrib/testing/bench/results/*.svg",
+            "contrib/testing/bench/results/**/*.svg",
             // Temporary excludes, or existing violations
             "contrib/init/bitcoind.openrc",
             "contrib/macdeploy/macdeployqtplus",

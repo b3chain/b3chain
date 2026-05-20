@@ -117,7 +117,7 @@ library) or `MountingHole_3mm_Pad_Via` for the GND-stitched variant.
 ### 1.5 Component placement origin
 
 Per [`../SCHEMATIC.md`](../SCHEMATIC.md) §12.2, set the **drill /
-place file origin** at the bottom-left corner (0, 0). KiCad: 
+place file origin** at the bottom-left corner (0, 0). KiCad:
 `File → Place Origin → Set Drill/Place Origin` and click on (0, 0).
 
 ### 1.6 Reserved component areas

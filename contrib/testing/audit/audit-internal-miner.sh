@@ -21,6 +21,7 @@
 #   BINDIR=/path/to/build/bin     override binary location
 #   B3CHAIN_SKIP_E2E=1            skip the live regtest end-to-end check
 
+export LC_ALL=C
 set -uo pipefail
 
 # ---------------------------------------------------------------------------

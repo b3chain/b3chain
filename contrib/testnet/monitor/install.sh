@@ -2,6 +2,7 @@
 #
 # Install the seed-status monitor cron job on the seed-1 host.
 # Run as root.
+export LC_ALL=C
 set -euo pipefail
 
 if [ "$EUID" -ne 0 ]; then

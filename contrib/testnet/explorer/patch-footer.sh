@@ -5,6 +5,7 @@
 #
 # Companion to patch-mempool-summary.sh. The same logic is folded into
 # install.sh so fresh installs get it automatically.
+export LC_ALL=C
 set -euo pipefail
 
 LAYOUT=/var/lib/b3chain-explorer/node_modules/btc-rpc-explorer/views/layout.pug

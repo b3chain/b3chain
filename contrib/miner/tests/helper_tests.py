@@ -26,7 +26,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 from typing import Callable, List, Tuple
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -127,7 +126,7 @@ def run_helper_unit_tests(emit: Callable[[str], None]) -> Tuple[bool, str]:
     try:
         m.parse_stratum_url("stratum2://x:1")
         check("parse_stratum_url rejects sv2", False, "did not raise")
-    except ValueError as e:
+    except ValueError:
         check("parse_stratum_url rejects sv2", True, "raised ValueError")
     except Exception as e:
         check("parse_stratum_url rejects sv2", False, f"wrong exc: {e}")

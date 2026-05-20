@@ -56,6 +56,28 @@ REGEXP_EXTERNAL_DEPENDENCIES_EXCLUSIONS = [
     "src/secp256k1/",
     "src/minisketch/",
     "src/tinyformat.h",
+    # b3chain: out-of-tree benchmark utilities and audit harnesses are
+    # standalone executables shipped only via contrib/.  They are not
+    # linked into bitcoind / bitcoin-qt and run with the user's locale,
+    # so locale-dependent stdlib functions (std::stoul on hex digits,
+    # std::strftime on UTC stamps) are acceptable here.
+    "contrib/testing/",
+]
+KNOWN_VIOLATIONS_EXTRA = [
+    # b3chain: hex-only stoul in a unit test that always passes a
+    # 0-9a-f string (no locale-dependent radix-10 parsing).
+    "src/test/b3pow_scratch_tests.cpp:.*stoul",
+    # b3chain: std::to_string(int) emergency-checkpoint diagnostics.
+    # The integer overload of std::to_string is independent of
+    # LC_NUMERIC (no thousands separator, no decimal point); only the
+    # floating-point overloads are locale-affected.  These are error
+    # strings, not consensus-relevant output.
+    "src/node/emergency_checkpoints.cpp:.*to_string",
+    "src/test/crypto_tests.cpp:.*to_string",
+    # b3chain: Verilator simulation harness (RTL miner project) only
+    # writes a single English diagnostic to stderr.  Not linked into
+    # bitcoind and not on a consensus path.
+    "contrib/miner/b3miner-rtl/sim/.*:.*fprintf",
 ]
 
 LOCALE_DEPENDENT_FUNCTIONS = [
@@ -230,7 +252,7 @@ def find_locale_dependent_function_uses():
 def main():
     exit_code = 0
 
-    regexp_ignore_known_violations = "|".join(KNOWN_VIOLATIONS)
+    regexp_ignore_known_violations = "|".join(KNOWN_VIOLATIONS + KNOWN_VIOLATIONS_EXTRA)
     git_grep_output = find_locale_dependent_function_uses()
 
     for locale_dependent_function in LOCALE_DEPENDENT_FUNCTIONS:

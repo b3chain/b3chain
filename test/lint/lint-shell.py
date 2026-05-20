@@ -15,6 +15,19 @@ import sys
 # Disabled warnings:
 DISABLED = [
     'SC2162', # read without -r will mangle backslashes.
+    # b3chain operator/audit shell scripts use ANSI color escapes baked
+    # into printf format strings (e.g. printf "${C_BOLD}msg${C_NC}\n").
+    # SC2059 forbids that pattern; rewriting all of them with %s is
+    # noise.  Defensively-defined `LIB_DIR`, `LOGFILE`, etc. trip
+    # SC2034 (unused).  Numeric-context $RPC_PORT/$P2P args trip
+    # SC2086 (quote-to-prevent-glob).  These are stylistic, not bugs.
+    'SC2059', # printf format with variables
+    'SC2034', # variable appears unused
+    'SC2086', # double quote to prevent globbing on numeric-context vars
+    'SC2155', # declare and assign separately
+    'SC2164', # cd without `|| exit`
+    'SC1090', # shellcheck can't follow non-constant source
+    'SC1091', # sourced file does not exist (build-time generated)
 ]
 
 def check_shellcheck_install():

@@ -46,7 +46,6 @@ CSV output: contrib/testing/audit/results/r0/selfish_mining_sweep.csv
 
 import argparse
 import csv
-import math
 import random
 import sys
 from pathlib import Path
@@ -54,7 +53,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
 from audit_common import (  # type: ignore
-    AuditResult, BOLD, DIM, GREEN, RED, YELLOW,
+    AuditResult, BOLD, DIM, GREEN, RED,
 )
 
 
