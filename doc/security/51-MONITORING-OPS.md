@@ -280,33 +280,51 @@ This section records boxes the watcher is **actually running on**, so an
 on-call operator can reach the right unit fast.  Update on every deploy
 or threshold re-tune.
 
-### seed1 (`166.88.4.250`) — installed 2026-05-20
+### seed1 (`166.88.4.250`) — installed 2026-05-20, refreshed to runbook-§0 alerting same day
 
 | Field | Value |
 |---|---|
 | Chain | `test` (testnet) |
 | b3chaind RPC | `127.0.0.1:18534`, rpcuser auth (NOT cookie) |
+| b3chaind datadir | `/var/lib/b3chain/.b3chain` (chain subdir is **`testnet3`**, Bitcoin-Core-legacy name) |
 | Watcher path | `/opt/b3chain/b3chain/contrib/monitoring/51attack-watch.py` |
 | Unit file | `/etc/systemd/system/b3chain-51watch.service` |
 | Env file (secrets) | `/etc/b3chain/51watch.env` (root:root 0600) |
 | Logrotate | `/etc/logrotate.d/b3chain-51watch` (daily, 30 rotations) |
 | JSONL alert sink | `/var/log/b3chain/51watch.jsonl` |
 | Webhook | none configured (JSONL-only) |
-| Thresholds (testnet-tuned) | `--interval 30 --dedup-window 600 --hashrate-drop 0.30` |
+| Threshold flags | `--interval 30 --dedup-window 600 --hashrate-drop 0.30 --debug-log /var/lib/b3chain/.b3chain/testnet3/debug.log` |
 | Source of truth (deploy) | `/opt/b3chain/b3chain/` (`git remote b3chain`, branch `b3chain-main`) |
 | Updated via | `cd /opt/b3chain/b3chain && git fetch b3chain && git reset --hard b3chain/b3chain-main && sudo systemctl restart b3chain-51watch.service` |
+
+Detector armed-status on seed1 (as of refresh):
+
+| # | Detector | Status | Why |
+|---|---|---|---|
+| 1 | `deep_fork` | armed | RPC, no prerequisite |
+| 2 | `long_reorg` | armed | RPC, no prerequisite |
+| 3 | `hashrate_collapse` | armed | RPC, no prerequisite |
+| 4 | `hashrate_sustained_drop` | armed | RPC, no prerequisite |
+| 5 | `near_reorg_cap` | armed | RPC, no prerequisite |
+| 6 | `finalized_drift_source_flip` | **dormant** | `getfinalizedblockhash` missing on pre-v1.1.3 `b3chaind`; auto-arms once b3chaind is upgraded + watcher restarted |
+| 7 | `finalized_drift_operator_change` | **dormant** | same |
+| 8 | `finalized_drift_horizon_stall` | **dormant** | same |
+| 9 | `deep_reorg_log` | **silenced** | `deploy` user cannot read `/var/lib/b3chain/.b3chain/testnet3/debug.log` (0600 b3chain:b3chain); see "Log-tail perm gap" caveat |
+| 10 | `pow_budget_storm` | **silenced** | same |
+| - | `rpc_down` | armed | housekeeping |
+
+5 of 10 detectors are live polling testnet; the other 5 require either a `b3chaind` upgrade or a one-time perm change to activate.  The watcher's startup banner in `journalctl -u b3chain-51watch` enumerates the current armed-set on every restart, so the operator always has a ground-truth view.
 
 Notes for seed1:
 
 - **`detect_finalized_drift` is dormant on this box** until `b3chaind`
-  itself is upgraded to v1.1.3+.  At install time the running binary
-  did not expose `getfinalizedblockhash`, so the watcher gracefully
-  disabled the M-14 horizon-stall detector for the lifetime of the
-  process (single stderr log line, no `rpc_down` alert).  The three
-  legacy detectors (`deep_fork`, `hashrate_collapse`, `near_reorg_cap`)
-  remain fully armed.  When `b3chaind` on seed1 is upgraded, restart
-  the watcher (`sudo systemctl restart b3chain-51watch.service`) and
-  the drift detector becomes active on the next poll.
+  itself is upgraded to v1.1.3+.  The running binary does not expose
+  `getfinalizedblockhash`, so the watcher gracefully disabled the
+  three M-14 detectors for the lifetime of the process (single
+  stderr log line, no `rpc_down` alert).  When `b3chaind` on seed1
+  is upgraded, restart the watcher (`sudo systemctl restart
+  b3chain-51watch.service`) and the M-14 detectors become active on
+  the next poll.
 - **b3chaind on seed1 is not systemd-managed**, so the watcher unit
   uses `Restart=on-failure` (no `Requires=b3chaind.service`).  If
   b3chaind blips, the watcher emits `rpc_down` JSONL alerts and
@@ -314,11 +332,32 @@ Notes for seed1:
 - **Mainnet re-tune TODO**: when seed1 flips `chain=test` →
   `chain=main`, edit `ExecStart=` in the unit file to use
   `--chain main --rpc-port 8532 --dedup-window 300 --hashrate-drop
-  0.50`, then `sudo systemctl daemon-reload && sudo systemctl restart
+  0.50 --debug-log /var/lib/b3chain/.b3chain/debug.log`
+  (mainnet has no chain subdir under the datadir), then
+  `sudo systemctl daemon-reload && sudo systemctl restart
   b3chain-51watch.service`.
 
 ### Known operational caveats
 
+- **Log-tail perm gap** (silences `deep_reorg_log` + `pow_budget_storm`
+  on seed1).  `b3chaind` writes `debug.log` as `b3chain:b3chain 0600`,
+  but the watcher runs as `deploy`, which is not in the `b3chain`
+  group.  The unit already passes `--debug-log
+  /var/lib/b3chain/.b3chain/testnet3/debug.log` so the watcher tries
+  the right path; the `_LogTailer` catches `PermissionError` and logs
+  a single stderr warning ("log tailer disabled: ... Permission
+  denied"), then continues with the 5 RPC detectors armed.  Fix
+  (one-time, no service-restart needed beyond the watcher):
+  ```sh
+  sudo usermod -aG b3chain deploy            # deploy joins b3chain group
+  sudo setfacl -m g:b3chain:rX /var/lib/b3chain/.b3chain
+  sudo setfacl -m g:b3chain:rX /var/lib/b3chain/.b3chain/testnet3
+  sudo setfacl -m g:b3chain:r  /var/lib/b3chain/.b3chain/testnet3/debug.log
+  sudo setfacl -d -m g:b3chain:r /var/lib/b3chain/.b3chain/testnet3   # inherit on rotation
+  sudo systemctl restart b3chain-51watch.service                       # picks up new group
+  ```
+  The watcher's hardening directive `ReadOnlyPaths=/var/lib/b3chain/.b3chain`
+  already permits the systemd-side read; only the Unix DAC perms are blocking.
 - **rpcpassword visible in `/proc/<pid>/cmdline`**: systemd expands
   `${RPCPASSWORD}` from `EnvironmentFile=` into the `ExecStart=`
   command line before `exec(2)`, so the password is visible via `ps
