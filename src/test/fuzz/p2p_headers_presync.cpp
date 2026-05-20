@@ -240,7 +240,14 @@ FUZZ_TARGET(p2p_headers_presync, .init = initialize)
     total_work += CalculateClaimedHeadersWork(all_headers);
 
     // This test should never create a chain with more work than MinimumChainWork.
-    assert(total_work < chainman.MinimumChainWork());
+    // b3chain: mainnet (and other networks) ship with nMinimumChainWork = 0
+    // pre-launch, so the anti-DoS work gate is disabled and any positive
+    // total_work would trip the upstream assertion.  Only enforce the bound
+    // when a non-zero floor is configured (Bitcoin Core mainnet behaviour).
+    const arith_uint256 min_work{chainman.MinimumChainWork()};
+    if (min_work > 0) {
+        assert(total_work < min_work);
+    }
 
     // The headers/blocks sent in this test should never be stored, as the chains don't have the work required
     // to meet the anti-DoS work threshold. So, if at any point the block index grew in size, then there's a bug
