@@ -36,6 +36,22 @@
 !contrib/testing/verify-b3pow.py
 !src/test/data/b3pow_consensus_vectors.json
 
+# CI image-building scaffolding consumed by ci/lint_imagefile and
+# ci/test_imagefile. These are referenced by the GitHub Actions `CI`
+# workflow's `docker buildx build --file ci/lint_imagefile .` and
+# `--file ci/test_imagefile .` invocations; without re-including them
+# every Linux CI job (lint, ASan, TSan, MSan, tidy, CentOS, i686, ARM,
+# fuzz, no-wallet, prev-releases, Linux->Windows cross) fails at the
+# "COPY ./ci/retry/retry /ci_retry" step with a "not found" checksum
+# error.  The wider .dockerignore policy above stays in force; we just
+# punch one targeted hole for these specific paths.
+!ci/lint_imagefile
+!ci/test_imagefile
+!ci/test_run_all.sh
+!ci/lint/**
+!ci/test/**
+!ci/retry/**
+
 # ---------- 3. inside the re-included trees, drop noise ----------
 
 # Build outputs (in-tree or out-of-tree) — never want these in the context.
