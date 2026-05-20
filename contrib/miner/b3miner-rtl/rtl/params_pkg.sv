@@ -77,6 +77,22 @@ package params_pkg;
   };
 
   // ------------------------------------------------------------------------
+  // Cross-lane shuffle permutation -- applied to the lane state vector at
+  // the end of every mix_step (SPEC.md §6.5).
+  //
+  //   new_lanes[L] = next_lanes[LANE_SHUFFLE[L]]   for L in 0..LANES-1
+  //
+  // Permutation: L' = (5 * L + 1) mod 8 -- chosen so each lane sees every
+  // other lane within INNER_ROUNDS = 2 with the minimum number of swaps.
+  // MUST stay byte-identical to ref/b3pow_ref.py:LANE_SHUFFLE; any change
+  // is a consensus break.  Promoted from mixing_core.sv in v1.1.4 so that
+  // ITER_MUL, BLAKE3_PERM, and LANE_SHUFFLE all live in one place.
+  // ------------------------------------------------------------------------
+  localparam logic [2:0] LANE_SHUFFLE [0:LANES-1] = '{
+    3'd1, 3'd6, 3'd3, 3'd0, 3'd5, 3'd2, 3'd7, 3'd4
+  };
+
+  // ------------------------------------------------------------------------
   // SPI / regfile (mirror of b3miner-firmware/.../b3_fpga_regs.h)
   // ------------------------------------------------------------------------
   localparam logic [6:0] REG_ID            = 7'h00;

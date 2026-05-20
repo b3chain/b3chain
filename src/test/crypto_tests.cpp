@@ -1435,15 +1435,26 @@ BOOST_AUTO_TEST_CASE(b3pow_rejects_sha256d_nonce)
 }
 
 // b3chain: Verify BLAKE3 SIMD degree is at least 1 (portable fallback)
-// On x86_64, this should be > 1 (SSE2=4, SSE4.1=4, AVX2=8, AVX-512=16)
+// On x86_64 Linux this should be > 1 (SSE2=4, SSE4.1=4, AVX2=8,
+// AVX-512=16) -- that's where the dispatcher links the
+// `blake3_*_x86-64_unix.S` gas-syntax assembly files.  On Windows
+// MSVC and on every (cross-)build that isn't ELF/x86_64 (macOS,
+// AArch64, 32-bit ARM, i686, ...), src/crypto/CMakeLists.txt sets
+// BLAKE3_NO_<feature> on the BLAKE3 target and the dispatcher falls
+// back to the portable C path with degree=1.  The macros are PRIVATE
+// to the BLAKE3 target so they're not visible in this test, but the
+// platform implication is the same: only enforce the
+// `degree >= 4` lower bound on x86_64 Linux ELF.
 BOOST_AUTO_TEST_CASE(blake3_simd_acceleration)
 {
     size_t degree = blake3_simd_degree();
     BOOST_CHECK(degree >= 1);
-    // On any modern x86_64 CPU, SSE2 is guaranteed, so degree should be >= 4
-#if defined(__x86_64__) || defined(_M_X64)
+#if (defined(__x86_64__) || defined(_M_X64))                              \
+    && defined(__linux__)                                                  \
+    && !defined(_WIN32)                                                    \
+    && !defined(__APPLE__)
     BOOST_CHECK_MESSAGE(degree >= 4,
-        "Expected BLAKE3 SIMD degree >= 4 on x86_64 (got " + std::to_string(degree) + ")");
+        "Expected BLAKE3 SIMD degree >= 4 on x86_64 Linux (got " + std::to_string(degree) + ")");
 #endif
 }
 

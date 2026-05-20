@@ -1,5 +1,62 @@
 # B3Chain Project History
 
+## Launch package — Miner stack audit follow-up (in progress)
+
+Closes the four stale-doc / dead-code gaps surfaced by the
+"are all three miners updated to reflect B3PoW-Scratch v1.1?" audit
+(May 2026).  No consensus change, no bitstream rebuild required, no
+parity vectors touched.  The audit confirmed that the **CPU miner**
+(`contrib/miner/b3chain-cpuminer.py`), the **FPGA RTL**
+(`contrib/miner/b3miner-rtl/`), and the **FPGA host firmware**
+(`contrib/miner/b3miner-firmware/`) all run B3PoW-Scratch v1.1.1
+correctly; the **GPU miner** (`contrib/miner/b3chain-gpuminer/`) is
+intentionally deprecated because B3PoW-Scratch is GPU-hostile by
+design.  The fixes below are pure documentation, dead-code, and
+source-organisation cleanups.
+
+- **Stale `REG_ID` magic ID updated** from the pre-F-1 build-0001
+  value `0xB3110001` to the current v1.1.1 build-0002 value
+  `0xB3110002` in five operator-facing locations:
+  [`contrib/miner/b3miner-firmware/components/b3_fpga/README.md`](../contrib/miner/b3miner-firmware/components/b3_fpga/README.md),
+  [`contrib/miner/b3miner-rtl/README.md`](../contrib/miner/b3miner-rtl/README.md),
+  [`contrib/miner/b3miner-rtl/docs/HWLOOP.md`](../contrib/miner/b3miner-rtl/docs/HWLOOP.md),
+  [`contrib/miner/b3miner-rtl/BITSTREAM_LOAD.md`](../contrib/miner/b3miner-rtl/BITSTREAM_LOAD.md),
+  and the table-comment headers in
+  [`contrib/miner/b3miner-rtl/rtl/regfile.sv`](../contrib/miner/b3miner-rtl/rtl/regfile.sv)
+  and
+  [`contrib/miner/b3miner-rtl/sim/tb/tb_b3miner_top.sv`](../contrib/miner/b3miner-rtl/sim/tb/tb_b3miner_top.sv).
+  The actual hardware driver (`params_pkg.sv:REG_ID_MAGIC`,
+  `b3_fpga_regs.h:B3_FPGA_MAGIC`) was already at `0xB3110002` —
+  this was purely a stale-comment sweep.  Unit-TB mock value in
+  `sim/tb/tb_spi_slave.sv` left as-is (tests SPI protocol layer, not
+  consensus).
+- **`CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3` retired.**  Every b3chain
+  network (mainnet, testnet, testnet4, regtest) runs B3PoW-Scratch
+  v1.1.1 from genesis per
+  [`contrib/miner/b3miner-rtl/SPEC.md`](../contrib/miner/b3miner-rtl/SPEC.md)
+  §1, so the firmware's legacy-double-BLAKE3 opt-out is dead code.
+  Removed the Kconfig option from
+  [`contrib/miner/b3miner-firmware/main/Kconfig.projbuild`](../contrib/miner/b3miner-firmware/main/Kconfig.projbuild),
+  removed the `#if !CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3` guard around
+  `b3_fpga_init_scratchpad()` in
+  [`contrib/miner/b3miner-firmware/components/b3_fpga/b3_fpga_worker.c`](../contrib/miner/b3miner-firmware/components/b3_fpga/b3_fpga_worker.c)
+  (so the scratchpad regen runs unconditionally on every new
+  parent), and rewrote the PoW paragraph in
+  [`contrib/miner/b3miner-firmware/README.md`](../contrib/miner/b3miner-firmware/README.md)
+  to say B3PoW-Scratch is the only supported algorithm.
+- **`LANE_SHUFFLE` promoted to `params_pkg.sv`.**  The cross-lane
+  diffusion permutation `{1, 6, 3, 0, 5, 2, 7, 4}` (SPEC §6.5) used
+  to live as a local `LANE_PERM` inside
+  [`contrib/miner/b3miner-rtl/rtl/mixing_core.sv`](../contrib/miner/b3miner-rtl/rtl/mixing_core.sv);
+  it now sits in `params_pkg::LANE_SHUFFLE` next to `ITER_MUL`,
+  `BLAKE3_PERM`, and `BLAKE3_IV` so every consensus-locked constant
+  lives in one place and the file matches `ref/b3pow_ref.py`
+  name-for-name.  Bit-equivalent to the prior local copy; parity
+  vectors (`sim/vectors/*.hex`, `b3pow_consensus_vectors.json`)
+  unchanged.  See
+  [`contrib/miner/b3miner-rtl/CHANGELOG.md`](../contrib/miner/b3miner-rtl/CHANGELOG.md)
+  v1.1.4 entry.
+
 ## Launch package — Phase 0 alignment (in progress)
 
 Mining stack and public-facing docs aligned to **B3PoW-Scratch v1.1**,

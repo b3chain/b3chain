@@ -5,7 +5,7 @@
 // by 7-bit word address (= byte offset / 4):
 //
 //   word  byte  R/W  name             notes
-//   0x00  0x00  R    ID               returns 0xB3110001
+//   0x00  0x00  R    ID               returns REG_ID_MAGIC (0xB3110002 in v1.1.1 build 0002)
 //   0x01  0x04  R    STATUS           bit0 busy, bit1 share, bit2 scratch_ready
 //   0x02  0x08  W1   CTRL             bit0 start, bit1 abort, bit2 scratch_init
 //   0x03  0x0C  RW   IRQ_MASK

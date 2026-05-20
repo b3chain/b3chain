@@ -26,7 +26,9 @@ This is the **sibling** of:
 
 The host **register map is locked** in
 [`../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h`](../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h)
-— RTL must reply with magic `0x B3110001` to a read of `REG_ID = 0x00`.
+— RTL must reply with magic `0xB3110002` to a read of `REG_ID = 0x00`
+(v1.1.1 build 0002; the F-1 fix bumped this from the original
+`0xB3110001` build 0001 — see [`CHANGELOG.md`](CHANGELOG.md) v1.1.2).
 
 ---
 

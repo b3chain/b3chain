@@ -2,7 +2,7 @@
 // tb_b3miner_top.sv -- chip-level integration TB.
 //
 // Drives the SPI port to mimic the firmware bring-up sequence:
-//   1. Read REG_ID -- expect 0xB3110001
+//   1. Read REG_ID -- expect REG_ID_MAGIC (0xB3110002 in v1.1.1 build 0002)
 //   2. Write PREV_HASH = 0x00..00, CTRL.scratch_init -- wait for STATUS.scratch_ready
 //   3. Write SEED = blake3(header), NONCE_START/END, JOB_EPOCH, CTRL.start
 //   4. Poll STATUS until share_valid (TB cheats: forces share_threshold to

@@ -36,7 +36,9 @@ the 32-bit register value, LSB first per byte.
 
 See `include/b3_fpga_regs.h`. The `#define`s are byte offsets; the SPI
 driver converts to word index by right-shift by 2. Magic ID after
-bitstream load: `0xB3110001` (B3PoW-Scratch v1.1, build 0001).
+bitstream load: `0xB3110002` (B3PoW-Scratch v1.1.1, build 0002 — the
+F-1 fix bumped this from `0xB3110001`; old build-0001 bitstreams mine
+the v1.1.0 algorithm and are rejected by the v1.1.1 firmware).
 
 ## Job lifecycle
 

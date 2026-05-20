@@ -2,6 +2,40 @@
 
 All notable changes to `b3miner-rtl` are recorded here. Newest entries on top.
 
+## v1.1.4 — miner doc cleanup + `LANE_SHUFFLE` relocation (no consensus change)
+
+Cosmetic / source-organisation pass.  No bitstream needs rebuilding,
+no consensus vector changes, no parity gate touched.
+
+### Changed
+
+- **`LANE_SHUFFLE` promoted to `rtl/params_pkg.sv`.**  The
+  cross-lane diffusion permutation `{1, 6, 3, 0, 5, 2, 7, 4}` used to
+  live as a local `LANE_PERM` inside `rtl/mixing_core.sv`; it now sits
+  in `params_pkg::LANE_SHUFFLE` next to `ITER_MUL`, `BLAKE3_PERM`,
+  and `BLAKE3_IV` so every consensus-locked constant lives in one
+  place and the file matches `ref/b3pow_ref.py:LANE_SHUFFLE`
+  name-for-name.  `mixing_core.sv` now imports it via the
+  `params_pkg::*` `import` it already does.  Bit-for-bit equivalent to
+  the previous local copy; `sim/vectors/*.hex` unchanged.
+
+### Fixed (documentation only)
+
+- **Stale `REG_ID` magic-ID references** updated from the old
+  pre-F-1 build-0001 value `0xB3110001` to the current v1.1.1
+  build-0002 value `0xB3110002`:
+  - `README.md` (top-level RTL README)
+  - `rtl/regfile.sv` (table comment; the actual driver already used
+    `params_pkg::REG_ID_MAGIC`, so this was a pure stale comment)
+  - `sim/tb/tb_b3miner_top.sv` (header comment; the actual test
+    compared against `REG_ID_MAGIC`)
+  - `docs/HWLOOP.md` (expected boot-log example)
+  - `BITSTREAM_LOAD.md` (post-config readback instruction and boot-log
+    example)
+  Historical references inside this `CHANGELOG.md` and the unit-test
+  mock value in `sim/tb/tb_spi_slave.sv` are intentionally left alone
+  (the unit TB tests the SPI protocol layer, not consensus).
+
 ## v1.1.3 — cross-reference only (no RTL changes)
 
 The b3chain v1.1.3 maintenance release lands the M-14 operator-pinned

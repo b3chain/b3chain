@@ -29,14 +29,18 @@ static void fpga_worker_task(void *arg)
 
         ESP_LOGI(TAG, "New job epoch=%" PRIu32 " job_id=%s", work.epoch, work.job_id);
 
-        /* Step 1: scratchpad regen once per block (B3PoW-Scratch) */
-#if !CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3
+        /* Step 1: scratchpad regen once per block (B3PoW-Scratch).
+         *
+         * Always required on every b3chain network -- mainnet, testnet,
+         * testnet4, and regtest all run B3PoW-Scratch v1.1.1 from
+         * genesis (see contrib/miner/b3miner-rtl/SPEC.md §1).  The
+         * old CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3 opt-out was removed
+         * once the chain-ID rolled to B3PoW-Scratch at launch. */
         esp_err_t err = b3_fpga_init_scratchpad(work.prev_block_hash);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "scratchpad init failed");
             continue;
         }
-#endif
 
         b3_fpga_job_t fj = {0};
         memcpy(fj.seed, work.pow_seed, 32);

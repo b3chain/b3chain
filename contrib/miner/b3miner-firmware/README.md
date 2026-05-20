@@ -28,9 +28,13 @@ Wire protocol for Stratum V1 matches:
 - `contrib/miner/b3chain-cpuminer.py`
 - `doc/stratum.md`
 
-PoW on FPGA implements **B3PoW-Scratch** (see design docs). Until the chain
-activates that algorithm, set `CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3=y` in
-`main/Kconfig.projbuild` for testnet against current double-BLAKE3 nodes.
+PoW on FPGA implements **B3PoW-Scratch v1.1.1** (see
+[`../b3miner-rtl/SPEC.md`](../b3miner-rtl/SPEC.md)). Every b3chain
+network — mainnet, testnet, testnet4, and regtest — runs B3PoW-Scratch
+from genesis, so the firmware no longer carries a legacy double-BLAKE3
+fallback (the old `CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3` Kconfig option
+was retired alongside that gate; the FPGA bitstream's `REG_ID` magic
+must read `0xB3110002` after configuration).
 
 ## Build
 

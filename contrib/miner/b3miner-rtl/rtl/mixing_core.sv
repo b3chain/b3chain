@@ -256,9 +256,9 @@ module mixing_core
         end
     end
 
-    // Lane shuffle (SPEC §6.5): permutation [1, 6, 3, 0, 5, 2, 7, 4]
-    localparam logic [2:0] LANE_PERM [0:LANES-1] =
-        '{3'd1, 3'd6, 3'd3, 3'd0, 3'd5, 3'd2, 3'd7, 3'd4};
+    // Lane shuffle (SPEC §6.5): permutation [1, 6, 3, 0, 5, 2, 7, 4].
+    // Imported from params_pkg::LANE_SHUFFLE (v1.1.4: promoted there so
+    // every consensus-locked constant lives in one place).
 
     // -----------------------------------------------------------------------
     // FSM body
@@ -374,9 +374,9 @@ module mixing_core
                             wb_addr[L] <= addr_reg[L];
                             wb_data[L] <= new_blk;
                         end
-                        // Apply lane shuffle.
+                        // Apply lane shuffle (params_pkg::LANE_SHUFFLE).
                         for (int L = 0; L < LANES; L++)
-                            lanes[L] <= cv_fresh[LANE_PERM[L]];
+                            lanes[L] <= cv_fresh[LANE_SHUFFLE[L]];
                     end
                     state <= S_ITER_DONE;
                 end

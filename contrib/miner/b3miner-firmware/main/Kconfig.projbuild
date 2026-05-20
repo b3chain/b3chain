@@ -51,13 +51,6 @@ menu "B3Miner firmware"
         int "Assumed share difficulty until set_difficulty"
         default 65536
 
-    config B3_POW_LEGACY_DOUBLE_BLAKE3
-        bool "Use legacy double-BLAKE3 PoW (current testnet)"
-        default y
-        help
-            Disable when launching B3PoW-Scratch at genesis.
-            FPGA bitstream must match.
-
     config B3_OTA_UPDATE_URL
         string "HTTPS manifest URL for OTA (empty = disabled)"
         default ""

@@ -70,7 +70,7 @@ I (1235) b3_fpga: PROGRAM_B asserted for 250 us
 I (1240) b3_fpga: INIT_B high (5 ms)
 I (1242) b3_fpga: loading bitstream from flash partition (size=6453123)
 I (1294) b3_fpga: DONE high (52 ms)
-I (1295) b3_fpga: FPGA ID = 0xB3110001 OK
+I (1295) b3_fpga: FPGA ID = 0xB3110002 OK
 ```
 
 Diagnostic checklist if the ID line is wrong:

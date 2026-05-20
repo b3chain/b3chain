@@ -63,7 +63,9 @@ The firmware implements this exact sequence (see
    sequence)
 5. Wait for `DONE` to go high (typ. ≤ 50 ms for KU5P at 25 MHz CCLK)
 6. Switch GPIO 11–13 to SPI peripheral mode
-7. Read `REG_ID` over SPI — must return `0xB3110001`
+7. Read `REG_ID` over SPI — must return `0xB3110002` (v1.1.1 build 0002;
+   the F-1 fix bumped this from the original `0xB3110001` build 0001 —
+   see `CHANGELOG.md` v1.1.2 entry)
 
 If `INIT_B` goes low after `PROGRAM_B` rises **but before step 4
 completes**, the FPGA detected a CRC error — abort and retry (up to
@@ -146,7 +148,7 @@ I (1234) b3_fpga: loading bitstream (6453123 bytes)
 I (1289) b3_fpga: PROGRAM_B asserted
 I (1290) b3_fpga: INIT_B high (5 ms)
 I (1342) b3_fpga: DONE high (52 ms)
-I (1343) b3_fpga: FPGA ID = 0xB3110001 OK
+I (1343) b3_fpga: FPGA ID = 0xB3110002 OK
 ```
 
 A mismatch means either the bitstream is for a different target
