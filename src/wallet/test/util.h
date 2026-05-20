@@ -28,7 +28,11 @@ static const DatabaseFormat DATABASE_FORMATS[] = {
        DatabaseFormat::SQLITE,
 };
 
-const std::string ADDRESS_BCRT1_UNSPENDABLE = "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj";
+// b3chain: regtest bech32 HRP is "b3rt", not "bcrt".  This is the
+// re-encoded zero-program P2WSH (witness version 0, 32-byte zero
+// witness program) under the b3chain regtest HRP.  Computed via
+// test/functional/test_framework/segwit_addr.encode_segwit_address.
+const std::string ADDRESS_BCRT1_UNSPENDABLE = "b3rt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3zaqdc";
 
 std::unique_ptr<CWallet> CreateSyncedWallet(interfaces::Chain& chain, CChain& cchain, const CKey& key);
 
