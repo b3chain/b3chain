@@ -615,18 +615,33 @@ public:
         // The UTXO set hash (HASH_SERIALIZED) is identical to Bitcoin Core because the
         // coinbase transactions use the same deterministic test key and subsidy schedule.
         // Only the block hashes differ (due to BLAKE3 PoW).
+        //
+        // The hashes below are hoisted to `static constexpr uint256` locals because
+        // MSVC 14.44 raises C7595 ("call to immediate function is not a constant
+        // expression") when a bare `consteval`-constructed `uint256{"..."}` literal
+        // appears as the initializer of an aggregate-init `.blockhash` field.  Wrapping
+        // it in a constexpr variable provides the unambiguous constant-expression
+        // context MSVC needs.  GCC and Clang accept either form.
+        static constexpr uint256 REGTEST_AU_HASH_SERIALIZED_110{
+            "b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327"};
+        static constexpr uint256 REGTEST_AU_BLOCKHASH_110{
+            "ab1df7084867e289443de7efa50ea47b4c59670454bfb9d2e1b6822f014627a6"};
+        static constexpr uint256 REGTEST_AU_HASH_SERIALIZED_200{
+            "8f8e02e0ebf79da1710b440290ea1bef28297882548bd41a2037d2461f48ec0e"};
+        static constexpr uint256 REGTEST_AU_BLOCKHASH_200{
+            "be3fdf916a5cfe13b52e77d406b5ed56343a75b4c294b60a0efa9b7c8c742bf6"};
         m_assumeutxo_data = {
             {
                 .height = 110,
-                .hash_serialized = AssumeutxoHash{uint256{"b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327"}},
+                .hash_serialized = AssumeutxoHash{REGTEST_AU_HASH_SERIALIZED_110},
                 .m_chain_tx_count = 111,
-                .blockhash = uint256{"ab1df7084867e289443de7efa50ea47b4c59670454bfb9d2e1b6822f014627a6"},
+                .blockhash = REGTEST_AU_BLOCKHASH_110,
             },
             {
                 .height = 200,
-                .hash_serialized = AssumeutxoHash{uint256{"8f8e02e0ebf79da1710b440290ea1bef28297882548bd41a2037d2461f48ec0e"}},
+                .hash_serialized = AssumeutxoHash{REGTEST_AU_HASH_SERIALIZED_200},
                 .m_chain_tx_count = 201,
-                .blockhash = uint256{"be3fdf916a5cfe13b52e77d406b5ed56343a75b4c294b60a0efa9b7c8c742bf6"},
+                .blockhash = REGTEST_AU_BLOCKHASH_200,
             },
         };
 
