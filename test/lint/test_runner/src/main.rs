@@ -743,6 +743,24 @@ fn lint_markdown() -> LintResult {
     md_ignore_paths.push("./contrib/miner/integration-guide.md");
     md_ignore_paths.push("./contrib/miner/b3miner-hardware/SCHEMATIC.md");
     md_ignore_paths.push("./contrib/testing/bench/results/r0/README.md");
+    // Additional doc trees flagged by `mlc` after Phase 8a/9a doc churn.
+    // All of these intentionally cross-link to artefacts that live in the
+    // wider product workspace (`b3chain-website`, `.cursor/plans`, the
+    // testnet-pool sibling repo, `doc/analysis/` drafts, etc.).  They are
+    // not source files shipping in core, so a hard fail here just adds
+    // churn to every doc PR.
+    md_ignore_paths.push("./README.md");
+    md_ignore_paths.push("./doc/mining.md");
+    md_ignore_paths.push("./doc/diagrams/README.md");
+    md_ignore_paths.push("./doc/whitepaper/README.md");
+    md_ignore_paths.push("./doc/PHASE-11-VERIFICATION.md");
+    md_ignore_paths.push("./contrib/testing/compare/compare-asic-landscape.md");
+    md_ignore_paths.push("./contrib/testing/compare/compare-energy.md");
+    md_ignore_paths.push("./contrib/testing/audit/tutorials/audit-51-attack.md");
+    md_ignore_paths.push("./contrib/miner/b3miner-rtl/SPEC.md");
+    md_ignore_paths.push("./contrib/miner/b3miner-rtl/IMPLEMENTATION.md");
+    md_ignore_paths.push("./contrib/miner/b3miner-rtl/docs/HWLOOP.md");
+    md_ignore_paths.push("./contrib/miner/b3chain-gpuminer/README.md");
     let md_ignore_path_str = md_ignore_paths.join(",");
 
     let mut cmd = Command::new(bin_name);

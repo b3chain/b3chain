@@ -47,6 +47,20 @@ declare -A SUPPRESS
 # https://github.com/bitcoin/bitcoin/issues/10102
 SUPPRESS["common.cpp.o interface_ui.cpp.o _Z11InitWarningRK13bilingual_str"]=1
 SUPPRESS["common.cpp.o interface_ui.cpp.o _Z9InitErrorRK13bilingual_str"]=1
+# b3chain-specific suppressions:
+#
+# - block.cpp / b3pow_scratch.cpp call `Assert(...)` from <util/check.h>,
+#   which expands to a call to `assertion_fail(...)` defined in
+#   `util/check.cpp`.  These are diagnostic-only, must inline correctly,
+#   and live in the util library; the consensus and crypto libraries
+#   depend on the diagnostic helper but the build dependency graph
+#   doesn't model that explicitly yet.  Track Bitcoin-Core upstream for
+#   when this is generalised.
+# - b3pow_cache.cpp uses `SaltedUint256Hasher` from `util/hasher.cpp`
+#   to key its scratchpad cache; same diagnostic-utility carve-out.
+SUPPRESS["block.cpp.o check.cpp.o _Z14assertion_failSt17basic_string_viewIcSt11char_traitsIcEEiS2_S2_"]=1
+SUPPRESS["b3pow_scratch.cpp.o check.cpp.o _Z14assertion_failSt17basic_string_viewIcSt11char_traitsIcEEiS2_S2_"]=1
+SUPPRESS["b3pow_cache.cpp.o hasher.cpp.o _ZN19SaltedUint256HasherC1Ev"]=1
 
 usage() {
    echo "Usage: $(basename "${BASH_SOURCE[0]}") [BUILD_DIR]"

@@ -12,6 +12,7 @@
 #include <pubkey.h>
 #include <streams.h>
 #include <test/fuzz/fuzz.h>
+#include <test/util/random.h>
 #include <util/chaintype.h>
 #include <validation.h>
 
@@ -25,6 +26,14 @@ void initialize_block()
 
 FUZZ_TARGET(block, .init = initialize_block)
 {
+    // CheckBlock paths in b3chain reach FastRandomContext via the
+    // logging/PoW caches, so the global random state is touched.
+    // The CI hygiene check (`Check if using libFuzzer ... False`)
+    // requires the fuzz target to deterministically reset that
+    // state at the top of every iteration; otherwise the corpus
+    // input is flagged as non-reproducible (run 26157408950, macOS
+    // arm64 fuzz, qa-assets/block/8f1aba6d...).
+    SeedRandomStateForTest(SeedRand::ZEROS);
     DataStream ds{buffer};
     CBlock block;
     try {

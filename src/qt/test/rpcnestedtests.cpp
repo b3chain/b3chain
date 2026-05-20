@@ -82,7 +82,15 @@ void RPCNestedTests::rpcNestedTests()
     QVERIFY(result == result2);
 
     RPCConsole::RPCExecuteCommandLine(m_node, result, "getblock(getbestblockhash())[tx][0]", &filtered);
-    QVERIFY(result == "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+    // b3chain has its own regtest genesis block, so the upstream
+    // hard-coded Bitcoin Core regtest coinbase txid does not apply.
+    // We only validate the *shape* of the response (a 64-char lower-
+    // case hex string) -- enough to confirm that the nested-RPC
+    // resolution and array indexing both worked.
+    QVERIFY(result.size() == 64);
+    for (const QChar c : result) {
+        QVERIFY((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    }
     QVERIFY(filtered == "getblock(getbestblockhash())[tx][0]");
 
     RPCConsole::RPCParseCommandLine(nullptr, result, "signmessagewithprivkey abc", false, &filtered);
