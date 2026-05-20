@@ -263,14 +263,26 @@ jobs:
         run: |
           cmake --build . -j $NUMBER_OF_PROCESSORS --config Release
 
-      - name: Get bitcoind manifest
+      # b3chain renames the upstream Bitcoin Core binaries:
+      #   bitcoind     -> b3chaind
+      #   bitcoin-cli  -> b3chain-cli
+      #   bitcoin-tx   -> b3chain-tx
+      #   bitcoin-util -> b3chain-util
+      #   bitcoin-wallet -> b3chain-wallet
+      #   bitcoin-qt   -> b3chain-qt   (the GUI binary; .exe in this build)
+      # The Windows VS2022 build emits the renamed binaries, so the
+      # manifest probe and the functional-test env vars must point at
+      # b3chaind.exe, not the upstream bitcoind.exe.  Without this,
+      # `mt.exe -inputresource bin/Release/bitcoind.exe` fails with
+      # `c101008c: The system cannot find the file specified.`
+      - name: Get b3chaind manifest
         if: matrix.job-type == 'standard'
         working-directory: build
         run: |
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -out:bitcoind.manifest
-          cat bitcoind.manifest
+          mt.exe -nologo -inputresource:bin/Release/b3chaind.exe -out:b3chaind.manifest
+          cat b3chaind.manifest
           echo
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -validate_manifest
+          mt.exe -nologo -inputresource:bin/Release/b3chaind.exe -validate_manifest
 
       - name: Run test suite
         if: matrix.job-type == 'standard'
@@ -284,12 +296,12 @@ jobs:
         if: matrix.job-type == 'standard'
         working-directory: build
         env:
-          BITCOIN_BIN: '${{ github.workspace }}\build\bin\Release\bitcoin.exe'
-          BITCOIND: '${{ github.workspace }}\build\bin\Release\bitcoind.exe'
-          BITCOINCLI: '${{ github.workspace }}\build\bin\Release\bitcoin-cli.exe'
-          BITCOINTX: '${{ github.workspace }}\build\bin\Release\bitcoin-tx.exe'
-          BITCOINUTIL: '${{ github.workspace }}\build\bin\Release\bitcoin-util.exe'
-          BITCOINWALLET: '${{ github.workspace }}\build\bin\Release\bitcoin-wallet.exe'
+          BITCOIN_BIN: '${{ github.workspace }}\build\bin\Release\b3chain.exe'
+          BITCOIND: '${{ github.workspace }}\build\bin\Release\b3chaind.exe'
+          BITCOINCLI: '${{ github.workspace }}\build\bin\Release\b3chain-cli.exe'
+          BITCOINTX: '${{ github.workspace }}\build\bin\Release\b3chain-tx.exe'
+          BITCOINUTIL: '${{ github.workspace }}\build\bin\Release\b3chain-util.exe'
+          BITCOINWALLET: '${{ github.workspace }}\build\bin\Release\b3chain-wallet.exe'
           TEST_RUNNER_EXTRA: ${{ github.event_name != 'pull_request' && '--extended' || '' }}
         run: py -3 test/functional/test_runner.py --jobs $NUMBER_OF_PROCESSORS --ci --quiet --tmpdirprefix="${RUNNER_TEMP}" --combinedlogslen=99999999 --timeout-factor=${TEST_RUNNER_TIMEOUT_FACTOR} ${TEST_RUNNER_EXTRA}
 
@@ -367,8 +379,8 @@ jobs:
         with:
           name: x86_64-w64-mingw32-executables-${{ github.run_id }}
 
-      - name: Run bitcoind.exe
-        run: ./bin/bitcoind.exe -version
+      - name: Run b3chaind.exe
+        run: ./bin/b3chaind.exe -version
 
       - name: Find mt.exe tool
         shell: pwsh
@@ -377,12 +389,12 @@ jobs:
           $sdk_latest = (Get-ChildItem "$sdk_dir\bin" -Directory | Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | Sort-Object Name -Descending | Select-Object -First 1).Name
           "MT_EXE=${sdk_dir}bin\${sdk_latest}\x64\mt.exe" >> $env:GITHUB_ENV
 
-      - name: Get bitcoind manifest
+      - name: Get b3chaind manifest
         shell: pwsh
         run: |
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -out:bitcoind.manifest
-          Get-Content bitcoind.manifest
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -validate_manifest
+          & $env:MT_EXE -nologo -inputresource:bin\b3chaind.exe -out:b3chaind.manifest
+          Get-Content b3chaind.manifest
+          & $env:MT_EXE -nologo -inputresource:bin\b3chaind.exe -validate_manifest
 
       - name: Run unit tests
         # Can't use ctest here like other jobs as we don't have a CMake build tree.
