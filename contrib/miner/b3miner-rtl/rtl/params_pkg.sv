@@ -91,9 +91,15 @@ package params_pkg;
   localparam logic [6:0] REG_TEMP_RAW      = 7'h24 >> 2;
   localparam logic [6:0] REG_SEED_BASE     = 7'h40 >> 2;  // 8 × 32-bit
   localparam logic [6:0] REG_PREV_BASE     = 7'h60 >> 2;  // 8 × 32-bit
-  localparam logic [6:0] REG_NONCE_START   = 7'h80 >> 2;
-  localparam logic [6:0] REG_NONCE_END     = 7'h84 >> 2;
-  localparam logic [6:0] REG_POW_HASH_BASE = 7'h100 >> 2; // 8 × 32-bit (RO)
+  // The byte offsets 0x80, 0x84, and 0x100 don't fit in a 7-bit literal,
+  // so encode the word offset (= byte / 4) directly.  These mirror
+  // b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h:
+  //   B3_FPGA_REG_NONCE_START = 0x80  -> word 0x20
+  //   B3_FPGA_REG_NONCE_END   = 0x84  -> word 0x21
+  //   B3_FPGA_REG_POW_HASH    = 0x100 -> word 0x40
+  localparam logic [6:0] REG_NONCE_START   = 7'h20;       // byte 0x80 / 4
+  localparam logic [6:0] REG_NONCE_END     = 7'h21;       // byte 0x84 / 4
+  localparam logic [6:0] REG_POW_HASH_BASE = 7'h40;       // byte 0x100 / 4 (8 × 32-bit RO)
 
   // STATUS bits
   localparam int STATUS_BUSY    = 0;
