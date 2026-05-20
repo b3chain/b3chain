@@ -58,8 +58,22 @@ static void DeserializeAndCheckBlockTest(benchmark::Bench& bench)
         assert(rewound);
 
         BlockValidationState validationState;
+        // b3chain: this benchmark uses an upstream Bitcoin Core
+        // mainnet block (413567) hashed with SHA-256d.  b3chain's
+        // mainnet consensus uses B3PoW (double-BLAKE3), so the
+        // pristine SHA-256d header will never satisfy the b3pow
+        // target and `CheckBlock(...,fCheckPOW=true)` would
+        // always return false here, making the benchmark abort
+        // (bench_sanity_check, e.g. CI run 26167422579 macOS GUI).
+        // The PoW check is not what this micro-benchmark measures
+        // anyway -- it's the "deserialize + transaction-level
+        // CheckBlock" path -- so disable the PoW step.  We keep
+        // the merkle-root check (fCheckMerkleRoot=true), which
+        // is still meaningful and uses the same cache.
         bool checked = CheckBlock(block, validationState, chainParams->GetConsensus(),
-                                  block.hashPrevBlock, b3pow_cache_bench);
+                                  block.hashPrevBlock, b3pow_cache_bench,
+                                  /*fCheckPOW=*/false,
+                                  /*fCheckMerkleRoot=*/true);
         assert(checked);
     });
 }
