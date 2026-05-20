@@ -263,6 +263,10 @@ compress_subtree_to_parent_node(const uint8_t *input, size_t input_len,
   size_t num_cvs = blake3_compress_subtree_wide(input, input_len, key,
                                                  chunk_counter, flags, cv_array, use_tbb);
   assert(num_cvs <= MAX_SIMD_DEGREE_OR_2);
+  // Silence -Wunused-variable on 32-bit ARM and other targets where
+  // MAX_SIMD_DEGREE_OR_2 == 2 and `num_cvs` is only consulted by the
+  // `assert()` above (which compiles out under NDEBUG).
+  (void)num_cvs;
 #if MAX_SIMD_DEGREE_OR_2 > 2
   uint8_t out_array[MAX_SIMD_DEGREE_OR_2 * BLAKE3_OUT_LEN / 2];
   while (num_cvs > 2) {
