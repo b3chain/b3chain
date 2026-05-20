@@ -10,7 +10,7 @@
 class CBlockIndex;
 namespace Consensus { struct Params; }
 
-namespace pow {
+namespace b3pow {
 
 /**
  * LWMA-3 (Linear-Weighted Moving Average, variant 3) difficulty
@@ -80,6 +80,6 @@ constexpr int LWMA3_SOLVE_TIME_MIN_FACTOR = 5;   // lower clamp = -5T
 unsigned int CalculateLwma3Target(const CBlockIndex* pindexLast,
                                   const Consensus::Params& params);
 
-}  // namespace pow
+}  // namespace b3pow
 
-#endif  // BITCOIN_POW_LWMA3_H
+#endif // BITCOIN_POW_LWMA3_H

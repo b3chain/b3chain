@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_CASE(lwma3_stable_network)
     const uint32_t starting_nbits = 0x1d00ffffU;
     const CBlockIndex* tip = BuildChain(chain, 1'700'000'000, params.nPowTargetSpacing,
                                         starting_nbits, 120);
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     const double ratio = TargetRatio(new_nbits, starting_nbits);
     BOOST_CHECK_MESSAGE(ratio > 0.9 && ratio < 1.1,
         "stable network: expected target ~ 1.0x, got ratio=" << ratio);
@@ -108,7 +108,7 @@ BOOST_AUTO_TEST_CASE(lwma3_positive_hashrate_shock)
     // Each block takes 1/10 the target spacing -> 10x hashrate.
     const CBlockIndex* tip = BuildChain(chain, 1'700'000'000, params.nPowTargetSpacing / 10,
                                         starting_nbits, 120);
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     const double ratio = TargetRatio(new_nbits, starting_nbits);
     BOOST_CHECK_MESSAGE(ratio < 0.5,
         "+10x shock: expected target < 0.5x, got ratio=" << ratio);
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(lwma3_negative_hashrate_shock)
     // exceeds the +6T clamp, so each solve time is treated as 6T.
     const CBlockIndex* tip = BuildChain(chain, 1'700'000'000, params.nPowTargetSpacing * 10,
                                         starting_nbits, 120);
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     const double ratio = TargetRatio(new_nbits, starting_nbits);
     // Under the +6T clamp, weighted_sum / (T*sum_of_weights) approaches 6.
     BOOST_CHECK_MESSAGE(ratio > 2.0 && ratio < 8.0,
@@ -162,7 +162,7 @@ BOOST_AUTO_TEST_CASE(lwma3_oscillating_solve_times)
         t += delta;
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     const double ratio = TargetRatio(new_nbits, starting_nbits);
     // Average solve time is 1.25T, so target should rise slightly.
     BOOST_CHECK_MESSAGE(ratio > 0.9 && ratio < 1.5,
@@ -178,7 +178,7 @@ BOOST_AUTO_TEST_CASE(lwma3_short_chain_below_window)
     const uint32_t starting_nbits = 0x1d00ffffU;
     const CBlockIndex* tip = BuildChain(chain, 1'700'000'000, params.nPowTargetSpacing,
                                         starting_nbits, 10);
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     // Should be roughly stable since blocks are at target spacing.
     const double ratio = TargetRatio(new_nbits, starting_nbits);
     BOOST_CHECK_MESSAGE(ratio > 0.5 && ratio < 2.0,
@@ -243,14 +243,14 @@ BOOST_AUTO_TEST_CASE(operating_pow_floor_steady_state)
         t += params.nPowTargetSpacing * 10;
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
 
     // Compute the *unclamped* steady-state target (powLimit clamp only)
     // by running the same window against a params instance with
     // operating_pow_floor_bits disabled.
     auto params_no_floor = params;
     params_no_floor.operating_pow_floor_bits = 0;
-    const uint32_t unclamped_nbits = pow::CalculateLwma3Target(tip, params_no_floor);
+    const uint32_t unclamped_nbits = b3pow::CalculateLwma3Target(tip, params_no_floor);
 
     arith_uint256 t_new, t_unclamped, t_op_floor;
     t_new.SetCompact(new_nbits);
@@ -292,7 +292,7 @@ BOOST_AUTO_TEST_CASE(operating_pow_floor_disabled_in_bootstrap)
         t += params.nPowTargetSpacing * 10;
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
 
     arith_uint256 t_new, t_op_floor;
     t_new.SetCompact(new_nbits);
@@ -330,7 +330,7 @@ BOOST_AUTO_TEST_CASE(operating_pow_floor_disabled_zero)
         t += params.nPowTargetSpacing * 10;
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     arith_uint256 t_new, t_pl;
     t_new.SetCompact(new_nbits);
     t_pl = UintToArith256(params.powLimit);
@@ -362,7 +362,7 @@ BOOST_AUTO_TEST_CASE(operating_pow_floor_wider_than_powlimit_ignored)
         t += params.nPowTargetSpacing * 10;
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     arith_uint256 t_new, t_pl;
     t_new.SetCompact(new_nbits);
     t_pl = UintToArith256(params.powLimit);
@@ -392,7 +392,7 @@ BOOST_AUTO_TEST_CASE(lwma3_negative_solve_time_clamp)
         if (i > 0) chain.back().pprev = &chain[i - 1];
     }
     const CBlockIndex* tip = &chain.back();
-    const uint32_t new_nbits = pow::CalculateLwma3Target(tip, params);
+    const uint32_t new_nbits = b3pow::CalculateLwma3Target(tip, params);
     // Target must not collapse to zero or to a numerical glitch.
     arith_uint256 t_new;
     t_new.SetCompact(new_nbits);

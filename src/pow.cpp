@@ -61,7 +61,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
             pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 2) {
             return nProofOfWorkLimit;
         }
-        return pow::CalculateLwma3Target(pindexLast, params);
+        return b3pow::CalculateLwma3Target(pindexLast, params);
     }
 
     // Legacy 2016-block linear retarget (Bitcoin/regtest path).
@@ -270,15 +270,15 @@ PoWResult CheckBlockHeaderPoW(const CBlockHeader& header,
     //       Tip    -> budget * 1 / 1   (e.g. 50 ms mainnet)
     //       Recent -> budget * 1 / 2   (e.g. 25 ms mainnet)
     //       Deep   -> budget * 1 / 5   (e.g. 10 ms mainnet)
-    int64_t numer = 1, denom = 1;
+    int64_t numerator = 1, denom = 1;
     switch (depth) {
-        case HeaderDepth::Tip:    numer = 1; denom = 1; break;
-        case HeaderDepth::Recent: numer = 1; denom = 2; break;
-        case HeaderDepth::Deep:   numer = 1; denom = 5; break;
+        case HeaderDepth::Tip:    numerator = 1; denom = 1; break;
+        case HeaderDepth::Recent: numerator = 1; denom = 2; break;
+        case HeaderDepth::Deep:   numerator = 1; denom = 5; break;
     }
     const int64_t base_ms = params.b3pow_verify_budget_ms > 0
                                 ? params.b3pow_verify_budget_ms : 0;
-    const int64_t scaled_ms = (base_ms * numer) / denom;
+    const int64_t scaled_ms = (base_ms * numerator) / denom;
     const auto budget = std::chrono::milliseconds{scaled_ms};
     bool budget_exceeded = false;
     auto pow_opt = header.GetPoWHash(prev_block_hash, pad, budget, budget_exceeded);

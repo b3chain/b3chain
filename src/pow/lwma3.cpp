@@ -11,7 +11,7 @@
 
 #include <algorithm>
 
-namespace pow {
+namespace b3pow {
 
 namespace {
 
@@ -184,4 +184,4 @@ unsigned int CalculateLwma3Target(const CBlockIndex* pindexLast,
     return new_target.GetCompact();
 }
 
-}  // namespace pow
+}  // namespace b3pow
