@@ -45,7 +45,13 @@ export RUN_TIDY=${RUN_TIDY:-false}
 # By how much to scale the test_runner timeouts (option --timeout-factor).
 # This is needed because some ci machines have slow CPU or disk, so sanitizers
 # might be slow or a reindex might be waiting on disk IO.
-export TEST_RUNNER_TIMEOUT_FACTOR=${TEST_RUNNER_TIMEOUT_FACTOR:-40}
+#
+# b3chain: bumped from 40 -> 80 so that miner_tests::CreateNewBlock_validity
+# (which mines 110 regtest blocks via brute-force B3PoW-Scratch nonce
+# search + 1 MB scratchpad init per block) has room to finish on slow
+# Debug builds.  Sanitizer builds override this further to 120 in their
+# own env scripts.
+export TEST_RUNNER_TIMEOUT_FACTOR=${TEST_RUNNER_TIMEOUT_FACTOR:-80}
 export RUN_FUZZ_TESTS=${RUN_FUZZ_TESTS:-false}
 
 # Randomize test order.
