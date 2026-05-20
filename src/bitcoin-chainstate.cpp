@@ -251,6 +251,21 @@ int main(int argc, char* argv[])
         case BlockValidationResult::BLOCK_TIME_FUTURE:
             std::cerr << "block timestamp was > 2 hours in the future (or our clock is bad)" << std::endl;
             break;
+        // b3chain-specific BlockValidationResult extensions.  These do not
+        // exist in upstream Bitcoin Core, so the example switch (which was
+        // copied from upstream) misses them and `-Werror=-Wswitch` rejects
+        // the build.  Handle them with a short, distinguishable message
+        // each so the example still produces useful output if the kernel
+        // surfaces one of these states.
+        case BlockValidationResult::BLOCK_POW_BUDGET:
+            std::cerr << "B3PoW: block fails the per-window PoW budget" << std::endl;
+            break;
+        case BlockValidationResult::BLOCK_DEEP_REORG:
+            std::cerr << "B3PoW: reorg exceeds the maximum permitted depth" << std::endl;
+            break;
+        case BlockValidationResult::BLOCK_CHECKPOINT:
+            std::cerr << "B3PoW: block conflicts with a hard-coded checkpoint" << std::endl;
+            break;
         }
     }
 
