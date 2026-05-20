@@ -3070,7 +3070,13 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
     //
     // Bypass: only applies when we are NOT in IBD and the peer was not
     // explicitly requested to send these headers.
+    //
+    // Locking: ActiveChain() and IsInitialBlockDownload() both require
+    // cs_main, which is not held at this point in ProcessHeadersMessage
+    // (m_chainman.ProcessNewBlockHeaders() above does its own internal
+    // locking).  Acquire it for the read-only inspection below.
     {
+        LOCK(::cs_main);
         const auto& consensus = m_chainman.GetParams().GetConsensus();
         const int max_reorg_depth = consensus.max_reorg_depth;
         if (max_reorg_depth > 0 && !m_chainman.IsInitialBlockDownload()) {
