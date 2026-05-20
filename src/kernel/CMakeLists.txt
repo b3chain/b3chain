@@ -34,7 +34,18 @@ add_library(bitcoinkernel
   ../logging.cpp
   ../node/blockstorage.cpp
   ../node/chainstate.cpp
+  # b3chain: emergency-checkpoints map is consulted from validation.cpp,
+  # which is already linked into libbitcoinkernel.so, so the
+  # implementation has to live in this library too.  Without it,
+  # linking `b3chain-chainstate` (the kernel-API example) fails with
+  # `undefined reference to node::EmergencyCheckpoints::*`.
+  ../node/emergency_checkpoints.cpp
   ../node/utxo_snapshot.cpp
+  # b3chain: LWMA-3 difficulty retargeting is referenced from pow.cpp
+  # (which validation.cpp pulls in).  Without compiling lwma3.cpp into
+  # the kernel library, libbitcoinkernel.so has dangling references to
+  # `b3pow::CalculateLwma3Target`.
+  ../pow/lwma3.cpp
   ../policy/ephemeral_policy.cpp
   ../policy/feerate.cpp
   ../policy/packages.cpp
@@ -81,6 +92,14 @@ add_library(bitcoinkernel
   ../versionbits.cpp
   $<TARGET_OBJECTS:bitcoin_clientversion>
   $<TARGET_OBJECTS:bitcoin_crypto>
+  # b3chain: bitcoin_crypto PUBLIC-links bitcoin_crypto_blake3, but
+  # `$<TARGET_OBJECTS:...>` only extracts the *direct* object files of
+  # the named target; transitive link dependencies of a STATIC library
+  # are not propagated.  Pull the BLAKE3 objects in explicitly so
+  # libbitcoinkernel.so has `blake3_hasher_init/update/finalize/...`
+  # symbols that validation.cpp (and the rest of the b3chain consensus
+  # engine) calls into.
+  $<TARGET_OBJECTS:bitcoin_crypto_blake3>
   $<TARGET_OBJECTS:leveldb>
   $<TARGET_OBJECTS:crc32c>
 )
