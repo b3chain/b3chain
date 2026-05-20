@@ -6,18 +6,18 @@
  *
  * Each line contains a BIP155 serialized (networkID, addr, port) tuple.
  */
-static const uint8_t chainparams_seed_main[] = {
-};
+#include <array>
+#include <cstdint>
 
-static const uint8_t chainparams_seed_signet[] = {
-};
+static constexpr std::array<uint8_t, 0> chainparams_seed_main{};
 
-static const uint8_t chainparams_seed_test[] = {
+static constexpr std::array<uint8_t, 0> chainparams_seed_signet{};
+
+static constexpr std::array<uint8_t, 24> chainparams_seed_test{
     0x01,0x04,0xa6,0x58,0x04,0xfa,0x48,0x65,
     0x01,0x04,0x97,0x9e,0x01,0x16,0x48,0x65,
     0x01,0x04,0x97,0x9e,0x01,0x3c,0x48,0x65,
 };
 
-static const uint8_t chainparams_seed_testnet4[] = {
-};
+static constexpr std::array<uint8_t, 0> chainparams_seed_testnet4{};
 #endif // BITCOIN_CHAINPARAMSSEEDS_H

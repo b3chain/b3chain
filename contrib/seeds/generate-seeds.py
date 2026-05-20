@@ -22,9 +22,9 @@ These files must consist of lines in the format
 
 The output will be several data structures with the peers in binary format:
 
-   static const uint8_t chainparams_seed_{main,signet,test,testnet4}[]={
+   static constexpr std::array<uint8_t, N> chainparams_seed_{main,signet,test,testnet4}{
    ...
-   }
+   };
 
 These should be pasted into `src/chainparamsseeds.h`.
 '''
@@ -137,7 +137,12 @@ def bip155_serialize(spec):
     return r
 
 def process_nodes(g, f, structname):
-    g.write('static const uint8_t %s[] = {\n' % structname)
+    # Buffer rows first so we know the total byte count for std::array<N>.
+    # std::array<T, 0> is well-formed in C++ (unlike a zero-length C array,
+    # which is rejected under -Werror,-Wzero-length-array on clang and as
+    # MSVC error C2466), so we use std::array unconditionally.
+    rows = []
+    total_bytes = 0
     for line in f:
         comment = line.find('#')
         if comment != -1:
@@ -150,8 +155,14 @@ def process_nodes(g, f, structname):
         if spec is None:  # ignore this entry (e.g. no longer supported addresses like TORV2)
             continue
         blob = bip155_serialize(spec)
-        hoststr = ','.join(('0x%02x' % b) for b in blob)
-        g.write(f'    {hoststr},\n')
+        total_bytes += len(blob)
+        rows.append(','.join(('0x%02x' % b) for b in blob))
+
+    g.write('static constexpr std::array<uint8_t, %d> %s{' % (total_bytes, structname))
+    if rows:
+        g.write('\n')
+        for hoststr in rows:
+            g.write(f'    {hoststr},\n')
     g.write('};\n')
 
 def main():
@@ -168,6 +179,9 @@ def main():
     g.write(' *\n')
     g.write(' * Each line contains a BIP155 serialized (networkID, addr, port) tuple.\n')
     g.write(' */\n')
+    g.write('#include <array>\n')
+    g.write('#include <cstdint>\n')
+    g.write('\n')
     with open(os.path.join(indir,'nodes_main.txt'), 'r', encoding="utf8") as f:
         process_nodes(g, f, 'chainparams_seed_main')
     g.write('\n')
