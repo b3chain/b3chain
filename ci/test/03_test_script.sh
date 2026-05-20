@@ -200,7 +200,21 @@ if [ "${RUN_TIDY}" = "true" ]; then
   set -eo pipefail
   # Filter out:
   # * qt qrc and moc generated files
-  jq 'map(select(.file | test("src/qt/.*_autogen/.*\\.cpp$") | not))' "${BASE_BUILD_DIR}/compile_commands.json" > tmp.json
+  # * vendored BLAKE3 reference impl (b3chain): clang-tidy ingests
+  #   `compile_commands.json` and walks every entry as a translation
+  #   unit, including the gas-syntax `crypto/blake3/*_x86-64_unix.S`
+  #   files that ASM-language entries pulled in.  clang-tidy parses
+  #   those as C and barfs on `vpaddd` / `knotw` / `vmovdqa32`
+  #   mnemonics.  The C/C++ pieces of the BLAKE3 vendor tree
+  #   (`blake3.c`, `blake3_dispatch.c`, `blake3_portable.c`) also
+  #   trip `misc-no-recursion` (`blake3_compress_subtree_wide` is
+  #   intentionally recursive) and other style nits we do not own.
+  #   Skip the whole `src/crypto/blake3/` subtree so we tidy only
+  #   first-party code.
+  jq 'map(select(
+        (.file | test("src/qt/.*_autogen/.*\\.cpp$") | not)
+        and (.file | test("src/crypto/blake3/.*") | not)
+      ))' "${BASE_BUILD_DIR}/compile_commands.json" > tmp.json
   mv tmp.json "${BASE_BUILD_DIR}/compile_commands.json"
 
   cd "${BASE_BUILD_DIR}/src/"

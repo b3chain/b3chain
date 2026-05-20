@@ -57,7 +57,7 @@ uint256 HexToUint256(const std::string& s)
 unsigned int ParseNBits(const std::string& s)
 {
     std::string hex = s;
-    if (hex.rfind("0x", 0) == 0 || hex.rfind("0X", 0) == 0) {
+    if (hex.starts_with("0x") || hex.starts_with("0X")) {
         hex = hex.substr(2);
     }
     BOOST_REQUIRE_EQUAL(hex.size(), 8U);

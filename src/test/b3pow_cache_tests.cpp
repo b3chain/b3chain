@@ -243,6 +243,7 @@ BOOST_AUTO_TEST_CASE(thread_safety_concurrent_access)
     };
 
     std::vector<std::thread> ts;
+    ts.reserve(4);
     for (int t = 0; t < 4; ++t) ts.emplace_back(worker, t);
     for (auto& t : ts) t.join();
 
