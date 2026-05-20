@@ -23,7 +23,17 @@ function(install_binary_component component)
     COMPONENT ${component}
   )
   if(INSTALL_MAN AND IC_HAS_MANPAGE)
-    install(FILES ${PROJECT_SOURCE_DIR}/doc/man/${target_name}.1
+    # b3chain renames the upstream Bitcoin Core executables (e.g. CMake
+    # target `bitcoin-qt` -> output `b3chain-qt`).  The man pages live
+    # under the *output* name, not the CMake target name, so use the
+    # target's OUTPUT_NAME property if it has been set.  Without this
+    # the install step fails on the macOS arm64 sqlite-only-gui job
+    # with "file INSTALL cannot find /.../doc/man/bitcoin-qt.1".
+    get_target_property(_man_basename ${target_name} OUTPUT_NAME)
+    if(NOT _man_basename)
+      set(_man_basename ${target_name})
+    endif()
+    install(FILES ${PROJECT_SOURCE_DIR}/doc/man/${_man_basename}.1
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
       COMPONENT ${component}
     )
