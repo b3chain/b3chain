@@ -270,16 +270,23 @@ def set_host(args) -> int:
 
 
 def main(args) -> int:
+    # b3chain: short-circuit on a forked chain.
+    #
+    # This script downloads Bitcoin Core release binaries for the
+    # backwards-compatibility / wallet-migration functional tests.  Those
+    # binaries are pinned to Bitcoin Core's `chainparams.cpp` (genesis
+    # block, consensus params, magic bytes) and cannot be exercised
+    # against b3chain's chain.  Once b3chain has its own published
+    # release binaries, replace SHA256_SUMS above with the b3chain set
+    # and remove this short-circuit.
+    #
+    # Until then, leaving an empty target directory makes
+    # TestFramework.skip_if_no_previous_releases() skip the dependent
+    # tests cleanly.
     Path(args.target_dir).mkdir(exist_ok=True, parents=True)
     print("Releases directory: {}".format(args.target_dir))
-    ret = set_host(args)
-    if ret:
-        return ret
-    with pushd(args.target_dir):
-        for tag in args.tags:
-            ret = download_binary(tag, args)
-            if ret:
-                return ret
+    print("b3chain: skipping previous-release download (no published "
+          "b3chain releases yet; backwards-compat tests will be skipped).")
     return 0
 
 
