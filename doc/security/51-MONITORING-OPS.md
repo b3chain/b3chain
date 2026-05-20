@@ -203,3 +203,69 @@ action.
 - `doc/security/RESPONSE-RUNBOOK-51ATTACK.md` — incident playbook.
 - `doc/security/B3POW-51-ATTACK-ANALYSIS.md` — threat model + the F-1
   through F-6 finding catalogue this monitoring is keyed off of.
+
+## Live deployments
+
+This section records boxes the watcher is **actually running on**, so an
+on-call operator can reach the right unit fast.  Update on every deploy
+or threshold re-tune.
+
+### seed1 (`166.88.4.250`) — installed 2026-05-20
+
+| Field | Value |
+|---|---|
+| Chain | `test` (testnet) |
+| b3chaind RPC | `127.0.0.1:18534`, rpcuser auth (NOT cookie) |
+| Watcher path | `/opt/b3chain/b3chain/contrib/monitoring/51attack-watch.py` |
+| Unit file | `/etc/systemd/system/b3chain-51watch.service` |
+| Env file (secrets) | `/etc/b3chain/51watch.env` (root:root 0600) |
+| Logrotate | `/etc/logrotate.d/b3chain-51watch` (daily, 30 rotations) |
+| JSONL alert sink | `/var/log/b3chain/51watch.jsonl` |
+| Webhook | none configured (JSONL-only) |
+| Thresholds (testnet-tuned) | `--interval 30 --dedup-window 600 --hashrate-drop 0.30` |
+| Source of truth (deploy) | `/opt/b3chain/b3chain/` (`git remote b3chain`, branch `b3chain-main`) |
+| Updated via | `cd /opt/b3chain/b3chain && git fetch b3chain && git reset --hard b3chain/b3chain-main && sudo systemctl restart b3chain-51watch.service` |
+
+Notes for seed1:
+
+- **`detect_finalized_drift` is dormant on this box** until `b3chaind`
+  itself is upgraded to v1.1.3+.  At install time the running binary
+  did not expose `getfinalizedblockhash`, so the watcher gracefully
+  disabled the M-14 horizon-stall detector for the lifetime of the
+  process (single stderr log line, no `rpc_down` alert).  The three
+  legacy detectors (`deep_fork`, `hashrate_collapse`, `near_reorg_cap`)
+  remain fully armed.  When `b3chaind` on seed1 is upgraded, restart
+  the watcher (`sudo systemctl restart b3chain-51watch.service`) and
+  the drift detector becomes active on the next poll.
+- **b3chaind on seed1 is not systemd-managed**, so the watcher unit
+  uses `Restart=on-failure` (no `Requires=b3chaind.service`).  If
+  b3chaind blips, the watcher emits `rpc_down` JSONL alerts and
+  recovers on its own when the RPC comes back.
+- **Mainnet re-tune TODO**: when seed1 flips `chain=test` →
+  `chain=main`, edit `ExecStart=` in the unit file to use
+  `--chain main --rpc-port 8532 --dedup-window 300 --hashrate-drop
+  0.50`, then `sudo systemctl daemon-reload && sudo systemctl restart
+  b3chain-51watch.service`.
+
+### Known operational caveats
+
+- **rpcpassword visible in `/proc/<pid>/cmdline`**: systemd expands
+  `${RPCPASSWORD}` from `EnvironmentFile=` into the `ExecStart=`
+  command line before `exec(2)`, so the password is visible via `ps
+  auxww`, `systemctl status`, and `/proc/<pid>/cmdline` to anyone with
+  shell access on the host.  This is the same threat surface as
+  `/etc/b3chain/b3chain.conf` (which is the source of truth for the
+  password and is readable to anyone running b3chaind), so it is
+  **not** a new escalation, but it is a documented hardening gap.
+  Future work: add `--rpc-password-file PATH` support to the watcher
+  so the unit can pass a path instead of inlining the value.
+- **Webhook is disabled by default**: the env file ships with
+  `WEBHOOK_URL=` commented out.  Until an incident bus URL is
+  configured, alerts land in journald + the rotated JSONL logfile
+  only.  Operators must tail one of those during high-risk windows.
+
+### Seed-only nodes (`seed2 151.158.1.22`, `seed3 151.158.1.60`)
+
+Watcher **not deployed**.  These boxes run b3chaind in seed-only mode
+with no operator-action footprint, so monitoring there is low value.
+The same install recipe (this document) would work if needed.
