@@ -66,6 +66,15 @@ else()
   )
 endif()
 
+# Disable the NEON code path on every target.  The vendored BLAKE3
+# tree does not include `blake3_neon.c`, so the dispatcher's call to
+# `blake3_hash_many_neon` would resolve to an undefined symbol on
+# AArch64 (macOS arm64, Linux arm64).  `blake3_impl.h` auto-defines
+# `BLAKE3_USE_NEON=1` whenever `IS_AARCH64` is set; force it off
+# globally so the dispatcher always falls through to the portable
+# C path on ARM, mirroring the Windows MSVC SIMD opt-out above.
+target_compile_definitions(bitcoin_crypto_blake3 PRIVATE BLAKE3_USE_NEON=0)
+
 target_include_directories(bitcoin_crypto_blake3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/blake3)
 target_link_libraries(bitcoin_crypto_blake3 PRIVATE core_interface)
 target_link_libraries(bitcoin_crypto PUBLIC bitcoin_crypto_blake3)
