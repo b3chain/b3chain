@@ -1,9 +1,9 @@
 # 51-attack monitoring — operator deployment guide
 
 `contrib/monitoring/51attack-watch.py` is a long-running poller that
-watches an operator-controlled `b3chaind` for the three early-warning
-signals enumerated in
-[`RESPONSE-RUNBOOK-51ATTACK.md`](RESPONSE-RUNBOOK-51ATTACK.md) and
+watches an operator-controlled `b3chaind` for every early-warning
+signal enumerated in
+[`RESPONSE-RUNBOOK-51ATTACK.md`](RESPONSE-RUNBOOK-51ATTACK.md) §0 and
 emits structured JSONL alerts to stdout (and optionally to a webhook).
 It is the in-house deliverable for SECURITY-ROADMAP §9 ("continuous
 51%-attack monitoring").
@@ -15,16 +15,61 @@ the script.
 
 ## What it watches
 
-| Signal | RPC used | Default threshold | Mitigation reference |
+| Signal | Data source | Default threshold | Mitigation / runbook reference |
 |---|---|---|---|
-| `deep_fork` | `getchaintips` | branchlen ≥ 6 on a non-active tip | F-2 (cheap double-spend), M-3 (LWMA-3 retargeting) |
-| `hashrate_collapse` | `getnetworkhashps N` | current ≤ 50% of recent peak over last 100 blocks | F-3 (bootstrap-window risk), M-3 + M-13 |
-| `near_reorg_cap` | `getblockchaininfo` + `getblockheader` walk | reorg depth ≥ 100 (= ½ of `consensus.max_reorg_depth`) | M-4 (reorg-depth cap) |
+| `deep_fork` | RPC `getchaintips` | branchlen ≥ 6 on a non-active tip | F-2 (cheap double-spend), M-3 (LWMA-3 retargeting) |
+| `long_reorg` | RPC `getchaintips` | branchlen ≥ 50 on a non-active tip | RUNBOOK §0 trigger #1 (long deep reorg, depth > 50); M-4 + M-14 |
+| `hashrate_collapse` | RPC `getnetworkhashps N` | current ≤ 50% of recent peak over last 100 blocks | F-3 (bootstrap-window risk), M-3 + M-13 |
+| `hashrate_sustained_drop` | RPC `getnetworkhashps 144`, wall-clock | hps ≤ 70% of trailing 24h peak, sustained ≥ 1h | RUNBOOK §0 trigger #4 (>30% drop sustained >1h) |
+| `near_reorg_cap` | RPC `getblockchaininfo` + `getblockheader` walk | reorg depth ≥ 100 (= ½ of `consensus.max_reorg_depth`) | M-4 (reorg-depth cap) |
+| `finalized_drift_source_flip` | RPC `getfinalizedblockhash` | source changed (`operator` ⇄ `max_reorg_depth`) | M-14; informational (operator just ran `finalizeblock`/`unfinalizeblock`) |
+| `finalized_drift_operator_change` | RPC `getfinalizedblockhash` | source stayed `operator` but hash changed | M-14; warning (re-finalize without unfinalize) |
+| `finalized_drift_horizon_stall` | RPC `getfinalizedblockhash` + tip height | implicit M-4 horizon stuck while tip advanced for N polls | M-14; tip-stall indicator |
+| `deep_reorg_log` | `debug.log` tail | any line matching `deep-reorg-attempt` | RUNBOOK §0 trigger #2; M-4 fired (consider M-14) |
+| `pow_budget_storm` | `debug.log` tail | > 100 `b3pow-budget-exceeded` lines / hour | RUNBOOK §0 trigger #3; D1/D2/D3 verifier-DoS defenses |
+| `rpc_down` | (housekeeping) | RPC call raised `RpcUnavailable` | not a chain-level event; check b3chaind / cookie |
 
-All thresholds are CLI-configurable.  The sliding window for the
-hashrate-collapse detector is keyed on **block height**, not on
-wall-clock time, so a host clock-jump or NTP step does not desync the
-detector.
+All thresholds are CLI-configurable (see `--help`); environment
+variables prefixed `WATCH_` are NOT used — pass flags via the systemd
+unit's `ExecStart` line.
+
+Notes:
+
+- `hashrate_collapse` keys its sliding window on **block height**, so a
+  host clock-jump or NTP step does not desync it.
+- `hashrate_sustained_drop` keys on **wall-clock** (per the runbook's
+  ">1 hour" semantic).  A large NTP step can transiently mis-fire the
+  warning band, but recovers within the next sustained-window once
+  fresh samples arrive.
+- `deep_reorg_log` and `pow_budget_storm` both depend on the log
+  tailer; see "Log-tail prerequisites" below.
+
+## Log-tail prerequisites
+
+`deep_reorg_log` and `pow_budget_storm` work by tailing the b3chaind
+`debug.log`.  Three things must be true:
+
+1. The watcher process can `open()` the file for reading.  In the
+   systemd unit below this is granted via `ReadOnlyPaths=` on the
+   datadir, which already covers `debug.log` inside that directory.
+2. The watcher and b3chaind run on the same host.  Cross-host log
+   shipping is out of scope; pass `--no-log-tail` if the watcher
+   runs off-host and rely on log-aggregator alerts upstream.
+3. The default log path is `<datadir>/<chain-subdir>/debug.log`.
+   Override with `--debug-log /custom/path` if your b3chaind writes
+   elsewhere.
+
+If the file does not exist at startup the watcher logs a single
+stderr warning and continues with the log-tail detectors silenced;
+the RPC detectors keep running.  The watcher does NOT replay log
+history at startup — it seeks to EOF, so existing
+`deep-reorg-attempt` lines from before the daemon started are NOT
+re-paged.
+
+The tailer is inode-aware: when logrotate renames `debug.log` to
+`debug.log.1` and creates a new empty file, the next poll detects
+the inode change, drains the rotated file, and reopens the new one.
+Out-of-band manual `mv` + `touch` works the same way.
 
 ## Output format
 
@@ -36,9 +81,13 @@ One JSONL line per alert, e.g.:
 
 Fields common to every alert:
 
-- `kind`        — `deep_fork` / `hashrate_collapse` / `near_reorg_cap`
-                  / `rpc_down`
-- `severity`    — `warning` / `critical`
+- `kind`        — one of: `deep_fork`, `long_reorg`,
+                  `hashrate_collapse`, `hashrate_sustained_drop`,
+                  `near_reorg_cap`, `finalized_drift_source_flip`,
+                  `finalized_drift_operator_change`,
+                  `finalized_drift_horizon_stall`, `deep_reorg_log`,
+                  `pow_budget_storm`, `rpc_down`
+- `severity`    — `info` / `warning` / `critical`
 - `message`     — human-readable one-liner
 - `ts`          — emit time (UNIX seconds)
 - `source`      — always `"51attack-watch"`
@@ -91,7 +140,12 @@ ExecStart=/usr/bin/python3 /opt/b3chain/contrib/monitoring/51attack-watch.py \
     --datadir /var/lib/b3chain/.b3chain \
     --chain main \
     --interval 30 \
-    --dedup-window 300
+    --dedup-window 300 \
+    --long-reorg-depth 50 \
+    --pow-budget-rate 100 \
+    --pow-budget-window 3600 \
+    --hashrate-sustained-drop 0.70 \
+    --hashrate-sustained-window 3600
 
 StandardOutput=append:/var/log/b3chain/51watch.jsonl
 StandardError=journal
@@ -104,7 +158,9 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/log/b3chain
-# Read-only access to the cookie:
+# Read-only access to the cookie AND to debug.log (needed for the
+# deep_reorg_log + pow_budget_storm detectors).  The datadir entry
+# covers both since debug.log lives at <datadir>/<chain>/debug.log.
 ReadOnlyPaths=/var/lib/b3chain/.b3chain
 
 [Install]
@@ -170,8 +226,15 @@ Steady-state expectation:
 | Signal | Healthy mainnet | Healthy testnet | What "noisy" looks like |
 |---|---|---|---|
 | `deep_fork` (≥ 6 blocks, non-active tip) | 0 / month | < 1 / month | network partition; investigate |
+| `long_reorg` (≥ 50 blocks, non-active tip) | 0 / month | 0 / month | runbook §0 trigger #1; an attacker is staging a deep reorg |
 | `hashrate_collapse` (≤ 50% of 100-block peak) | 0 / month | rare during bootstrap | imminent reorg attempt or major operator outage |
+| `hashrate_sustained_drop` (≤ 70% of 24h peak for ≥ 1h) | 0 / month | rare during bootstrap | runbook §0 trigger #4; coordinated drop-out or region outage |
 | `near_reorg_cap` (≥ 100 blocks) | 0 / month | 0 / month | active attack; trigger RESPONSE-RUNBOOK |
+| `finalized_drift_source_flip` | 0 / month except after operator action | same | someone with RPC access ran `finalizeblock` / `unfinalizeblock` |
+| `finalized_drift_operator_change` | 0 / month | 0 / month | re-finalize without unfinalize — confirm out-of-band who did it |
+| `finalized_drift_horizon_stall` | 0 / month | 0 / month | tip stalled vs M-4 horizon; b3chaind is stuck |
+| `deep_reorg_log` (any `deep-reorg-attempt`) | 0 / month | 0 / month | runbook §0 trigger #2; M-4 cap fired against a peer |
+| `pow_budget_storm` (> 100 `b3pow-budget-exceeded` / h) | 0 / month | 0 / month | runbook §0 trigger #3; verifier-DoS storm |
 | `rpc_down` | 0 / month | 0 / month | b3chaind crash, host outage, or auth misconfig |
 
 If you start seeing more than a handful of alerts per week with
@@ -185,12 +248,19 @@ operators running on a low-hashrate testnet.
 Each alert kind maps to a specific section of
 [`RESPONSE-RUNBOOK-51ATTACK.md`](RESPONSE-RUNBOOK-51ATTACK.md):
 
-| Alert | Runbook section |
-|---|---|
-| `deep_fork` | "Hashrate collapse playbook" + "Deep reorg playbook" |
-| `hashrate_collapse` | "Hashrate collapse playbook" |
-| `near_reorg_cap` | "Deep reorg playbook" (now half-armed; M-4 will fire at full cap) |
-| `rpc_down` | Not a chain-level event; check seed1 health |
+| Alert kind | Runbook §0 trigger | Runbook recovery section |
+|---|---|---|
+| `deep_fork` | (precursor to trigger #1) | §3 Steady-state reorg playbook |
+| `long_reorg` | #1 (long deep reorg, depth > 50) | §3 + §3.0a M-14 `finalizeblock` |
+| `deep_reorg_log` | #2 (`BLOCK_DEEP_REORG` rejection) | §3 + §3.0a M-14 `finalizeblock` |
+| `pow_budget_storm` | #3 (`BLOCK_POW_BUDGET` storm > 100/h) | §3 + §5 Eclipse/Sybil playbook |
+| `hashrate_collapse` | (precursor to trigger #4) | §4 Hashrate collapse playbook |
+| `hashrate_sustained_drop` | #4 (>30% drop sustained >1h) | §4 Hashrate collapse playbook |
+| `near_reorg_cap` | (half-armed; #1 will fire later) | §3 + §3.1 Emergency checkpoint imminent |
+| `finalized_drift_source_flip` | — (M-14 operator-action sanity) | §3.0a M-14 recovery — confirm action |
+| `finalized_drift_operator_change` | — (M-14 operator-action sanity) | §3.0a — investigate who re-pinned |
+| `finalized_drift_horizon_stall` | — (tip stall, not a §0 trigger) | §3.0a + check b3chaind health |
+| `rpc_down` | — (not a chain-level event) | Check seed1 host + cookie auth |
 
 The operator should not act on a single alert in isolation.  The
 runbook explicitly requires confirming the signal against the

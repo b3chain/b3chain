@@ -17,16 +17,25 @@ page they can paste into a war-room without re-deriving the model.
 
 ## 0. Detection triggers
 
-You should run this runbook when **any** of the following are true:
+You should run this runbook when **any** of the following are true.
+The watcher daemon (`contrib/monitoring/51attack-watch.py`, see
+[`51-MONITORING-OPS.md`](51-MONITORING-OPS.md)) emits a JSONL alert
+per row; the **Alert kind** column is the exact `journalctl -u
+b3chain-51watch | jq -r .kind` value to grep for.
 
-| Signal | Where it surfaces | Threshold |
-|---|---|---|
-| Long deep reorg | RPC `getchaintips` | depth > 50, NOT yet at `max_reorg_depth=200` cap |
-| `BLOCK_DEEP_REORG` rejections | `debug.log` `deep-reorg-attempt` | any |
-| Mass `BLOCK_POW_BUDGET` rejections | `debug.log` `b3pow-budget-exceeded` | > 100 / hour |
-| Sudden hashrate drop (>30 %) | block timestamps vs LWMA-3 retarget | sustained for > 1 hour |
-| Stratum disconnect storm | miner-pool logs | > 50 % of pool peers gone |
-| Exchange double-spend report | out-of-band, e.g. exchange security email list | any credible single report |
+| Signal | Where it surfaces | Threshold | Alert kind | Recommended action |
+|---|---|---|---|---|
+| Long deep reorg | RPC `getchaintips` | depth > 50, NOT yet at `max_reorg_depth=200` cap | `long_reorg` | `-paranoid-headers-sync` + consider M-14 `finalizeblock <safe_hash>` once a safe tip is identified (see §3.0a) |
+| `BLOCK_DEEP_REORG` rejections | `debug.log` `deep-reorg-attempt` | any | `deep_reorg_log` | `-paranoid-headers-sync` + consider M-14 `finalizeblock <safe_hash>` (see §3.0a); attacker just hit M-4 cap |
+| Mass `BLOCK_POW_BUDGET` rejections | `debug.log` `b3pow-budget-exceeded` | > 100 / hour | `pow_budget_storm` | investigate peer-set quality + `-paranoid-headers-sync` (see §3) + Eclipse/Sybil playbook (§5) |
+| Sudden hashrate drop (>30 %) | block timestamps vs LWMA-3 retarget | sustained for > 1 hour | `hashrate_sustained_drop` | see §4 Hashrate-collapse playbook |
+| Stratum disconnect storm | miner-pool logs | > 50 % of pool peers gone | — (out-of-band) | see §6 Pool-targeted DoS playbook |
+| Exchange double-spend report | out-of-band, e.g. exchange security email list | any credible single report | — (out-of-band) | §1 Acknowledge + freeze, then §3 Steady-state reorg playbook |
+
+The first four rows are wired into the watcher; the last two are
+out-of-band signals the watcher cannot see (Stratum endpoints and
+exchange security mailing lists live outside the b3chaind RPC
+surface).
 
 **Stop. Confirm the trigger is real before acting.** False-positive
 runbook executions damage credibility with exchanges and miners.

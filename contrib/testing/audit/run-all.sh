@@ -32,6 +32,7 @@ declare -a AUDITS=(
     "audit-rebranding.sh:B-2"
     "audit-hd-coin-type.py:W-2"
     "audit-51-attack-sim.py:A-1"
+    "audit-51attack-watch.py:A-2"
 )
 
 declare -a RESULTS=()

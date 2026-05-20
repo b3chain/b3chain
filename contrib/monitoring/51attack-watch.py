@@ -27,12 +27,31 @@ incident does not page the operator hundreds of times.
                           first column of RESPONSE-RUNBOOK §"Hashrate
                           collapse" + §"Deep reorg".
 
+  long_reorg           -- RUNBOOK §0 trigger #1.  Same getchaintips
+                          shape as deep_fork but the threshold the
+                          runbook actually names (default 50,
+                          configurable via --long-reorg-depth).
+                          Sits between deep_fork (>=6) and
+                          near_reorg_cap (>=100); the 1:1 mapping
+                          to the runbook row gives the war-room a
+                          single grep to confirm trigger #1.
+
   hashrate_collapse    -- `getnetworkhashps` dropped to <= 50% of
                           its maximum in the previous
                           --hashrate-window blocks.  Maps to F-3
                           (low-hashrate bootstrap window) and is the
                           single best predictor of an imminent
-                          competitor-fork attempt.
+                          competitor-fork attempt.  BLOCK-keyed
+                          (clock-skew-immune).
+
+  hashrate_sustained_drop -- RUNBOOK §0 trigger #4.  WALL-CLOCK
+                          sibling of hashrate_collapse: alerts when
+                          `getnetworkhashps 144` has stayed
+                          <= --hashrate-sustained-drop * 24h-peak
+                          for >= --hashrate-sustained-window seconds
+                          (default 0.70 / 3600s = "70% / 1h",
+                          mapping the runbook's ">30% drop sustained
+                          >1h").
 
   near_reorg_cap       -- the active chain reorged by more than
                           --near-reorg-fraction * max_reorg_depth
@@ -57,6 +76,24 @@ incident does not page the operator hundreds of times.
                                                  advanced (= tip stall
                                                  vs cap drift).
 
+  deep_reorg_log       -- RUNBOOK §0 trigger #2.  Tails the b3chaind
+                          `debug.log` and alerts on any line
+                          containing `deep-reorg-attempt` (the
+                          Misbehaving() string from
+                          src/net_processing.cpp).  Threshold = any;
+                          severity = critical.  Recommended operator
+                          response: invoke M-14 `finalizeblock` on
+                          the last known-safe tip, see
+                          RESPONSE-RUNBOOK §3.0a.
+
+  pow_budget_storm     -- RUNBOOK §0 trigger #3.  Tails the b3chaind
+                          `debug.log` for `b3pow-budget-exceeded`
+                          lines and alerts when their count in the
+                          trailing --pow-budget-window seconds
+                          exceeds --pow-budget-rate (default
+                          > 100 events / 3600 s).  This is the
+                          verifier-DoS storm fingerprint.
+
 Execution model (Tier 3 — verify-before-done audit)
 ---------------------------------------------------
 
@@ -68,11 +105,15 @@ TRIGGER:  long-running daemon (`_Watcher.run()`'s
 LOOP:     `_Watcher.run()` -> `_Watcher.step()`.  `run()` is the
           explicit `while not _stop_event.is_set(): step();
           _stop_event.wait(interval)` body; `step()` is one cycle:
-          poll RPC -> compute alerts -> emit -> return.  The sleep
-          uses `Event.wait(interval)` so SIGTERM / SIGINT returns
-          early instead of waiting the full --interval seconds.
-          Sleeps are --interval, NOT --interval since last cycle, so
-          a slow RPC doesn't burn CPU.
+          poll RPC -> tail debug.log (if log tailer is on) ->
+          compute alerts -> emit -> return.  The sleep uses
+          `Event.wait(interval)` so SIGTERM / SIGINT returns early
+          instead of waiting the full --interval seconds.  Sleeps
+          are --interval, NOT --interval since last cycle, so a slow
+          RPC doesn't burn CPU.  The log tailer reuses this same
+          loop: _LogTailer.iter_new_lines() is invoked once per
+          cycle and is non-blocking (reads whatever bytes the kernel
+          has buffered since the previous call, returns).
 
 BYPASS:   - RPC down                  -> `RpcUnavailable` -> emit
                                          `rpc_down` alert (dedup'd),
@@ -82,10 +123,13 @@ BYPASS:   - RPC down                  -> `RpcUnavailable` -> emit
                                          alert is still on stdout.
           - Webhook URL malformed     -> validated at startup; the
                                          daemon refuses to start.
-          - Wall-clock jumps          -> the sliding window is keyed on
-                                         BLOCK HEIGHT, not wall-clock,
-                                         so a host time-skew does not
-                                         desync the detector.
+          - Wall-clock jumps          -> the BLOCK-keyed sliding
+                                         window in hashrate_collapse
+                                         is immune; the WALL-CLOCK
+                                         sustained_drop sibling will
+                                         transiently mis-fire on a
+                                         large NTP step but recovers
+                                         within the sustained-window.
           - max_reorg_depth missing   -> falls back to --reorg-cap
                                          (200) from CLI.
           - getfinalizedblockhash     -> `RpcUnavailable` -> log once
@@ -94,8 +138,30 @@ BYPASS:   - RPC down                  -> `RpcUnavailable` -> emit
                                         detect_finalized_drift becomes
                                         a no-op for the lifetime of
                                         this watcher process, the
-                                        other three detectors keep
-                                        running.
+                                        other detectors keep running.
+          - --no-log-tail             -> log_tailer is None,
+                                         detect_deep_reorg_log and
+                                         detect_pow_budget_storm both
+                                         skip; the other detectors
+                                         keep running.
+          - debug.log missing at      -> _LogTailer.__init__ raises
+            startup                     FileNotFoundError; main() logs
+                                        once to stderr and constructs
+                                        the _Watcher with
+                                        log_tailer=None.  Same effect
+                                        as --no-log-tail.
+          - debug.log rotated under   -> _LogTailer detects an inode
+            us (logrotate, manual       change on the next poll,
+            mv + touch)                 drains the old fd, reopens at
+                                        EOF on the new file.  At most
+                                        one poll's worth of writes is
+                                        missed between the rotate and
+                                        the next stat().
+          - debug.log read raises     -> wrapped in
+            mid-stream (perms,          `try / except`; lines we
+            disk full, FS error)        already drained are still
+                                        processed, the rest of the
+                                        poll continues.
 
 FAILURE:  - Alert fatigue             -> in-memory `_AlertDedup` keeps
                                          the last emit time per
@@ -107,6 +173,11 @@ FAILURE:  - Alert fatigue             -> in-memory `_AlertDedup` keeps
                                          daemon keeps running so a bug
                                          in one detector does not blind
                                          the operator to the others.
+          - Log-tailer exception      -> wrapped around iter_new_lines()
+                                         call AND around each of the
+                                         two log-fed detectors; a
+                                         broken tailer cannot blind
+                                         the four RPC-fed detectors.
 
 Configuration
 -------------
@@ -128,6 +199,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import os
 import signal
@@ -140,7 +212,7 @@ import urllib.request
 from base64 import b64encode
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +231,25 @@ DEFAULT_HTTP_TIMEOUT_SEC  = 10.0
 # default --interval=30s, 5 polls = 2.5 min before the implicit M-4
 # horizon being stuck (while tip advances) flags as a stall.
 DEFAULT_FINALIZED_STALL_THRESHOLD = 5
+
+# Runbook §0 alignment (this file's second pass; "runbook §0 alerting
+# completion" plan).  The four runbook detection triggers map 1:1 to
+# the four detectors gated on these defaults.
+DEFAULT_LONG_REORG_DEPTH        = 50      # branchlen threshold
+DEFAULT_POW_BUDGET_RATE         = 100     # events / hour
+DEFAULT_POW_BUDGET_WINDOW_SEC   = 3600.0  # rolling 1h
+DEFAULT_HASHRATE_SUSTAINED_DROP = 0.70    # alert when <= 70% of 24h peak
+DEFAULT_HASHRATE_SUSTAINED_WIN  = 3600.0  # sustained for >= 1h
+DEFAULT_WALLCLOCK_HPS_MAX_AGE   = 86400.0 # 24h peak window
+
+# Log-line markers emitted by validation.cpp / net_processing.cpp.
+# Verified against b3chain/src at plan time:
+#   src/validation.cpp:4170      "b3pow-budget-exceeded"
+#   src/validation.cpp:4806      "deep-reorg-attempt"
+#   src/net_processing.cpp:1843  Misbehaving("b3pow-budget-exceeded")
+#   src/net_processing.cpp:1850  Misbehaving("deep-reorg-attempt")
+LOG_MARKER_DEEP_REORG  = "deep-reorg-attempt"
+LOG_MARKER_POW_BUDGET  = "b3pow-budget-exceeded"
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +393,156 @@ class _AlertDedup:
 
 
 # ---------------------------------------------------------------------------
+# Log tailer (stdlib-only, inode-rotation aware)
+# ---------------------------------------------------------------------------
+
+class _LogTailer:
+    """
+    Tail `debug.log` from EOF, surface only NEW lines on each poll.
+
+    Used by the runbook §0 trigger #2 (`deep-reorg-attempt`) and trigger
+    #3 (`b3pow-budget-exceeded`) detectors.  Polling-driven (not
+    inotify-driven) on purpose: the rest of the watcher is a single
+    poll loop, and adding an inotify thread would break the "one
+    detector failure cannot blind the others" invariant.
+
+    Behaviour:
+      - On `__init__` the file is opened, `seek(0, SEEK_END)` is called,
+        and the inode (dev, ino) is recorded.  The watcher starts in
+        "from now on" mode; we do NOT replay history at startup.
+      - `iter_new_lines()` reads every byte appended since the last
+        call and returns one alert-ready dict per `\n`-terminated line.
+        A trailing partial line (no `\n` yet) is buffered until the
+        next call -- this prevents splitting a `Misbehaving(...)` line
+        between two polls.
+      - Inode rotation (logrotate, manual `mv` + `touch`, etc.) is
+        detected by stat'ing the path on every poll.  When inode
+        changes we drain the old fd first (so we don't lose the tail of
+        the rotated file), then reopen the new file from the start
+        (logrotate creates an empty file, so "start" is also "EOF").
+      - Any I/O failure (file vanished, permission denied) is caught
+        by the caller pattern.  Same pattern as the other detectors.
+
+    The class is intentionally small and pure-ish so the unit tests
+    can drive it against a tempfile without needing the rest of the
+    watcher.
+
+    LOOP:    iter_new_lines() is called once per outer poll cycle in
+             _Watcher.step().  No internal loop / no background thread.
+    BYPASS:  - path is None (--no-log-tail)            -> caller skips us
+             - path missing at startup                  -> __init__ raises
+                                                           FileNotFoundError;
+                                                           caller logs once
+                                                           to stderr and
+                                                           disables log tail
+             - inode change                             -> drain old, reopen
+             - permission denied mid-stream             -> ignored; next
+                                                           poll re-tries
+    """
+
+    # Cap how many bytes we'll read in a single poll, so a runaway
+    # b3chaind that suddenly dumps gigabytes of log can't OOM the
+    # watcher.  4 MB is ~ 20k typical log lines; debug.log on a healthy
+    # node grows ~ 100 KB/h.
+    _MAX_READ_PER_POLL = 4 * 1024 * 1024
+
+    def __init__(self, path: Path):
+        self._path = Path(path)
+        self._fh: Any | None = None
+        self._inode: tuple[int, int] | None = None
+        self._partial: str = ""
+        self._open_at_end()
+
+    def _open_at_end(self) -> None:
+        # Open in text mode with errors='replace' so a half-written
+        # multibyte character on a torn write doesn't kill the daemon.
+        fh = self._path.open("r", encoding="utf-8", errors="replace")
+        try:
+            fh.seek(0, os.SEEK_END)
+        except OSError:
+            # File can't be seeked (e.g. a pipe substituted by the
+            # test harness).  Read from the start instead.
+            pass
+        st = os.fstat(fh.fileno())
+        self._fh = fh
+        self._inode = (st.st_dev, st.st_ino)
+        self._partial = ""
+
+    def _stat_inode(self) -> tuple[int, int] | None:
+        try:
+            st = self._path.stat()
+        except (FileNotFoundError, PermissionError):
+            return None
+        return (st.st_dev, st.st_ino)
+
+    def _drain(self) -> list[str]:
+        """Read up to _MAX_READ_PER_POLL bytes and return whole lines."""
+        out: list[str] = []
+        if self._fh is None:
+            return out
+        try:
+            chunk = self._fh.read(self._MAX_READ_PER_POLL)
+        except (OSError, ValueError):
+            # ValueError = "I/O operation on closed file" if a rotate
+            # raced with us.
+            return out
+        if not chunk:
+            return out
+        buf = self._partial + chunk
+        # Split on '\n' so trailing partial line is preserved.
+        parts = buf.split("\n")
+        self._partial = parts[-1]
+        out.extend(parts[:-1])
+        return out
+
+    def iter_new_lines(self) -> list[str]:
+        """
+        Return every newline-terminated line that has appeared since
+        the previous call.  Handles inode rotation transparently.
+        Never raises -- I/O failures are observable as an empty list
+        and a warning to stderr on the *next* poll once a successful
+        reopen happens.
+        """
+        lines: list[str] = []
+        # 1. Drain whatever is already in the current fd.
+        lines.extend(self._drain())
+
+        # 2. Check for rotation.  If the file at `self._path` has a
+        # different inode than the fd we're holding, the operator (or
+        # logrotate) just rotated under us.  Drain a second time on the
+        # OLD fd (to catch anything written between (1) and the rotate),
+        # then reopen on the new file.
+        new_inode = self._stat_inode()
+        if new_inode is not None and new_inode != self._inode:
+            try:
+                lines.extend(self._drain())
+            except Exception:  # noqa: BLE001 -- defensive
+                pass
+            try:
+                if self._fh is not None:
+                    self._fh.close()
+            except OSError:
+                pass
+            try:
+                self._open_at_end()
+                # Logrotate creates the new file empty, so the next
+                # _drain() returns nothing; that's fine.
+            except (FileNotFoundError, PermissionError) as e:
+                _eprint(f"log tailer: reopen after rotation failed ({e})")
+                self._fh = None
+                self._inode = None
+        return lines
+
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.close()
+            except OSError:
+                pass
+            self._fh = None
+
+
+# ---------------------------------------------------------------------------
 # Detectors (each emits a list[dict] of structured alerts)
 # ---------------------------------------------------------------------------
 
@@ -332,6 +573,212 @@ def detect_deep_fork(tips: list[dict], threshold: int) -> list[dict]:
                 ),
             })
     return out
+
+
+def detect_long_reorg(tips: list[dict], threshold: int) -> list[dict]:
+    """
+    Runbook §0 trigger #1 ("long deep reorg, depth > 50, NOT yet at
+    `max_reorg_depth=200` cap").
+
+    Same `getchaintips` shape as `detect_deep_fork` but a wider
+    threshold and a separate `kind` so the war-room sees a 1:1 mapping
+    between the runbook row and the alert.
+
+    Severity scales linearly:
+      branchlen >= threshold              -> warning
+      branchlen >= 2 * threshold          -> critical
+    """
+    out: list[dict] = []
+    for t in tips:
+        if t.get("status") == "active":
+            continue
+        branchlen = int(t.get("branchlen", 0))
+        if branchlen >= threshold:
+            severity = "critical" if branchlen >= threshold * 2 else "warning"
+            out.append({
+                "kind": "long_reorg",
+                "tip_hash":   t.get("hash", ""),
+                "tip_height": int(t.get("height", -1)),
+                "branchlen":  branchlen,
+                "status":     t.get("status", "unknown"),
+                "threshold":  threshold,
+                "severity":   severity,
+                "message": (
+                    f"non-active tip {t.get('hash', '?')[:12]}... at "
+                    f"branchlen={branchlen} (>= long-reorg threshold "
+                    f"{threshold}); consider M-14 finalizeblock"
+                ),
+            })
+    return out
+
+
+def detect_deep_reorg_log(lines: Iterable[str], now: float) -> list[dict]:
+    """
+    Runbook §0 trigger #2 (`BLOCK_DEEP_REORG` rejections in debug.log,
+    threshold = any).
+
+    Scans each new debug.log line for the LOG_MARKER_DEEP_REORG token
+    (verified against `src/validation.cpp:4806` and
+    `src/net_processing.cpp:1850`).  Returns one alert per matching
+    line; the alert's dedup signature (set by the caller) is the sha1
+    of the line so the SAME `Misbehaving("deep-reorg-attempt")` event
+    is silenced inside the dedup window but a DIFFERENT one re-fires.
+
+    The marker `deep-reorg-attempt` is unambiguous -- it only appears
+    in those two source sites and never in any benign log line -- so a
+    simple substring match is safe.  We deliberately do NOT try to
+    parse the surrounding context (peer id, depth, etc.); the operator
+    is going to `grep debug.log` anyway and the JSONL alert is just
+    the war-room page.
+    """
+    out: list[dict] = []
+    for line in lines:
+        if LOG_MARKER_DEEP_REORG not in line:
+            continue
+        sig = hashlib.sha1(line.encode("utf-8", "replace")).hexdigest()[:16]
+        out.append({
+            "kind":      "deep_reorg_log",
+            "severity":  "critical",
+            "marker":    LOG_MARKER_DEEP_REORG,
+            "line":      line.strip()[:512],  # cap log line length
+            "signature": sig,
+            "message": (
+                "debug.log: deep-reorg-attempt rejection observed -- "
+                "attacker tried to push a >max_reorg_depth reorg "
+                "(see RESPONSE-RUNBOOK-51ATTACK.md §0 trigger #2)"
+            ),
+        })
+    return out
+
+
+def detect_pow_budget_storm(timestamps: deque[float],
+                            threshold: int,
+                            window_sec: float,
+                            now: float) -> list[dict]:
+    """
+    Runbook §0 trigger #3 (mass `BLOCK_POW_BUDGET` rejections, > 100/h).
+
+    `timestamps` is a deque of UNIX-seconds floats; the caller appends
+    one entry per `b3pow-budget-exceeded` log line.  We trim entries
+    older than `now - window_sec` first (cheap, since timestamps are
+    appended in order) and then compare `len(timestamps)` to threshold.
+
+    Severity:
+      count > threshold        -> warning
+      count > 4 * threshold    -> critical
+
+    The caller is responsible for de-duplicating the alert per poll;
+    we just return at most one alert per call.
+    """
+    cutoff = now - window_sec
+    # Trim front (oldest); caller may rely on the side-effect.
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.popleft()
+    count = len(timestamps)
+    if count <= threshold:
+        return []
+    severity = "critical" if count > threshold * 4 else "warning"
+    bucket = (count // 50) * 50  # dedup-friendly bucket
+    return [{
+        "kind":          "pow_budget_storm",
+        "count":         count,
+        "threshold":     threshold,
+        "window_sec":    window_sec,
+        "rate_per_hour": count * 3600.0 / window_sec,
+        "bucket":        bucket,
+        "severity":      severity,
+        "message": (
+            f"debug.log: {count} b3pow-budget-exceeded rejections in "
+            f"the last {int(window_sec)}s (> {threshold} threshold); "
+            f"verifier DoS storm in progress"
+        ),
+    }]
+
+
+def detect_hashrate_sustained_drop(
+    samples: deque[tuple[float, float]],
+    drop_frac: float,
+    window_sec: float,
+    now: float,
+) -> list[dict]:
+    """
+    Runbook §0 trigger #4 ("sudden hashrate drop (>30%) sustained
+    >1h", verified by block timestamps vs LWMA-3).
+
+    `samples` is a wall-clock-keyed deque of `(unix_ts, hps)` pairs --
+    one per poll cycle, trimmed by the caller to ~24h.
+
+    Distinct from `detect_hashrate_collapse`, which is block-height-
+    keyed (100-block window) and is the SECURITY-ROADMAP §9
+    deliverable's tuned defaults.  This sibling is wall-clock-keyed
+    because the runbook explicitly says "sustained > 1 hour".
+
+    Alert fires when EVERY sample inside the trailing `window_sec`
+    has `hps <= drop_frac * peak_over_24h`.  That is, the drop must
+    be sustained for the whole window -- a single transient blip
+    does not page.
+
+    Severity:
+      sustained >= window_sec        -> warning
+      sustained >= 2 * window_sec    -> critical
+    """
+    if len(samples) < 2:
+        return []
+    peak = max(hps for _, hps in samples)
+    if peak <= 0.0:
+        return []
+    threshold_hps = drop_frac * peak
+    # Two-pass algorithm:
+    #   1. Confirm EVERY sample inside the trailing window_sec is
+    #      <= threshold (i.e. the drop is sustained for the whole
+    #      configured window).  If any sample in the window is above
+    #      the threshold, the drop is not sustained -- return [].
+    #   2. To determine SEVERITY (warning vs critical), walk backwards
+    #      from `now` and find the earliest contiguous run of
+    #      below-threshold samples.  `sustained_for = now - earliest`.
+    #      A drop sustained for >= 2 * window_sec is critical.
+    window_start = now - window_sec
+    seen_in_window = False
+    for ts, hps in samples:
+        if ts < window_start:
+            continue
+        seen_in_window = True
+        if hps > threshold_hps:
+            return []
+    if not seen_in_window:
+        return []
+    # Find earliest contiguous below-threshold sample (severity input).
+    earliest_under: float | None = None
+    for ts, hps in samples:
+        if hps > threshold_hps:
+            earliest_under = None
+            continue
+        if earliest_under is None:
+            earliest_under = ts
+    if earliest_under is None:
+        return []
+    sustained_for = now - earliest_under
+    if sustained_for < window_sec:
+        return []
+    latest_ts, latest_hps = samples[-1]
+    ratio = latest_hps / peak if peak > 0 else 0.0
+    severity = "critical" if sustained_for >= window_sec * 2 else "warning"
+    return [{
+        "kind":           "hashrate_sustained_drop",
+        "sustained_sec":  sustained_for,
+        "window_sec":     window_sec,
+        "peak_hashps":    peak,
+        "latest_hashps":  latest_hps,
+        "drop_frac":      drop_frac,
+        "ratio":          ratio,
+        "severity":       severity,
+        "message": (
+            f"hashrate {latest_hps:.3e} ({ratio*100:.1f}% of 24h peak "
+            f"{peak:.3e}) has stayed <= {drop_frac*100:.0f}% for "
+            f"{int(sustained_for)}s (>= {int(window_sec)}s sustained "
+            f"window)"
+        ),
+    }]
 
 
 def detect_hashrate_collapse(samples: deque[tuple[int, float]],
@@ -622,6 +1069,20 @@ class _Watcher:
     webhook_url: str | None
     http_timeout: float
     finalized_stall_threshold: int = 5
+    # Runbook §0 alignment: long-reorg (trigger #1), pow-budget storm
+    # (trigger #3), wall-clock sustained hashrate drop (trigger #4),
+    # plus the log tailer that feeds the deep_reorg_log + pow_budget
+    # detectors (triggers #2 + #3).
+    long_reorg_depth: int = DEFAULT_LONG_REORG_DEPTH
+    pow_budget_rate: int = DEFAULT_POW_BUDGET_RATE
+    pow_budget_window_sec: float = DEFAULT_POW_BUDGET_WINDOW_SEC
+    hashrate_sustained_drop_frac: float = DEFAULT_HASHRATE_SUSTAINED_DROP
+    hashrate_sustained_window_sec: float = DEFAULT_HASHRATE_SUSTAINED_WIN
+    wallclock_hps_max_age_sec: float = DEFAULT_WALLCLOCK_HPS_MAX_AGE
+    log_tailer: _LogTailer | None = None
+    pow_budget_events: deque[float] = dataclasses.field(default_factory=deque)
+    wallclock_hps_samples: deque[tuple[float, float]] = dataclasses.field(
+        default_factory=deque)
     hashrate_samples: deque[tuple[int, float]] = dataclasses.field(
         default_factory=deque)
     last_tip_hash: str | None = None
@@ -686,6 +1147,17 @@ class _Watcher:
         except Exception as e:
             _eprint(f"detect_deep_fork raised: {e}; continuing")
 
+        # Detector 1b (RUNBOOK §0 trigger #1): long-reorg threshold
+        # (default 50), sits between deep_fork (>=6) and near_reorg_cap
+        # (>=100).  Same getchaintips data, different bucket.
+        try:
+            for a in detect_long_reorg(tips, self.long_reorg_depth):
+                key = _AlertKey(kind="long_reorg",
+                                signature=a["tip_hash"])
+                self.emit_dedup(a, key, now)
+        except Exception as e:
+            _eprint(f"detect_long_reorg raised: {e}; continuing")
+
         # Detector 2: hashrate collapse (height-keyed sliding window).
         try:
             cur_height = int(info.get("blocks", -1))
@@ -710,6 +1182,36 @@ class _Watcher:
                 self.emit_dedup(a, key, now)
         except Exception as e:
             _eprint(f"detect_hashrate_collapse raised: {e}; continuing")
+
+        # Detector 2b (RUNBOOK §0 trigger #4): wall-clock sustained
+        # hashrate drop (default <= 70% of 24h peak sustained >= 1h).
+        # Distinct from Detector 2 above which is block-window keyed.
+        try:
+            if hps > 0:
+                self.wallclock_hps_samples.append((now, hps))
+            # Trim samples older than the configured 24h max age.
+            wallclock_cutoff = now - self.wallclock_hps_max_age_sec
+            while (self.wallclock_hps_samples
+                   and self.wallclock_hps_samples[0][0] < wallclock_cutoff):
+                self.wallclock_hps_samples.popleft()
+            for a in detect_hashrate_sustained_drop(
+                self.wallclock_hps_samples,
+                self.hashrate_sustained_drop_frac,
+                self.hashrate_sustained_window_sec,
+                now,
+            ):
+                # Dedup signature: severity bucket so a single
+                # sustained event doesn't re-page every poll, but a
+                # warning -> critical transition does.
+                key = _AlertKey(
+                    kind="hashrate_sustained_drop",
+                    signature=a["severity"],
+                )
+                self.emit_dedup(a, key, now)
+        except Exception as e:
+            _eprint(
+                f"detect_hashrate_sustained_drop raised: {e}; continuing"
+            )
 
         # Detector 3: near M-4 reorg cap.
         try:
@@ -775,13 +1277,67 @@ class _Watcher:
         except Exception as e:
             _eprint(f"detect_finalized_drift raised: {e}; continuing")
 
+        # Detectors 5 + 6 (RUNBOOK §0 triggers #2 + #3): debug.log
+        # tail.  The tailer is None either because --no-log-tail was
+        # passed or because the log file was missing at startup (the
+        # constructor logged once and the watcher is running in
+        # RPC-only mode).  Both bypass paths simply skip these
+        # detectors, the other four keep running.
+        if self.log_tailer is not None:
+            try:
+                new_lines = self.log_tailer.iter_new_lines()
+            except Exception as e:
+                _eprint(f"_LogTailer raised: {e}; continuing")
+                new_lines = []
+            # Detector 5: BLOCK_DEEP_REORG rejection lines (trigger #2,
+            # threshold = any).
+            try:
+                for a in detect_deep_reorg_log(new_lines, now):
+                    key = _AlertKey(kind="deep_reorg_log",
+                                    signature=a["signature"])
+                    self.emit_dedup(a, key, now)
+            except Exception as e:
+                _eprint(
+                    f"detect_deep_reorg_log raised: {e}; continuing"
+                )
+            # Detector 6: BLOCK_POW_BUDGET storm (trigger #3, default
+            # > 100 / hour).  Append timestamps THEN run the detector;
+            # the detector itself trims stale entries past the window.
+            try:
+                for line in new_lines:
+                    if LOG_MARKER_POW_BUDGET in line:
+                        self.pow_budget_events.append(now)
+                for a in detect_pow_budget_storm(
+                    self.pow_budget_events,
+                    self.pow_budget_rate,
+                    self.pow_budget_window_sec,
+                    now,
+                ):
+                    # Dedup signature is the rounded count bucket so
+                    # a sustained storm doesn't repage every poll.
+                    key = _AlertKey(
+                        kind="pow_budget_storm",
+                        signature=f"{a['bucket']}-{a['severity']}",
+                    )
+                    self.emit_dedup(a, key, now)
+            except Exception as e:
+                _eprint(
+                    f"detect_pow_budget_storm raised: {e}; continuing"
+                )
+
     def run(self) -> None:
         _eprint(
             f"started; interval={self.interval_sec}s, "
             f"deep_fork_depth={self.deep_fork_depth}, "
+            f"long_reorg_depth={self.long_reorg_depth}, "
             f"hashrate_window={self.hashrate_window} blocks @ "
             f"<= {self.hashrate_drop_frac*100:.0f}%, "
+            f"sustained_drop <= {self.hashrate_sustained_drop_frac*100:.0f}% "
+            f"for {int(self.hashrate_sustained_window_sec)}s, "
+            f"pow_budget_rate>{self.pow_budget_rate} "
+            f"per {int(self.pow_budget_window_sec)}s, "
             f"near_reorg>={self.near_reorg_threshold}, "
+            f"log_tailer={'on' if self.log_tailer is not None else 'OFF'}, "
             f"dedup={self.dedup._window:.0f}s"
         )
         # The polling LOOP.  Required by tiered-verification.mdc Tier 3:
@@ -858,6 +1414,50 @@ def parse_args() -> argparse.Namespace:
                    help=f"M-14 finalization horizon stall threshold "
                         f"in poll cycles (default "
                         f"{DEFAULT_FINALIZED_STALL_THRESHOLD})")
+    # Runbook §0 alignment: triggers #1..#4 each have a dedicated flag.
+    p.add_argument("--long-reorg-depth", type=int,
+                   default=DEFAULT_LONG_REORG_DEPTH,
+                   help=f"branchlen threshold for the long_reorg "
+                        f"detector (RUNBOOK §0 trigger #1; default "
+                        f"{DEFAULT_LONG_REORG_DEPTH}, sits between "
+                        f"deep_fork=6 and near_reorg_cap=100)")
+    p.add_argument("--debug-log", default=None,
+                   help="path to b3chaind debug.log for log-tail "
+                        "detectors (RUNBOOK §0 triggers #2 + #3); "
+                        "defaults to <datadir>/<chain-subdir>/debug.log "
+                        "when --datadir is used")
+    p.add_argument("--no-log-tail", action="store_true",
+                   help="disable the debug.log tailer entirely (use "
+                        "when watcher runs off-host from b3chaind); "
+                        "trigger #2 and #3 will be silenced")
+    p.add_argument("--pow-budget-rate", type=int,
+                   default=DEFAULT_POW_BUDGET_RATE,
+                   help=f"alert when b3pow-budget-exceeded log-line "
+                        f"count exceeds this in the trailing window "
+                        f"(RUNBOOK §0 trigger #3; default "
+                        f"{DEFAULT_POW_BUDGET_RATE})")
+    p.add_argument("--pow-budget-window", type=float,
+                   default=DEFAULT_POW_BUDGET_WINDOW_SEC,
+                   help=f"trailing-window length in SECONDS for the "
+                        f"pow_budget_storm detector (default "
+                        f"{DEFAULT_POW_BUDGET_WINDOW_SEC:.0f})")
+    p.add_argument("--hashrate-sustained-drop", type=float,
+                   default=DEFAULT_HASHRATE_SUSTAINED_DROP,
+                   help=f"alert when wall-clock hps stays <= this "
+                        f"fraction of the 24h peak for the sustained "
+                        f"window (RUNBOOK §0 trigger #4; default "
+                        f"{DEFAULT_HASHRATE_SUSTAINED_DROP})")
+    p.add_argument("--hashrate-sustained-window", type=float,
+                   default=DEFAULT_HASHRATE_SUSTAINED_WIN,
+                   help=f"how many SECONDS the drop must be sustained "
+                        f"before alerting (default "
+                        f"{DEFAULT_HASHRATE_SUSTAINED_WIN:.0f})")
+    p.add_argument("--wallclock-hps-max-age", type=float,
+                   default=DEFAULT_WALLCLOCK_HPS_MAX_AGE,
+                   help=f"how many SECONDS of wall-clock hashrate "
+                        f"history to retain for the sustained-drop "
+                        f"peak calculation (default "
+                        f"{DEFAULT_WALLCLOCK_HPS_MAX_AGE:.0f})")
     p.add_argument("--webhook-url", default=None,
                    help="POST every alert as JSON to this URL.  Env "
                         "var WEBHOOK_URL takes precedence if set.")
@@ -901,6 +1501,32 @@ def main() -> int:
         1, int(args.reorg_cap * args.near_reorg_fraction)
     )
 
+    # Resolve the debug.log path.  Three states:
+    #   1. --no-log-tail            -> log_path = None  (skip detectors)
+    #   2. --debug-log <path>       -> log_path = <path>
+    #   3. neither + --datadir set  -> log_path = <datadir>/<chain>/debug.log
+    log_path: Path | None = None
+    if not args.no_log_tail:
+        if args.debug_log is not None:
+            log_path = Path(args.debug_log)
+        elif args.datadir is not None:
+            chain_subdir = (
+                "" if args.chain in ("main", "_default_", "") else args.chain
+            )
+            log_path = Path(args.datadir) / chain_subdir / "debug.log"
+
+    log_tailer: _LogTailer | None = None
+    if log_path is not None:
+        try:
+            log_tailer = _LogTailer(log_path)
+            _eprint(f"log tailer attached to {log_path}")
+        except (FileNotFoundError, PermissionError) as e:
+            _eprint(
+                f"log tailer disabled: {e}; RUNBOOK §0 triggers "
+                f"#2 + #3 will be silenced (pass --debug-log to "
+                f"override or --no-log-tail to suppress this warning)"
+            )
+
     w = _Watcher(
         rpc=rpc,
         interval_sec=args.interval,
@@ -909,6 +1535,13 @@ def main() -> int:
         hashrate_window=args.hashrate_window,
         hashrate_drop_frac=args.hashrate_drop,
         near_reorg_threshold=near_reorg_threshold,
+        long_reorg_depth=args.long_reorg_depth,
+        pow_budget_rate=args.pow_budget_rate,
+        pow_budget_window_sec=args.pow_budget_window,
+        hashrate_sustained_drop_frac=args.hashrate_sustained_drop,
+        hashrate_sustained_window_sec=args.hashrate_sustained_window,
+        wallclock_hps_max_age_sec=args.wallclock_hps_max_age,
+        log_tailer=log_tailer,
         dedup=_AlertDedup(args.dedup_window),
         webhook_url=webhook_url,
         http_timeout=args.http_timeout,
