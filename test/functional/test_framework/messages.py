@@ -31,7 +31,7 @@ import time
 import unittest
 
 try:
-    import blake3 as _blake3  # type: ignore[import-not-found]
+    import blake3 as _blake3  # type: ignore[import-not-found,import]
     def _blake3_hash(data):
         return _blake3.blake3(data).digest()
 except ImportError:
@@ -50,7 +50,7 @@ _B3POW_REF_DIR = os.path.normpath(os.path.join(
 if _B3POW_REF_DIR not in sys.path:
     sys.path.insert(0, _B3POW_REF_DIR)
 try:
-    import b3pow_ref as _b3pow_ref  # type: ignore[import-not-found]
+    import b3pow_ref as _b3pow_ref  # type: ignore[import-not-found,import]
 except ImportError as _e:
     raise ImportError(
         "Failed to import b3pow_ref from "
