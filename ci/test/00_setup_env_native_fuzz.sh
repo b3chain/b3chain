@@ -16,6 +16,10 @@ export RUN_FUNCTIONAL_TESTS=false
 export RUN_FUZZ_TESTS=true
 export GOAL="all"
 export CI_CONTAINER_CAP="--cap-add SYS_PTRACE"  # If run with (ASan + LSan), the container needs access to ptrace (https://github.com/google/sanitizers/issues/764)
+# b3chain: see comment in 00_setup_env_mac_native_fuzz.sh for why the
+# *_package_eval targets are skipped (regtest mining helper trips
+# `assert(!valid.IsNull())` against the F-6/LWMA-3 chain).
+export FUZZ_TESTS_CONFIG="--exclude=ephemeral_package_eval,tx_package_eval"
 export BITCOIN_CONFIG="\
  -DBUILD_FOR_FUZZING=ON \
  -DSANITIZERS=fuzzer,address,undefined,float-divide-by-zero,integer \
