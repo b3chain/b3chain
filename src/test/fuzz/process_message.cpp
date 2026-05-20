@@ -72,7 +72,11 @@ FUZZ_TARGET(process_message, .init = initialize_process_message)
     connman.ResetMaxOutboundCycle();
     auto& chainman = static_cast<TestChainstateManager&>(*g_setup->m_node.chainman);
     const auto block_index_size{WITH_LOCK(chainman.GetMutex(), return chainman.BlockIndex().size())};
-    SetMockTime(1610000000); // any time to successfully reset ibd
+    // b3chain: see notes in p2p_handshake.cpp -- bumped 1610000000
+    // (2021-01-07) -> 2000000000 (2033-05-18) so the IBD check
+    // sees an old tip relative to b3chain's 2025-02-09 regtest
+    // genesis.
+    SetMockTime(2000000000); // any time to successfully reset ibd
     chainman.ResetIbd();
     chainman.DisableNextWrite();
 

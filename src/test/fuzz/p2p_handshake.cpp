@@ -44,7 +44,13 @@ FUZZ_TARGET(p2p_handshake, .init = ::initialize)
 
     auto& connman = static_cast<ConnmanTestMsg&>(*g_setup->m_node.connman);
     auto& chainman = static_cast<TestChainstateManager&>(*g_setup->m_node.chainman);
-    SetMockTime(1610000000); // any time to successfully reset ibd
+    // b3chain: must be > regtest genesis time (1739145602) + max_tip_age
+    // (24h) so chain.Tip()->Time() < Now - max_tip_age stays true and
+    // ResetIbd()'s IsInitialBlockDownload() assertion holds.  Bitcoin
+    // Core uses 1610000000 (2021-01-07) which predates the b3chain
+    // regtest genesis (2025-02-09); we bump the mock time forward to
+    // 2000000000 (2033-05-18) so the IBD check sees an old tip.
+    SetMockTime(2000000000); // any time to successfully reset ibd
     chainman.ResetIbd();
 
     node::Warnings warnings{};
