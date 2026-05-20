@@ -122,7 +122,13 @@ jobs:
   # ---------------------------------------------------------------------------
   lint-rtl:
     name: verilator --lint-only on rtl/*.sv
-    runs-on: ubuntu-22.04
+    # Use ubuntu-24.04, which ships Verilator 5.020 from apt -- 5.x
+    # supports `-Wno-WIDTHTRUNC`, the `--bbox-unsup` flag, and
+    # delayed-array-write inside for-loops (BLKLOOPINIT) that the
+    # BLAKE3 mixer relies on.  ubuntu-22.04 ships Verilator 4.038
+    # which does not, and would require either UNISIM stubs and a
+    # large RTL refactor or a source build of 5.x on every run.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out repository
@@ -133,9 +139,9 @@ jobs:
         with:
           path: |
             /var/cache/apt/archives/*.deb
-          key: apt-verilator-${{ runner.os }}-22.04-v1
+          key: apt-verilator-${{ runner.os }}-24.04-v1
           restore-keys: |
-            apt-verilator-${{ runner.os }}-22.04-
+            apt-verilator-${{ runner.os }}-24.04-
 
       - name: Install Verilator
         run: |
@@ -157,7 +163,9 @@ jobs:
   # ---------------------------------------------------------------------------
   sim-vector-parity:
     name: verilator sim parity vs reference
-    runs-on: ubuntu-22.04
+    # Match the lint job's Verilator version (5.x via ubuntu-24.04 apt)
+    # so a passing lint plus a passing sim sign-off use the same tool.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: [pytest-vectors, lint-rtl]
     steps:
@@ -176,9 +184,9 @@ jobs:
         with:
           path: |
             /var/cache/apt/archives/*.deb
-          key: apt-verilator-${{ runner.os }}-22.04-v1
+          key: apt-verilator-${{ runner.os }}-24.04-v1
           restore-keys: |
-            apt-verilator-${{ runner.os }}-22.04-
+            apt-verilator-${{ runner.os }}-24.04-
 
       - name: Install Verilator + build tools
         run: |
