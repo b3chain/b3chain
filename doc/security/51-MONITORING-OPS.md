@@ -377,6 +377,68 @@ Notes for seed1:
   (mainnet has no chain subdir under the datadir), then
   `sudo systemctl daemon-reload && sudo systemctl restart
   b3chain-51watch.service`.
+- **v1.1.4 testnet powLimit divergence (2026-05-20 07:30 UTC,
+  follow-up to the v1.1.3 cold-start above).**  The v1.1.3 cold-start
+  landed all 10 detectors armed but produced **zero blocks in the
+  next ~4 hours** -- the mining loop ran continuously but the F-6
+  consensus floor (`powLimit = 0x1d7fffff`, designed for ~27 min/block
+  on a single KU5P FPGA at 20 KH/s) is also the rough single-thread
+  ballpark of B3PoW-Scratch on a 2-core commodity VPS (1 MB
+  scratchpad random-reads are DRAM-bandwidth-bound, not
+  CPU-frequency-bound).  At 27 min/block expected, the b3chain-cli
+  default `-rpcclienttimeout=900` (15 min) fires before the daemon
+  can finish, the miner script catches the "timeout reached" error,
+  loops, and each new `generatetoaddress` discards the prior search
+  -- so the chain never advanced past block 0.  This is **intended
+  for mainnet** (closes the F-6 "tens-of-seconds" exploit window per
+  `doc/security/B3POW-51-ATTACK-ANALYSIS.md` F-6), but unworkable
+  for a developer-friendly testnet on commodity hardware.  The fix
+  (commit `7b0ab6bf08`, `consensus(testnet): v1.1.4 powLimit
+  divergence`): testnet `CTestNetParams` reverts to the **pre-F-6
+  floor 0x1e01ffff** (4x easier than mainnet's 0x1d7fffff),
+  `operating_pow_floor_bits` scales proportionally to `0x1dffff80`
+  (still 2x stricter than testnet powLimit, same relationship
+  mainnet has), and the testnet genesis was re-mined locally
+  (Python+blake3, 2.1 s, 2.3M nonces, ~1.1 MH/s):
+  ```
+  CreateGenesisBlock(1739145601, 2275226, 0x1e01ffff, 1, 50*COIN)
+  hashGenesisBlock = 8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64
+  hashMerkleRoot   = 7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb
+  ```
+  CMainParams, CTestNet4Params, CSignetParams, CRegTestParams are
+  all **untouched** -- the F-6 tightening stays on the production
+  chain.  Build: incremental cmake `--target bitcoind bitcoin-cli`
+  on seed1, 74 s wallclock, new `b3chaind` md5
+  `4c9ea0e7c76e096a0860d6918cf4af8c`, `b3chain-cli` unchanged
+  (doesn't link chainparams).  Deploy: byte-for-byte same binary
+  installed on seed1, seed2, seed3 (the latter two went directly
+  from May-14 v30.2.0 binaries to v1.1.4 with no v1.1.3 in
+  between -- they had the same pre-F-6 testnet genesis hash, so
+  seed2/seed3 had been running their own pre-F-6 chain at height
+  8716 the whole time, partitioned from seed1's v1.1.3 cold-started
+  chain).  All three seeds now form a **full 4-peer mesh** at
+  genesis `8c61fcbc6249...` on testnet3.  Tier-3 verification post
+  cold-start (07:24 UTC): seed1 `getblockhash 0` matches, target
+  `000001ffff...`, difficulty `0.001953` (exactly 4x easier than
+  v1.1.3's `0.007812`), 4 peers, watcher's startup banner shows
+  `log_tailer=on` and no `getfinalizedblockhash RPC unavailable`
+  line.  Backups retained: `/usr/local/bin/b3chaind.bak-v113-prev114`
+  + `b3chain-cli.bak-v113-prev114` on seed1, `.bak-v30.2.0` on
+  seed2/seed3.  Miner also patched: `b3chain-testnet-miner.sh`
+  ARGS now carries `-rpcclienttimeout=3600` so each
+  `generatetoaddress` call gets 1 hour of patience instead of the
+  default 15 min (saved as `.bak-prev114-timeout`); first block on
+  this VPS at the relaxed floor is expected in the 20-90 min range
+  (B3PoW-Scratch on commodity x86 single-thread is still memory-
+  bound, just at ~4x easier difficulty).  **Open observation as of
+  ~07:59 UTC**: ~25 min of continuous mining, still at block 0;
+  `b3chaind` two `httpworker` threads at 70%+35% CPU confirming the
+  daemon is actively searching, no consensus rejections in the log,
+  just slower-than-expected hashrate.  If 60+ min passes with no
+  block, the next step is to relax further (`0x1f00ffff` middle
+  ground or `0x207fffff` regtest-easy testnet), but the chain is
+  functioning -- this is purely a "first-block latency on commodity
+  HW" question, not a correctness issue.
 
 ### Known operational caveats
 
