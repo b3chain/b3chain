@@ -38,10 +38,28 @@ add_library(bitcoin_crypto_blake3 STATIC EXCLUDE_FROM_ALL
   blake3/blake3_portable.c
 )
 
-# On x86-64 non-Windows, add hand-optimized assembly implementations.
-# These provide 3-16x speedup over the portable C fallback depending on
+# On x86-64 Linux, add hand-optimized assembly implementations.  These
+# provide 3-16x speedup over the portable C fallback depending on the
 # available CPU instruction sets (critical for PoW mining/validation).
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64" AND NOT WIN32)
+#
+# We deliberately do NOT enable this path on:
+#   - Windows  -- the `_x86-64_unix.S` syntax (Intel-mode GAS, ELF
+#                 directives) does not assemble under MSVC's MASM,
+#                 and BLAKE3's MASM equivalents are not vendored.
+#   - macOS    -- the same Intel-mode `.section .note.GNU-stack`
+#                 directives produce ELF object files that ld64.lld
+#                 then refuses with "unhandled file type" (seen on
+#                 the depends-based `macOS-cross` CI build, which
+#                 is `CMAKE_SYSTEM_NAME=Darwin` /
+#                 `CMAKE_SYSTEM_PROCESSOR=x86_64`).
+#   - non-x86  -- the assembly is x86-64 only.
+#
+# In every excluded case we set BLAKE3_NO_<feature> so blake3_dispatch.c
+# falls through to the portable C implementation rather than emitting
+# unresolved external references.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64"
+   AND NOT WIN32
+   AND NOT APPLE)
   enable_language(ASM)
   target_sources(bitcoin_crypto_blake3 PRIVATE
     blake3/blake3_sse2_x86-64_unix.S
@@ -50,14 +68,6 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64" AND NOT WIN32)
     blake3/blake3_avx512_x86-64_unix.S
   )
 else()
-  # Without the *_x86-64_unix.S translation units (Windows MSVC, every
-  # non-x86-64 target), the dispatcher in blake3_dispatch.c references
-  # `blake3_*_sse2/sse41/avx2/avx512` which are never defined.  The
-  # upstream BLAKE3 sources gate those references behind the
-  # BLAKE3_NO_<feature> compile flags; set them so the dispatcher falls
-  # through to the portable C implementation.  Without this, the MSVC
-  # build fails with `LNK2019: unresolved external symbol` on every
-  # SIMD entry point.
   target_compile_definitions(bitcoin_crypto_blake3 PRIVATE
     BLAKE3_NO_SSE2
     BLAKE3_NO_SSE41
