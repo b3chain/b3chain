@@ -22,18 +22,47 @@ if ! command -v "$VERILATOR" >/dev/null 2>&1; then
     exit 127
 fi
 
-# Newest unified-lint mode.  Treat warnings as errors except the ones we
-# accept by design.  We use the broad `-Wno-WIDTH` form rather than the
-# narrower `-Wno-WIDTHTRUNC` because Verilator 4.x (shipped on Ubuntu
-# 22.04, where the GitHub Actions `ubuntu-22.04` runner installs from
-# apt) does not recognise `-Wno-WIDTHTRUNC` and aborts with
-# `%Error: Unknown warning specified: -Wno-WIDTHTRUNC`.  Verilator 5.x
-# accepts `-Wno-WIDTH` too -- it implies WIDTHTRUNC + WIDTHEXPAND --
-# so the broader form is forward-compatible.
+# Files that depend on Xilinx UNISIM primitives (SYSMONE4, IBUFGDS,
+# MMCME4_ADV, BUFG, ...).  Vanilla Verilator on Ubuntu cannot resolve
+# those modules without the full Vivado UNISIM library, so we skip
+# them in this portable lint pass; the Vivado `report_methodology`
+# step covers them in the synth flow.
+SKIP_FILES=(
+    "b3miner_top"   # instantiates IBUFGDS, MMCME4_ADV, BUFG (Xilinx PLL)
+    "xadc_monitor"  # instantiates SYSMONE4 (Xilinx XADC)
+)
+
+# Newest unified-lint mode.  Treat warnings as errors except the ones
+# we accept by design.  Notes on choice of waivers:
+#
+#   -Wno-WIDTH        (broad) -- Verilator 4.x (Ubuntu 22.04 apt) doesn't
+#                                recognise the finer-grained -Wno-WIDTHTRUNC,
+#                                so use the umbrella form.  5.x accepts both.
+#   -Wno-VARHIDDEN    -- inner 'state' var shadows top-level FSM 'state' inside
+#                        unique-case scopes; intentional.
+#   -Wno-UNUSED       -- carry-through signals (e.g. blk_fresh) declared for
+#                        symmetry with the ref but only consumed in non-
+#                        Verilator simulation flows.
+#   -Wno-BLKSEQ       -- BLAKE3 round mixes blocking and non-blocking writes
+#                        by design; matches upstream BLAKE3 reference RTL.
+#   -Wno-PINCONNECTEMPTY -- Xilinx primitives have many optional ports; we
+#                            only wire the ones we use.  (Belt-and-braces;
+#                            should not trigger after SKIP_FILES above.)
+#   -Wno-DECLFILENAME -- multiple modules per .sv file (e.g. reset_sync
+#                        inside b3miner_top.sv).
+#   --bbox-unsup      -- box constructs Verilator 4.x doesn't synthesize but
+#                        the hardware tools do (e.g. delayed array writes
+#                        inside for-loops in the BLAKE3 mixer).
 WAIVERS=(
-    -Wno-MULTIDRIVEN   # FF reset in async-reset clause is intentional
-    -Wno-WIDTH         # explicit narrowing in some places (commented in RTL)
-    -Wno-UNOPTFLAT     # combinational state-machine feedback loops
+    -Wno-MULTIDRIVEN
+    -Wno-WIDTH
+    -Wno-UNOPTFLAT
+    -Wno-VARHIDDEN
+    -Wno-UNUSED
+    -Wno-BLKSEQ
+    -Wno-PINCONNECTEMPTY
+    -Wno-DECLFILENAME
+    --bbox-unsup
 )
 
 # Lint each top-level RTL file in turn with params_pkg always pulled in.
@@ -41,6 +70,17 @@ fail=0
 for f in "$RTL_DIR"/*.sv; do
     name="$(basename "$f" .sv)"
     if [[ "$name" == "params_pkg" ]]; then
+        continue
+    fi
+    skip=0
+    for s in "${SKIP_FILES[@]}"; do
+        if [[ "$name" == "$s" ]]; then
+            skip=1
+            break
+        fi
+    done
+    if [[ $skip -eq 1 ]]; then
+        echo "--- skip $name (Xilinx primitives -- vivado-only lint) ---"
         continue
     fi
     echo "--- lint $name ---"
