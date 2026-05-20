@@ -306,77 +306,70 @@ Detector armed-status on seed1 (as of refresh):
 | 3 | `hashrate_collapse` | armed | RPC, no prerequisite |
 | 4 | `hashrate_sustained_drop` | armed | RPC, no prerequisite |
 | 5 | `near_reorg_cap` | armed | RPC, no prerequisite |
-| 6 | `finalized_drift_source_flip` | **dormant** | `getfinalizedblockhash` missing on pre-v1.1.3 `b3chaind`; auto-arms once b3chaind is upgraded + watcher restarted |
-| 7 | `finalized_drift_operator_change` | **dormant** | same |
-| 8 | `finalized_drift_horizon_stall` | **dormant** | same |
-| 9 | `deep_reorg_log` | armed (since 2026-05-20 01:04 UTC) | log-tail perm gap fixed via `usermod -aG b3chain deploy` + posix ACL on `testnet3/` (see Known operational caveats below) |
+| 6 | `finalized_drift_source_flip` | armed (since 2026-05-20 02:51 UTC) | `getfinalizedblockhash` available after b3chaind v1.1.3 cold-start (see "v1.1.3 cold-start narrative" below) |
+| 7 | `finalized_drift_operator_change` | armed (since 2026-05-20 02:51 UTC) | same |
+| 8 | `finalized_drift_horizon_stall` | armed (since 2026-05-20 02:51 UTC) | same |
+| 9 | `deep_reorg_log` | armed (since 2026-05-20 01:04 UTC) | log-tail perm gap fixed via `usermod -aG b3chain deploy` + posix ACL on `testnet3/` (see Known operational caveats below); ACL was re-applied after the v1.1.3 cold-start recreated `testnet3/` |
 | 10 | `pow_budget_storm` | armed (since 2026-05-20 01:04 UTC) | same |
-| - | `rpc_down` | armed | housekeeping |
+| - | `rpc_down` | armed | housekeeping (validated 2026-05-20 02:31 UTC during the failed v30.2.0→v1.1.3 cutover: one alert fired correctly, 600 s dedup correctly suppressed re-fires) |
 
-7 of 10 detectors are live polling testnet; the remaining 3 (the M-14 `finalized_drift_*` family) require a `b3chaind` upgrade to v1.1.3+ to activate.  The watcher's startup banner in `journalctl -u b3chain-51watch` enumerates the current armed-set on every restart, so the operator always has a ground-truth view (look for `log_tailer=on` after the perm-gap fix).
+**10 of 10 detectors armed.**  The watcher's startup banner in `journalctl -u b3chain-51watch` enumerates the current armed-set on every restart, so the operator always has a ground-truth view (look for `log_tailer=on` and the absence of any `getfinalizedblockhash RPC unavailable` line).
 
 Notes for seed1:
 
-- **`detect_finalized_drift` is dormant on this box** until `b3chaind`
-  itself is upgraded to v1.1.3+.  The running binary does not expose
-  `getfinalizedblockhash`, so the watcher gracefully disabled the
-  three M-14 detectors for the lifetime of the process (single
-  stderr log line, no `rpc_down` alert).  When `b3chaind` on seed1
-  is upgraded, restart the watcher (`sudo systemctl restart
-  b3chain-51watch.service`) and the M-14 detectors become active on
-  the next poll.
-- **2026-05-20 02:32 UTC: v1.1.3 upgrade attempt rolled back.**  The
-  new binary built cleanly (cmake `-j2` on the upgraded VPS, 55 min
-  wallclock), `getfinalizedblockhash` was confirmed present in the
-  symbol table, but on first start the daemon refused the existing
-  testnet3 chain: `LoadBlockIndexGuts: nBits out of range:
-  CBlockIndex(nHeight=216, hashBlock=3c4910412894...e2a00)` followed
-  by `Please restart with -reindex or -reindex-chainstate to recover`
-  and a clean `Shutdown done`.  This is the **F-6 powlimit fix**
-  (`f-6_powlimit_code_fix` plan, code in B3PoW-Scratch v1.1.3)
-  tightening `nBits` validation: a block mined under v30.2.0's
-  looser rules is rejected under v1.1.3's tightened rules.  Per the
-  plan's rollback contract we re-installed
-  `/usr/local/bin/b3chaind.bak-v30.2.0-prev113` (md5
-  `e311d280...`) and `b3chain-cli.bak-v30.2.0-prev113`,
-  `systemctl start b3chaind-testnet.service` brought the daemon back
-  in 2 s at block 8712, and the auto-stopped consumers
-  (`b3chain-explorer.service`, `electrs-testnet.service` — both
-  `Requires=b3chaind-testnet.service`, so they shut down with their
-  parent but did NOT auto-restart afterward) were started by hand.
-  The watcher fired exactly one `rpc_down` JSONL alert during the
-  ~3-4 min blip (ts `1779244316`) and then the 600 s dedup window
-  correctly suppressed re-fires.  All 12 testnet services are back
-  green; the upgrade did **not** corrupt the testnet3 datadir
-  because `LoadBlockIndexGuts` is read-only.
-- **Operator decision needed before re-attempting v1.1.3** — three
-  paths forward, none of which are safe to choose without operator
-  signoff: (a) `b3chaind -reindex` rebuilds the block index from the
-  raw blkXXXXX.dat files (slow but in-place, will reject the same
-  block again unless the powlimit-fix is intentionally tolerant of
-  pre-fix history); (b) wipe `/var/lib/b3chain/.b3chain/testnet3`
-  and cold-start a new testnet under v1.1.3 rules (loses the 8712
-  blocks of testnet history but is the cleanest semantically given
-  the rule change); (c) defer the v1.1.3 upgrade until mainnet
-  launch and accept that the three finalized_drift detectors stay
-  dormant on this testnet for now.  See the `f-6_powlimit_code_fix`
-  plan + B3POW-51-ATTACK-ANALYSIS.md for the consensus context.
-  Backups retained until the decision is made:
-  `/var/lib/b3chain/.b3chain/testnet3.bak-pre-v113`,
+- **v1.1.3 cold-start narrative (the path that landed 10/10 armed).**
+  The first v1.1.3 cutover attempt at 02:32 UTC failed because the
+  new binary rejected the existing 8716-block testnet3 chain with
+  `LoadBlockIndexGuts: nBits out of range:
+  CBlockIndex(nHeight=216, hashBlock=3c4910412894...e2a00)` —
+  the deliberate F-6 powlimit fix (`f-6_powlimit_code_fix` plan,
+  B3PoW-Scratch v1.1.3) tightens `nBits` validation, so blocks
+  produced under v30.2.0's looser rules are rejected under v1.1.3.
+  The rollback contract executed cleanly (no datadir corruption
+  because `LoadBlockIndexGuts` is read-only; v30.2.0 binaries
+  re-installed; daemon back at block 8712 in 2 s; auto-stopped
+  consumers `b3chain-explorer.service` + `electrs-testnet.service`
+  restarted by hand; watcher emitted exactly one `rpc_down` JSONL
+  alert at ts `1779244316`, dedup-suppressed thereafter).  The
+  operator then chose path (b) "wipe + cold-start" from the
+  decision tree.  Sequence: stop all 12 services, `rm -rf
+  /var/lib/b3chain/.b3chain/testnet3`, install v1.1.3 binaries
+  (md5 `5217d57b...` / `0a17225a...`), `systemctl start
+  b3chaind-testnet.service`.  Daemon came up at block 0 in 2 s
+  with `Difficulty: 0.007812...` (genesis target), 2 outbound peers
+  initially, 4 within the first minute.  `getfinalizedblockhash`
+  returned `{"hash": "", "height": -200, "source":
+  "max_reorg_depth"}` — the expected "below reorg depth" sentinel
+  at height 0.  `help finalizeblock` / `help unfinalizeblock` /
+  `help parkblock` / `help unparkblock` all return the b3chain M-14
+  help text (full RPC pin-management surface live).  ACL on the
+  freshly-created `testnet3/` was re-applied because b3chaind
+  recreated the dir with `drwx------ 0700` and dropped the Phase 1
+  ACL; the recipe in "Known operational caveats" below is now
+  documented as having TWO trigger conditions: first-time install
+  AND any operation that recreates `testnet3/`.  Watcher restart
+  banner at 02:51 UTC: `log_tailer=on`, no
+  `getfinalizedblockhash RPC unavailable` line — **all 10 detectors
+  armed**.  90 s soak clean (`NRestarts=0`, MemoryCurrent 13.2 MB).
+  Backups retained on disk for the 24 h observation window before
+  cleanup: `/var/lib/b3chain/.b3chain/testnet3.bak-pre-v113`
+  (74 MB, 8716-block pre-cutover state),
   `/usr/local/bin/b3chaind.bak-v30.2.0-prev113`,
   `/usr/local/bin/b3chain-cli.bak-v30.2.0-prev113`.
 - **b3chaind on seed1 IS systemd-managed** as
-  `b3chaind-testnet.service` (pre-existing, well-hardened:
-  `ProtectSystem=strict`, `RestrictAddressFamilies=AF_INET AF_INET6
-  AF_UNIX`, `LockPersonality`, `NoNewPrivileges`, `PrivateTmp`,
-  `PrivateDevices`, `Restart=on-failure`, `TimeoutStopSec=600`).
-  After a successful v1.1.3 upgrade lands, the watcher unit will add
-  `Requires=b3chaind-testnet.service` + `After=b3chaind-testnet.service`
-  so the watcher won't even start if b3chaind isn't up.  Until the
-  v1.1.3 cutover succeeds the watcher continues to use
-  `Restart=on-failure` (no Requires=), and a b3chaind blip surfaces
-  as one `rpc_down` JSONL alert (dedup-suppressed for 600 s) until
-  RPC returns.
+  `b3chaind-testnet.service`, with the well-hardened directives
+  documented above.  The watcher unit `b3chain-51watch.service`
+  now carries `Requires=b3chaind-testnet.service` +
+  `After=b3chaind-testnet.service` (added 2026-05-20 02:51 UTC),
+  so the watcher follows the daemon's lifecycle: stopping b3chaind
+  auto-stops the watcher (no spurious `rpc_down` alert storm),
+  starting b3chaind auto-starts the watcher.  Both units are
+  staged into [`contrib/init/b3chaind-testnet.service`](../../contrib/init/b3chaind-testnet.service)
+  and [`contrib/init/b3chain-51watch.service`](../../contrib/init/b3chain-51watch.service)
+  byte-for-byte matching seed1, so seed2/seed3 (or any future
+  seed) can be brought up with the same posture by `cp`-ing both
+  files into `/etc/systemd/system/`, `systemctl daemon-reload`,
+  `systemctl enable --now`.
 - **Mainnet re-tune TODO**: when seed1 flips `chain=test` →
   `chain=main`, edit `ExecStart=` in the unit file to use
   `--chain main --rpc-port 8532 --dedup-window 300 --hashrate-drop
@@ -388,13 +381,16 @@ Notes for seed1:
 ### Known operational caveats
 
 - **Log-tail perm gap — RESOLVED on seed1 (2026-05-20)** (kept here as
-  the canonical first-time-install recipe for future seed boxes).
-  `b3chaind` writes `debug.log` as `b3chain:b3chain 0600`, so the
-  `deploy`-run watcher needs explicit access.  The recipe below
-  joins `deploy` to the `b3chain` group, installs `acl` if missing
-  (Ubuntu 22.04 doesn't ship it by default), and adds POSIX ACL
-  entries so the rotated `debug.log` keeps the group-read bit.
-  One-time install, no `b3chaind` restart needed:
+  the canonical first-time-install recipe for future seed boxes,
+  AND as the re-apply recipe whenever `testnet3/` is recreated —
+  e.g. after `rm -rf testnet3 && systemctl start b3chaind-testnet`
+  for a chain-rule-change cold start).  `b3chaind` writes
+  `debug.log` as `b3chain:b3chain 0600`, so the `deploy`-run
+  watcher needs explicit access.  The recipe below joins `deploy`
+  to the `b3chain` group, installs `acl` if missing (Ubuntu 22.04
+  doesn't ship it by default), and adds POSIX ACL entries so the
+  rotated `debug.log` keeps the group-read bit.  Idempotent — safe
+  to run any number of times:
   ```sh
   sudo apt-get install -y acl                # Ubuntu 22.04 omits acl by default
   sudo usermod -aG b3chain deploy

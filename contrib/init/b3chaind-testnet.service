@@ -1,0 +1,32 @@
+[Unit]
+Description=B3Chain testnet daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/b3chaind -chain=test \
+          -conf=/etc/b3chain/b3chain.conf \
+          -datadir=/var/lib/b3chain/.b3chain
+
+User=b3chain
+Group=b3chain
+Type=simple
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=600
+
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/b3chain /var/log/b3chain
+PrivateTmp=true
+PrivateDevices=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
