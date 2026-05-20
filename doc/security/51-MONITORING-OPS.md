@@ -325,10 +325,58 @@ Notes for seed1:
   is upgraded, restart the watcher (`sudo systemctl restart
   b3chain-51watch.service`) and the M-14 detectors become active on
   the next poll.
-- **b3chaind on seed1 is not systemd-managed**, so the watcher unit
-  uses `Restart=on-failure` (no `Requires=b3chaind.service`).  If
-  b3chaind blips, the watcher emits `rpc_down` JSONL alerts and
-  recovers on its own when the RPC comes back.
+- **2026-05-20 02:32 UTC: v1.1.3 upgrade attempt rolled back.**  The
+  new binary built cleanly (cmake `-j2` on the upgraded VPS, 55 min
+  wallclock), `getfinalizedblockhash` was confirmed present in the
+  symbol table, but on first start the daemon refused the existing
+  testnet3 chain: `LoadBlockIndexGuts: nBits out of range:
+  CBlockIndex(nHeight=216, hashBlock=3c4910412894...e2a00)` followed
+  by `Please restart with -reindex or -reindex-chainstate to recover`
+  and a clean `Shutdown done`.  This is the **F-6 powlimit fix**
+  (`f-6_powlimit_code_fix` plan, code in B3PoW-Scratch v1.1.3)
+  tightening `nBits` validation: a block mined under v30.2.0's
+  looser rules is rejected under v1.1.3's tightened rules.  Per the
+  plan's rollback contract we re-installed
+  `/usr/local/bin/b3chaind.bak-v30.2.0-prev113` (md5
+  `e311d280...`) and `b3chain-cli.bak-v30.2.0-prev113`,
+  `systemctl start b3chaind-testnet.service` brought the daemon back
+  in 2 s at block 8712, and the auto-stopped consumers
+  (`b3chain-explorer.service`, `electrs-testnet.service` — both
+  `Requires=b3chaind-testnet.service`, so they shut down with their
+  parent but did NOT auto-restart afterward) were started by hand.
+  The watcher fired exactly one `rpc_down` JSONL alert during the
+  ~3-4 min blip (ts `1779244316`) and then the 600 s dedup window
+  correctly suppressed re-fires.  All 12 testnet services are back
+  green; the upgrade did **not** corrupt the testnet3 datadir
+  because `LoadBlockIndexGuts` is read-only.
+- **Operator decision needed before re-attempting v1.1.3** — three
+  paths forward, none of which are safe to choose without operator
+  signoff: (a) `b3chaind -reindex` rebuilds the block index from the
+  raw blkXXXXX.dat files (slow but in-place, will reject the same
+  block again unless the powlimit-fix is intentionally tolerant of
+  pre-fix history); (b) wipe `/var/lib/b3chain/.b3chain/testnet3`
+  and cold-start a new testnet under v1.1.3 rules (loses the 8712
+  blocks of testnet history but is the cleanest semantically given
+  the rule change); (c) defer the v1.1.3 upgrade until mainnet
+  launch and accept that the three finalized_drift detectors stay
+  dormant on this testnet for now.  See the `f-6_powlimit_code_fix`
+  plan + B3POW-51-ATTACK-ANALYSIS.md for the consensus context.
+  Backups retained until the decision is made:
+  `/var/lib/b3chain/.b3chain/testnet3.bak-pre-v113`,
+  `/usr/local/bin/b3chaind.bak-v30.2.0-prev113`,
+  `/usr/local/bin/b3chain-cli.bak-v30.2.0-prev113`.
+- **b3chaind on seed1 IS systemd-managed** as
+  `b3chaind-testnet.service` (pre-existing, well-hardened:
+  `ProtectSystem=strict`, `RestrictAddressFamilies=AF_INET AF_INET6
+  AF_UNIX`, `LockPersonality`, `NoNewPrivileges`, `PrivateTmp`,
+  `PrivateDevices`, `Restart=on-failure`, `TimeoutStopSec=600`).
+  After a successful v1.1.3 upgrade lands, the watcher unit will add
+  `Requires=b3chaind-testnet.service` + `After=b3chaind-testnet.service`
+  so the watcher won't even start if b3chaind isn't up.  Until the
+  v1.1.3 cutover succeeds the watcher continues to use
+  `Restart=on-failure` (no Requires=), and a b3chaind blip surfaces
+  as one `rpc_down` JSONL alert (dedup-suppressed for 600 s) until
+  RPC returns.
 - **Mainnet re-tune TODO**: when seed1 flips `chain=test` →
   `chain=main`, edit `ExecStart=` in the unit file to use
   `--chain main --rpc-port 8532 --dedup-window 300 --hashrate-drop
