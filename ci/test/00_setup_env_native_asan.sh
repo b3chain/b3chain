@@ -19,6 +19,14 @@ else
 fi
 
 export CONTAINER_NAME=ci_native_asan
+# b3chain: miner_tests mines 110 regtest blocks via brute-force B3PoW
+# nonce search.  Under ASan + integer + UBSan the 1 MB scratchpad
+# read/write trampolines roughly 4-5x slower than a plain Release
+# build, which pushes a single CTest tick past the default 40-minute
+# CTest --timeout.  Give sanitizer builds a 120-minute per-test budget
+# (still well under the 6h job limit) so the slow B3PoW miner has
+# room to finish.
+export TEST_RUNNER_TIMEOUT_FACTOR=120
 export APT_LLVM_V="21"
 export PACKAGES="systemtap-sdt-dev clang-${APT_LLVM_V} llvm-${APT_LLVM_V} libclang-rt-${APT_LLVM_V}-dev python3-zmq qt6-base-dev qt6-tools-dev qt6-l10n-tools libevent-dev libboost-dev libzmq3-dev libqrencode-dev libsqlite3-dev ${BPFCC_PACKAGE} libcapnp-dev capnproto python3-pip"
 export PIP_PACKAGES="--break-system-packages pycapnp"

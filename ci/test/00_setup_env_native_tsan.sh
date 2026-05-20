@@ -7,6 +7,9 @@
 export LC_ALL=C.UTF-8
 
 export CONTAINER_NAME=ci_native_tsan
+# b3chain: see notes in 00_setup_env_native_asan.sh -- give the
+# B3PoW miner_tests room under sanitizers.
+export TEST_RUNNER_TIMEOUT_FACTOR=120
 export CI_IMAGE_NAME_TAG="mirror.gcr.io/ubuntu:24.04"
 export APT_LLVM_V="21"
 LIBCXX_DIR="/cxx_build/"
