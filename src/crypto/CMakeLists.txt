@@ -49,6 +49,21 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64" AND NOT WIN32)
     blake3/blake3_avx2_x86-64_unix.S
     blake3/blake3_avx512_x86-64_unix.S
   )
+else()
+  # Without the *_x86-64_unix.S translation units (Windows MSVC, every
+  # non-x86-64 target), the dispatcher in blake3_dispatch.c references
+  # `blake3_*_sse2/sse41/avx2/avx512` which are never defined.  The
+  # upstream BLAKE3 sources gate those references behind the
+  # BLAKE3_NO_<feature> compile flags; set them so the dispatcher falls
+  # through to the portable C implementation.  Without this, the MSVC
+  # build fails with `LNK2019: unresolved external symbol` on every
+  # SIMD entry point.
+  target_compile_definitions(bitcoin_crypto_blake3 PRIVATE
+    BLAKE3_NO_SSE2
+    BLAKE3_NO_SSE41
+    BLAKE3_NO_AVX2
+    BLAKE3_NO_AVX512
+  )
 endif()
 
 target_include_directories(bitcoin_crypto_blake3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/blake3)
