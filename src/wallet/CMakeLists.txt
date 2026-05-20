@@ -39,6 +39,15 @@ target_link_libraries(bitcoin_wallet
     core_interface
     bitcoin_common
     $<TARGET_NAME_IF_EXISTS:unofficial::sqlite3::sqlite3>
+    # CMake's stock `FindSQLite3` module exports the IMPORTED target
+    # under the name `SQLite::SQLite3`.  Some package providers (e.g.
+    # Conan, certain vcpkg ports, distro CMake config files) instead
+    # export `SQLite3::SQLite3` to match the package name.  Reference
+    # both, gated by `TARGET_NAME_IF_EXISTS` so the missing one is
+    # silently dropped, otherwise the wallet TU compiles but the
+    # final executable fails to link with `undefined reference to
+    # sqlite3_*` (e.g. on the 32-bit ARM cross-compile via depends).
+    $<TARGET_NAME_IF_EXISTS:SQLite::SQLite3>
     $<TARGET_NAME_IF_EXISTS:SQLite3::SQLite3>
     univalue
     Boost::headers
