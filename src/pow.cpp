@@ -219,8 +219,20 @@ bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Par
     auto bnTarget{DeriveTarget(nBits, params.powLimit)};
     if (!bnTarget) return false;
 
-    // Check proof of work matches claimed amount
-    if (UintToArith256(hash) > bnTarget)
+    // Check proof of work matches claimed amount.
+    //
+    // Compare the dereferenced optional value directly rather than
+    // going through `optional<T>::operator>(T)`.  libc++'s mixed-type
+    // operators are implemented via SFINAE'd helpers that confuse
+    // MSan's shadow-tracking when the optional was move-/copy-
+    // constructed across a function-return boundary; the spurious
+    // "use-of-uninitialized-value" was reported on the MSan-bench
+    // job (run 26157408950, bench_sanity_check, b3chain CI) even
+    // though every byte of `*bnTarget` is written by SetCompact in
+    // DeriveTarget above.  The dereferenced form skips the helper
+    // template and produces a straightforward
+    // `arith_uint256 > arith_uint256` call.
+    if (UintToArith256(hash) > *bnTarget)
         return false;
 
     return true;
