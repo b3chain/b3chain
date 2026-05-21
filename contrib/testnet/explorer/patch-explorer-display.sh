@@ -87,7 +87,6 @@ if "B3Chain-homepage-metrics" not in text:
     m = re.search(
         r"(\t\tawait utils\.awaitPromises\(promises\);\s*\n)(\t\tlet eraStartBlockHeader = res\.locals\.difficultyPeriodFirstBlockHeader)",
         text,
-        count=1,
     )
     if not m:
         raise SystemExit("baseRouter.js: awaitPromises marker not found")
