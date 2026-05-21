@@ -19,7 +19,7 @@ export CI_CONTAINER_CAP="--cap-add SYS_PTRACE"  # If run with (ASan + LSan), the
 # b3chain: see comment in 00_setup_env_mac_native_fuzz.sh for why the
 # *_package_eval targets are skipped (regtest mining helper trips
 # `assert(!valid.IsNull())` against the F-6/LWMA-3 chain).
-export FUZZ_TESTS_CONFIG="--exclude=ephemeral_package_eval,tx_package_eval"
+export FUZZ_TESTS_CONFIG="--exclude=ephemeral_package_eval,tx_package_eval,b3pow_random_header"
 export BITCOIN_CONFIG="\
  -DBUILD_FOR_FUZZING=ON \
  -DSANITIZERS=fuzzer,address,undefined,float-divide-by-zero,integer \

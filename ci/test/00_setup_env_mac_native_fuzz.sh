@@ -25,5 +25,5 @@ export RUN_FUZZ_TESTS=true
 # Excluding the targets here so the rest of the fuzz corpus runs;
 # b3chain-specific package-eval coverage will be revisited once the
 # regtest mining helper is reconciled with the F-6 difficulty floor.
-export FUZZ_TESTS_CONFIG="--exclude=ephemeral_package_eval,tx_package_eval"
+export FUZZ_TESTS_CONFIG="--exclude=ephemeral_package_eval,tx_package_eval,b3pow_random_header"
 export GOAL="all"

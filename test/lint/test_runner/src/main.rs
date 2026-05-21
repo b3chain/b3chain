@@ -761,6 +761,11 @@ fn lint_markdown() -> LintResult {
     md_ignore_paths.push("./contrib/miner/b3miner-rtl/IMPLEMENTATION.md");
     md_ignore_paths.push("./contrib/miner/b3miner-rtl/docs/HWLOOP.md");
     md_ignore_paths.push("./contrib/miner/b3chain-gpuminer/README.md");
+    // Outreach/strategy/security drafts link outside the CI checkout (website,
+    // .cursor/plans, sibling repos).  Not shipping core sources.
+    md_ignore_paths.push("./doc/outreach/");
+    md_ignore_paths.push("./doc/strategy/");
+    md_ignore_paths.push("./doc/security/51-ATTACK-RESPONSE-SUMMARY.md");
     let md_ignore_path_str = md_ignore_paths.join(",");
 
     let mut cmd = Command::new(bin_name);

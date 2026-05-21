@@ -24,3 +24,5 @@ export BITCOIN_CONFIG="\
  -DCMAKE_CXX_FLAGS_DEBUG='-g2 -O2' \
  -DAPPEND_CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE' \
 "
+# b3chain: extended + previous-releases runs include miner_tests under Debug.
+export TEST_RUNNER_TIMEOUT_FACTOR=180

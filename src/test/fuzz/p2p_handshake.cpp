@@ -27,13 +27,30 @@
 #include <vector>
 
 namespace {
-const TestingSetup* g_setup;
+TestingSetup* g_setup;
+size_t g_base_block_index_size{0};
+
+void ResetChainman(TestingSetup& setup)
+{
+    SetMockTime(setup.m_node.chainman->GetParams().GenesisBlock().Time());
+    setup.m_node.chainman.reset();
+    setup.m_make_chainman();
+    setup.LoadVerifyActivateChainstate();
+    for (int i = 0; i < 2 * COINBASE_MATURITY; i++) {
+        MineBlock(setup.m_node, {});
+    }
+    setup.m_node.validation_signals->SyncWithValidationInterfaceQueue();
+}
 
 void initialize()
 {
-    static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>(
+    static const auto testing_setup = MakeNoLogFileContext<TestingSetup>(
         /*chain_type=*/ChainType::REGTEST);
     g_setup = testing_setup.get();
+    ResetChainman(*g_setup);
+    g_base_block_index_size = WITH_LOCK(
+        g_setup->m_node.chainman->GetMutex(),
+        return g_setup->m_node.chainman->BlockIndex().size());
 }
 } // namespace
 
@@ -44,6 +61,10 @@ FUZZ_TARGET(p2p_handshake, .init = ::initialize)
 
     auto& connman = static_cast<ConnmanTestMsg&>(*g_setup->m_node.connman);
     auto& chainman = static_cast<TestChainstateManager&>(*g_setup->m_node.chainman);
+    const auto block_index_size{WITH_LOCK(chainman.GetMutex(), return chainman.BlockIndex().size())};
+    if (block_index_size > g_base_block_index_size) {
+        ResetChainman(*g_setup);
+    }
     // b3chain: must be > regtest genesis time (1739145602) + max_tip_age
     // (24h) so chain.Tip()->Time() < Now - max_tip_age stays true and
     // ResetIbd()'s IsInitialBlockDownload() assertion holds.  Bitcoin
@@ -110,5 +131,9 @@ FUZZ_TARGET(p2p_handshake, .init = ::initialize)
         }
     }
 
+    g_setup->m_node.validation_signals->SyncWithValidationInterfaceQueue();
     g_setup->m_node.connman->StopNodes();
+    if (block_index_size != WITH_LOCK(chainman.GetMutex(), return chainman.BlockIndex().size())) {
+        ResetChainman(*g_setup);
+    }
 }

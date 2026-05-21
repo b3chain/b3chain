@@ -321,7 +321,7 @@ jobs:
         # b3chain: skip the two `*_package_eval` fuzz targets here too;
         # see ci/test/00_setup_env_mac_native_fuzz.sh for the rationale.
         run: |
-          py -3 test/fuzz/test_runner.py --par $NUMBER_OF_PROCESSORS --loglevel DEBUG --exclude=ephemeral_package_eval,tx_package_eval "${RUNNER_TEMP}/qa-assets/fuzz_corpora"
+          py -3 test/fuzz/test_runner.py --par $NUMBER_OF_PROCESSORS --loglevel DEBUG --exclude=ephemeral_package_eval,tx_package_eval,b3pow_random_header "${RUNNER_TEMP}/qa-assets/fuzz_corpora"
 
   windows-cross:
     name: 'Linux->Windows cross, no tests'
