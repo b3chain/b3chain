@@ -81,11 +81,17 @@ if "B3Chain-young-chain-all-blocks" not in text:
 else:
     print("baseRouter.js: young-chain block list already patched")
 
-# 2) After awaitPromises: supply, hashrate fallback, smart fees on empty mempool.
-marker = "\tawait utils.awaitPromises(promises);\n\n\tlet eraStartBlockHeader"
-inject = """\tawait utils.awaitPromises(promises);
-
-\t\t// B3Chain-homepage-metrics: young testnet display fixes
+# 2) After homepage awaitPromises: supply, hashrate fallback, smart fees on empty mempool.
+import re
+if "B3Chain-homepage-metrics" not in text:
+    m = re.search(
+        r"(\t\tawait utils\.awaitPromises\(promises\);\s*\n)(\t\tlet eraStartBlockHeader = res\.locals\.difficultyPeriodFirstBlockHeader)",
+        text,
+        count=1,
+    )
+    if not m:
+        raise SystemExit("baseRouter.js: awaitPromises marker not found")
+    inject = m.group(1) + """\t\t// B3Chain-homepage-metrics: young testnet display fixes
 \t\ttry {
 \t\t\tconst _b3Subsidy = coinConfig.blockRewardFunction(getblockchaininfo.blocks, global.activeBlockchain);
 \t\t\tres.locals.b3chainCirculatingSupply = new Decimal((getblockchaininfo.blocks + 1) * _b3Subsidy);
@@ -101,11 +107,8 @@ inject = """\tawait utils.awaitPromises(promises);
 \t\t\t}
 \t\t} catch (_) {}
 
-\t\tlet eraStartBlockHeader"""
-if "B3Chain-homepage-metrics" not in text:
-    if marker not in text:
-        raise SystemExit("baseRouter.js: awaitPromises marker not found")
-    text = text.replace(marker, inject, 1)
+""" + m.group(2)
+    text = text[: m.start()] + inject + text[m.end() :]
     print("baseRouter.js: homepage metrics patched")
 else:
     print("baseRouter.js: homepage metrics already patched")
