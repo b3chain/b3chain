@@ -226,7 +226,7 @@ public:
         // floor with -rpcclienttimeout=0 in the testnet miner script.
         // See doc/security/51-MONITORING-OPS.md "v1.1.5 testnet powLimit
         // divergence" and the F-6 commentary in CMainParams above.
-        consensus.powLimit = uint256{"000000ffff000000000000000000000000000000000000000000000000000000"};
+        consensus.powLimit = uint256{"0000ffff0000000000000000000000000000000000000000000000000000000000"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
