@@ -145,24 +145,43 @@ if "B3Chain-small-difficulty" not in text:
     print("index-network-summary.pug: difficulty patched")
 
 coins_pat = re.compile(
-    r"(?P<indent>\t+)- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
+    r"(?P<ind>\t+)- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
     r"\n"
-    r"(?P=indent)\tspan #\{parseInt\(estimatedSupply\)\.toLocaleString\(\)\}",
+    r"(?P=ind)span #\{parseInt\(estimatedSupply\)\.toLocaleString\(\)\}",
     re.MULTILINE,
 )
 
 def coins_repl(m):
-    ind = m.group("indent")
+    ind = m.group("ind")
     return (
         f"{ind}if (b3chainCirculatingSupply)\n"
         f"{ind}\t- var estimatedSupply = b3chainCirculatingSupply;\n"
         f"{ind}else\n"
         f"{ind}\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);\n"
         f"\n"
-        f"{ind}\tspan #{{parseInt(estimatedSupply).toLocaleString()}}"
+        f"{ind}span #{{parseInt(estimatedSupply).toLocaleString()}}"
     )
 
-if "b3chainCirculatingSupply" not in text:
+# Repair a prior broken patch (if/else body not indented under if).
+broken_coins = re.compile(
+    r"(?P<ind>\t+)if \(b3chainCirculatingSupply\)\n"
+    r"(?P=ind)- var estimatedSupply = b3chainCirculatingSupply;\n"
+    r"(?P<ind2>\t*)else\n"
+    r"(?P=ind2)\t- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
+    r"\n"
+    r"(?P=ind2)\tspan #\{parseInt\(estimatedSupply\)\.toLocaleString\(\)\}",
+    re.MULTILINE,
+)
+
+def coins_repair(m):
+    ind = m.group("ind")
+    return coins_repl(m)  # same as correct structure using ind from if line
+
+text2, n = broken_coins.subn(coins_repl, text, count=1)
+if n == 1:
+    text = text2
+    print("index-network-summary.pug: coins patch repaired")
+elif "b3chainCirculatingSupply" not in text:
     text2, n = coins_pat.subn(coins_repl, text, count=1)
     if n != 1:
         raise SystemExit("index-network-summary.pug: coins block not found")
@@ -228,27 +247,27 @@ if "B3Chain-genesis-block-coinbase" not in text:
 \t\t\t}
 \t\t\treturn block;
 \t\t})"""
-    old_v115 = """\t\t}).catch(function() {
-\t\t\t// B3Chain-genesis-coinbase-fallback: b3chaind rejects getrawtransaction on genesis coinbase.
-\t\t\tblock.coinbaseTx = null;
-\t\t\tblock.totalFees = 0;
-\t\t\treturn block;
-\t\t})"""
-    new_v115 = """\t\t}).catch(function() {
-\t\t\t// B3Chain-genesis-block-coinbase: b3chaind may not serve genesis coinbase via getrawtransaction
-\t\t\tif (block.height === 0 && coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]) {
-\t\t\t\tblock.coinbaseTx = JSON.parse(JSON.stringify(coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]));
-\t\t\t\tblock.coinbaseTx.time = block.time;
-\t\t\t\tblock.coinbaseTx.blocktime = block.time;
-\t\t\t\tblock.coinbaseTx.blockhash = block.hash;
-\t\t\t\tblock.totalFees = 0;
-\t\t\t\tblock.miner = utils.identifyMiner(block.coinbaseTx, block.height);
-\t\t\t} else {
+    old_v115 = """\t\t\t}).catch(function() {
+\t\t\t\t// B3Chain-genesis-coinbase-fallback: b3chaind rejects getrawtransaction on genesis coinbase.
 \t\t\t\tblock.coinbaseTx = null;
 \t\t\t\tblock.totalFees = 0;
-\t\t\t}
-\t\t\treturn block;
-\t\t})"""
+\t\t\t\treturn block;
+\t\t\t})"""
+    new_v115 = """\t\t\t}).catch(function() {
+\t\t\t\t// B3Chain-genesis-block-coinbase: b3chaind may not serve genesis coinbase via getrawtransaction
+\t\t\t\tif (block.height === 0 && coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]) {
+\t\t\t\t\tblock.coinbaseTx = JSON.parse(JSON.stringify(coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]));
+\t\t\t\t\tblock.coinbaseTx.time = block.time;
+\t\t\t\t\tblock.coinbaseTx.blocktime = block.time;
+\t\t\t\t\tblock.coinbaseTx.blockhash = block.hash;
+\t\t\t\t\tblock.totalFees = 0;
+\t\t\t\t\tblock.miner = utils.identifyMiner(block.coinbaseTx, block.height);
+\t\t\t\t} else {
+\t\t\t\t\tblock.coinbaseTx = null;
+\t\t\t\t\tblock.totalFees = 0;
+\t\t\t\t}
+\t\t\t\treturn block;
+\t\t\t})"""
     if "B3Chain-genesis-block-coinbase" not in text and old_v115 in text:
         text = text.replace(old_v115, new_v115, 1)
         print("rpcApi.js: upgraded v115 genesis coinbase fallback")
