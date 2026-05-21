@@ -23,6 +23,60 @@
 - **Matrix sign-off** (p10): pending all `ci.yml` jobs `success` on a single
   HEAD after queue drains; see GitHub Actions checklist on latest push.
 
+## v1.1.5 — testnet powLimit relaxation + miner RPC timeout fix (2026-05-21)
+
+**Testnet-only consensus change.** Mainnet, signet, testnet4, and regtest
+are untouched. Coordinated cold-start on seed1, seed2, and seed3.
+
+### Consensus (`CTestNetParams` only)
+
+- **`consensus.powLimit`** relaxed from v1.1.4's `0x1e01ffff`
+  (`000001ffff…`) to **`0x1f00ffff`**
+  (`0000ffff00000000000000000000000000000000000000000000000000000000`).
+  ~128× easier than v1.1.4; intended for commodity single-thread CPU
+  mining on the operator VPS (~1–2 min/block observed vs ~5–6 h at
+  v1.1.4).
+- **`operating_pow_floor_bits`** → `0x1effff80` (2× stricter than the
+  new powLimit, same relationship mainnet keeps between powLimit and
+  its operating floor).
+- **Testnet genesis re-mined** at `0x1f00ffff`:
+  ```
+  CreateGenesisBlock(1739145601, 111470, 0x1f00ffff, 1, 50*COIN)
+  hashGenesisBlock = ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6
+  hashMerkleRoot   = 6fefcc8f9ca9674e3948b2a74c381f8abb9f0e38349fad3d62794ed3895269dc
+  ```
+  Tooling: [`contrib/genesis/mine_testnet_v115.py`](../contrib/genesis/mine_testnet_v115.py),
+  [`contrib/genesis/mine_all_genesis.py`](../contrib/genesis/mine_all_genesis.py)
+  (testnet entry updated).
+
+**Implementation note:** the `uint256` powLimit literal must decode to
+exactly the same target as compact `0x1f00ffff` — the shorter
+`000000ffff…` form is 256× too strict and causes `DeriveTarget` to
+reject the genesis block on load. See
+[`doc/security/51-MONITORING-OPS.md`](security/51-MONITORING-OPS.md)
+"v1.1.5 testnet powLimit divergence".
+
+### Miner ops fix (no consensus change)
+
+- [`contrib/testnet/miner/b3chain-testnet-miner.sh`](../contrib/testnet/miner/b3chain-testnet-miner.sh):
+  **`ARGS` now includes `-rpcclienttimeout=0`**. Bitcoin Core recommends
+  disabling the client timeout for mining RPCs; the default 900 s (and
+  the interim 3600 s patch) caused hourly `"timeout reached"` while
+  `b3chaind` kept hashing in overlapping `httpworker` threads — the
+  client disconnect does not cancel `GenerateBlock()` in
+  [`src/rpc/mining.cpp`](../src/rpc/mining.cpp).
+
+### Deploy (seed1 / seed2 / seed3)
+
+- Git: `c3866b06f7` (consensus + miner script), `0e3f7f3c45` (powLimit
+  uint256 fix), `6d17f26913` (ops doc note) on `b3chain-main`.
+- Built on seed1; `b3chaind` md5 `8b02b59e5ffadf33e7bdf4cec4b15440`
+  installed on all three seeds.
+- Wiped `testnet3/` on each seed; full 4-peer mesh restored.
+- **Verified:** block 1 mined on seed1 in ~79 s; tip propagated to
+  seed2/seed3; miner journal shows `mined block #1` with no timeout
+  spam.
+
 ## Launch package — Miner stack audit follow-up (in progress)
 
 Closes the four stale-doc / dead-code gaps surfaced by the
