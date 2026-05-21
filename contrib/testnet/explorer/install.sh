@@ -151,7 +151,15 @@ if [ -f "$COIN" ]; then
     # SPACE separators after the colon, so match any whitespace.
     # b3chain F-6 fix (M-13): genesis re-mined at new powLimit = 0x1d7fffff.
     sed -i -E 's|("main":[[:space:]]+)"000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"|\1"b6cdeba06d5b4c98df9db07c58d0d7ca50866b855ab3ca470382a7d19b52a9e6"|' "$COIN"
-    sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"4b3f758b306086eca0a95c68020ab74cb87c652b1788780fa3235306bb3d4006"|' "$COIN"
+    # v1.1.5 testnet: powLimit 0x1f00ffff, genesis re-mined 2026-05-20.
+    sed -i -E 's|("test":[[:space:]]+)"000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"|\1"ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6"|' "$COIN"
+    sed -i -E '/genesisBlockHashesByNetwork/,/genesisCoinbaseTransactionIdsByNetwork/{
+        s|("test"[[:space:]]+)"4b3f758b306086eca0a95c68020ab74cb87c652b1788780fa3235306bb3d4006"|\1"ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6"|
+        s|("test"[[:space:]]+)"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"|\1"ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6"|
+    }' "$COIN"
+    sed -i -E '/genesisCoinbaseTransactionIdsByNetwork/,/genesisCoinbaseTransactionsByNetwork/{
+        s|("test"[[:space:]]+)"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"|\1"6fefcc8f9ca9674e3948b2a74c381f8abb9f0e38349fad3d62794ed3895269dc"|
+    }' "$COIN"
     sed -i -E 's|("regtest":[[:space:]]+)"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"|\1"8c19b11553c449cfe6f8b00c830b8e34249529fd9521cb4825541df9b0372de4"|' "$COIN"
     # testnet4 (Bitcoin Core 28+): upstream defaults to the BIP94
     # block-storm-rule testnet4 genesis.  b3chain testnet4 was re-mined
@@ -426,6 +434,15 @@ done
 # 2016 (first real epoch boundary) the upstream code naturally
 # produces correct numbers and this patch becomes a no-op.
 BASEROUTER=$EXP_DIR/node_modules/btc-rpc-explorer/routes/baseRouter.js
+if [ -f "$BASEROUTER" ] && ! grep -q 'B3Chain-negative-height-guard' "$BASEROUTER"; then
+    sed -i 's|blockHeights.push(getblockchaininfo.blocks - i);|let _h = getblockchaininfo.blocks - i; if (_h >= 0) { blockHeights.push(_h); } // B3Chain-negative-height-guard|' "$BASEROUTER"
+fi
+if [ -f "$BASEROUTER" ] && ! grep -q 'B3Chain-null-blockstats-guard' "$BASEROUTER"; then
+    sed -i 's|let blockstats = rawblockstats\[i\];|let blockstats = rawblockstats[i]; if (!blockstats) { continue; } // B3Chain-null-blockstats-guard|' "$BASEROUTER"
+fi
+if [ -f "$BASEROUTER" ] && ! grep -q 'B3Chain-latestBlocks-guard' "$BASEROUTER"; then
+    sed -i 's|res.locals.blocksUntilDifficultyAdjustment = ((res.locals.difficultyPeriod + 1) \* coinConfig.difficultyAdjustmentBlockCount) - latestBlocks\[0\].height;|if (latestBlocks \&\& latestBlocks[0]) { res.locals.blocksUntilDifficultyAdjustment = ((res.locals.difficultyPeriod + 1) * coinConfig.difficultyAdjustmentBlockCount) - latestBlocks[0].height; } // B3Chain-latestBlocks-guard|' "$BASEROUTER"
+fi
 if [ -f "$BASEROUTER" ] \
    && grep -q 'difficultyAdjustmentData = utils.difficultyAdjustmentEstimates(eraStartBlockHeader, currentBlock)' "$BASEROUTER" \
    && ! grep -q 'B3Chain patch' "$BASEROUTER"; then

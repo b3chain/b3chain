@@ -77,7 +77,32 @@ reject the genesis block on load. See
   seed2/seed3; miner journal shows `mined block #1` with no timeout
   spam.
 
-## Launch package — Miner stack audit follow-up (in progress)
+### Explorer fix (seed1)
+
+After the v1.1.5 chain wipe, [explorer.b3chain.org](https://explorer.b3chain.org)
+showed `Error building page: TypeError: Cannot read properties of undefined
+(reading '0')`. Root causes:
+
+- **`electrs-testnet`** was not restarted after cutover (deploy script
+  referenced wrong unit `b3chain-electrs`); fixed in
+  [`contrib/testnet/deploy_v115_seed1.sh`](../contrib/testnet/deploy_v115_seed1.sh)
+  (wipe `/var/lib/electrs/db`, start `electrs-testnet.service`).
+- **`btc.js` genesis metadata** still pointed at v1.1.4 hashes/coinbase
+  txid; updated to v1.1.5 values in
+  [`contrib/testnet/explorer/install.sh`](../contrib/testnet/explorer/install.sh)
+  and idempotent post-cutover
+  [`contrib/testnet/explorer/patch-v115-genesis.sh`](../contrib/testnet/explorer/patch-v115-genesis.sh).
+- **Young-chain homepage crash:** btc-rpc-explorer loads
+  `recentBlocksCount + 1` (default 11) block heights; with tip < 10
+  this requested negative heights → RPC failure → `latestBlocks[0]`
+  undefined. Patched `baseRouter.js` to clamp heights to `>= 0`
+  (`B3Chain-negative-height-guard`) plus genesis coinbase
+  `getrawtransaction` fallback (b3chaind rejects genesis coinbase via
+  RPC).
+
+**Verified:** homepage renders Latest Blocks table (heights 0–5) with no
+error banner.
+
 
 Closes the four stale-doc / dead-code gaps surfaced by the
 "are all three miners updated to reflect B3PoW-Scratch v1.1?" audit
