@@ -119,50 +119,76 @@ PY
 if [ -f "$NETSUM" ] && ! grep -q 'B3Chain-small-difficulty' "$NETSUM"; then
     python3 <<PY
 from pathlib import Path
-import os
+import os, re
+
 exp = os.environ["EXP_DIR"]
 path = Path(exp) / "node_modules/btc-rpc-explorer/views/includes/index-network-summary.pug"
 text = path.read_text()
-old = """\t\tif (getblockchaininfo.difficulty > 1000)
-\t\t\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle="tooltip")
-\t\t\t\tspan #{difficultyData[0]}
-\t\t\t\tspan x 10
-\t\t\t\t\tsup #{difficultyData[1].exponent}
 
-\t\telse
-\t\t\tspan #{new Decimal(getblockchaininfo.difficulty).toDP(3)}"""
-new = """\t\tif (getblockchaininfo.difficulty > 1000)
-\t\t\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle="tooltip")
-\t\t\t\tspan #{difficultyData[0]}
-\t\t\t\tspan x 10
-\t\t\t\t\tsup #{difficultyData[1].exponent}
+diff_pat = re.compile(
+    r"(?P<indent>\t+)if \(getblockchaininfo\.difficulty > 1000\)\n"
+    r"\1\tspan\.border-dotted\(title=parseFloat\(getblockchaininfo\.difficulty\)\.toLocaleString\(\), data-bs-toggle=\"tooltip\"\)\n"
+    r"\1\t\tspan #\{difficultyData\[0\]\}\n"
+    r"\1\t\tspan\s+x 10\n"
+    r"\1\t\t\tsup #\{difficultyData\[1\]\.exponent\}\n"
+    r"\n"
+    r"\1else\n"
+    r"\1\tspan #\{new Decimal\(getblockchaininfo\.difficulty\)\.toDP\(3\)\}\n",
+    re.MULTILINE,
+)
 
-\t\telse if (getblockchaininfo.difficulty > 0)
-\t\t\t// B3Chain-small-difficulty: toDP(3) rounds 2.5e-5 to 0.000 on young testnet
-\t\t\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle="tooltip") #{new Decimal(getblockchaininfo.difficulty).toExponential(3)}
+def diff_repl(m):
+    ind = m.group("indent")
+    return (
+        f"{ind}if (getblockchaininfo.difficulty > 1000)\n"
+        f"{ind}\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle=\"tooltip\")\n"
+        f"{ind}\t\tspan #{{difficultyData[0]}}\n"
+        f"{ind}\t\tspan  x 10\n"
+        f"{ind}\t\t\tsup #{{difficultyData[1].exponent}}\n"
+        f"\n"
+        f"{ind}else if (getblockchaininfo.difficulty > 0)\n"
+        f"{ind}\t// B3Chain-small-difficulty: toDP(3) rounds young testnet difficulty to 0.000\n"
+        f"{ind}\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle=\"tooltip\") #{{new Decimal(getblockchaininfo.difficulty).toExponential(3)}}\n"
+        f"\n"
+        f"{ind}else\n"
+        f"{ind}\tspan 0\n"
+    )
 
-\t\telse
-\t\t\tspan 0"""
-if old not in text:
-    raise SystemExit("index-network-summary.pug: difficulty block not found")
-text = text.replace(old, new, 1)
+if "B3Chain-small-difficulty" not in text:
+    text2, n = diff_pat.subn(diff_repl, text, count=1)
+    if n != 1:
+        raise SystemExit("index-network-summary.pug: difficulty block not found")
+    text = text2
+    print("index-network-summary.pug: difficulty patched")
 
-old2 = """\t\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);
+coins_pat = re.compile(
+    r"(?P<indent>\t+)- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
+    r"\n"
+    r"(?P=indent)\tspan #\{parseInt\(estimatedSupply\)\.toLocaleString\(\)\}",
+    re.MULTILINE,
+)
 
-\t\tspan #{parseInt(estimatedSupply).toLocaleString()}"""
-new2 = """\t\tif (b3chainCirculatingSupply)
-\t\t\t- var estimatedSupply = b3chainCirculatingSupply;
-\t\telse
-\t\t\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);
+def coins_repl(m):
+    ind = m.group("indent")
+    return (
+        f"{ind}if (b3chainCirculatingSupply)\n"
+        f"{ind}\t- var estimatedSupply = b3chainCirculatingSupply;\n"
+        f"{ind}else\n"
+        f"{ind}\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);\n"
+        f"\n"
+        f"{ind}\tspan #{{parseInt(estimatedSupply).toLocaleString()}}"
+    )
 
-\t\tspan #{parseInt(estimatedSupply).toLocaleString()}"""
 if "b3chainCirculatingSupply" not in text:
-    if old2 not in text:
+    text2, n = coins_pat.subn(coins_repl, text, count=1)
+    if n != 1:
         raise SystemExit("index-network-summary.pug: coins block not found")
-    text = text.replace(old2, new2, 1)
+    text = text2
+    print("index-network-summary.pug: coins patched")
+else:
+    print("index-network-summary.pug: coins already patched")
 
 path.write_text(text)
-print("index-network-summary.pug: difficulty + coins patched")
 PY
 fi
 
