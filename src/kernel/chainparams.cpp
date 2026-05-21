@@ -214,20 +214,19 @@ public:
         consensus.CSVHeight = 0;
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
-        // b3chain v1.1.4 testnet powLimit DIVERGENCE from mainnet:
-        // testnet stays at the *pre-F-6* floor (0x1e01ffff = ~4x easier
-        // than mainnet's 0x1d7fffff) so that a single CPU thread on a
-        // commodity VPS can keep the testnet chain advancing without an
-        // FPGA.  Mainnet keeps the F-6 tightening untouched -- this
-        // divergence is testnet-only.  Rationale: at the F-6 mainnet
-        // floor, B3PoW-Scratch's 1 MB scratchpad makes min-difficulty
-        // ~27 min/block on a KU5P FPGA (20 KH/s), which is also the
-        // ballpark of single-thread CPU BLAKE3-with-scratchpad on a
-        // 2-core VPS; the b3chain-cli default -rpcclienttimeout=900
-        // gives up before the daemon can find a block.  See
-        // doc/security/51-MONITORING-OPS.md "v1.1.4 testnet powLimit
+        // b3chain v1.1.5 testnet powLimit DIVERGENCE from mainnet:
+        // testnet uses 0x1f00ffff (~128x easier than v1.1.4's 0x1e01ffff)
+        // so a single CPU thread on a commodity VPS produces blocks in
+        // minutes, not hours.  Mainnet keeps the F-6 tightening untouched
+        // -- this divergence is testnet-only.  Rationale: at v1.1.4's
+        // 0x1e01ffff floor, B3PoW-Scratch on a 2-core VPS averaged
+        // ~5-6 h/block and b3chain-cli's default -rpcclienttimeout
+        // abandoned long-running generatetoaddress calls before the
+        // daemon finished (see lesson #7).  v1.1.5 pairs the easier
+        // floor with -rpcclienttimeout=0 in the testnet miner script.
+        // See doc/security/51-MONITORING-OPS.md "v1.1.5 testnet powLimit
         // divergence" and the F-6 commentary in CMainParams above.
-        consensus.powLimit = uint256{"000001ffff000000000000000000000000000000000000000000000000000000"};
+        consensus.powLimit = uint256{"000000ffff000000000000000000000000000000000000000000000000000000"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -242,12 +241,12 @@ public:
         // b3chain M-3, M-4: LWMA-3 + reorg-depth cap (see mainnet rationale).
         consensus.use_lwma3 = true;
         consensus.max_reorg_depth = 200;
-        // b3chain v1.1.4 testnet operating floor: 2x stricter than the
+        // b3chain v1.1.5 testnet operating floor: 2x stricter than the
         // testnet powLimit, preserving the same 2x-tightening relationship
         // that mainnet has between powLimit (0x1d7fffff) and its operating
-        // floor (0x1d3fffff).  Compact 0x1dffff80 = mantissa 0xffff80,
-        // exp 0x1d -> target = 0xffff80 * 256^26 ~ powLimit / 2.
-        consensus.operating_pow_floor_bits = 0x1dffff80;
+        // floor (0x1d3fffff).  Compact 0x1effff80 = mantissa 0xffff80,
+        // exp 0x1e -> target = 0xffff80 * 256^27 ~ powLimit / 2.
+        consensus.operating_pow_floor_bits = 0x1effff80;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -275,15 +274,14 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        // b3chain v1.1.4: testnet genesis re-mined at the relaxed pre-F-6
-        // floor (0x1e01ffff).  Previously (v1.1.3, F-6 fix): nonce
-        // 22405111, hash 4b3f758b3060...3d4006.  See
-        // contrib/genesis/mine_all_genesis.py for the canonical
-        // re-mining tool.
-        genesis = CreateGenesisBlock(1739145601, 2275226, 0x1e01ffff, 1, 50 * COIN);
+        // b3chain v1.1.5: testnet genesis re-mined at 0x1f00ffff (~128x
+        // easier than v1.1.4's 0x1e01ffff).  Previously (v1.1.4): nonce
+        // 2275226, hash 8c61fcbc6249...103ae64.  See
+        // contrib/genesis/mine_all_genesis.py and mine_testnet_v115.py.
+        genesis = CreateGenesisBlock(1739145601, 111470, 0x1f00ffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"8c61fcbc6249f2518010fabc1589f91d35378f48757ef97323e8cb401103ae64"});
-        assert(genesis.hashMerkleRoot == uint256{"7637f54884268792762b66946b6c4f41fab550164d54f17741b7381dd586dbbb"});
+        assert(consensus.hashGenesisBlock == uint256{"ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6"});
+        assert(genesis.hashMerkleRoot == uint256{"6fefcc8f9ca9674e3948b2a74c381f8abb9f0e38349fad3d62794ed3895269dc"});
 
         // Phase 8a testnet bootstrap: DNS seed (round-robin A record
         // returning the operator-run seed nodes) plus the BIP155-encoded

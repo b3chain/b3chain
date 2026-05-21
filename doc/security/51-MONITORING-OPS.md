@@ -439,6 +439,29 @@ Notes for seed1:
   ground or `0x207fffff` regtest-easy testnet), but the chain is
   functioning -- this is purely a "first-block latency on commodity
   HW" question, not a correctness issue.
+- **v1.1.5 testnet powLimit divergence (2026-05-21).**  v1.1.4 at
+  `0x1e01ffff` did produce blocks (height 2 by ~2026-05-20 23:00 UTC)
+  but at **~5-6 h/block** on seed1's commodity CPU, and the miner's
+  `-rpcclienttimeout=3600` patch still produced hourly `"timeout
+  reached"` errors because the client abandons the RPC while
+  `b3chaind` keeps hashing (overlapping `httpworker` threads; see
+  lesson #7).  The fix pairs two changes: (1) testnet
+  `CTestNetParams.powLimit` relaxed to **`0x1f00ffff`** (~128× easier
+  than v1.1.4, ~512× easier than mainnet F-6), with
+  `operating_pow_floor_bits = 0x1effff80`; (2) canonical miner script
+  `contrib/testnet/miner/b3chain-testnet-miner.sh` now passes
+  **`-rpcclienttimeout=0`** (Bitcoin Core recommendation for mining
+  RPCs).  Testnet genesis re-mined locally (Python+blake3, 0.1 s,
+  111470 nonces):
+  ```
+  CreateGenesisBlock(1739145601, 111470, 0x1f00ffff, 1, 50*COIN)
+  hashGenesisBlock = ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6
+  hashMerkleRoot   = 6fefcc8f9ca9674e3948b2a74c381f8abb9f0e38349fad3d62794ed3895269dc
+  ```
+  CMainParams, CTestNet4Params, CSignetParams, CRegTestParams are
+  **untouched**.  Deploy: coordinated wipe of `testnet3/` on seed1,
+  seed2, seed3 + cold-start + full mesh verification.  Expected block
+  time on seed1 CPU: **minutes**, not hours.
 
 ### Known operational caveats
 

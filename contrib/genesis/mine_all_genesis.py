@@ -148,14 +148,14 @@ def main():
     # b3chain F-6 fix (M-13): production chains use the tightened
     # powLimit = 0x1d7fffff (4x stricter).  Regtest unchanged.
     #
-    # b3chain v1.1.4: testnet (chain=test) diverges from the rest --
-    # it uses the *pre-F-6* floor 0x1e01ffff so a single CPU thread on a
-    # commodity VPS can keep testnet advancing without an FPGA.  Mainnet,
-    # testnet4 and signet keep the F-6 tightening untouched.  See
-    # src/kernel/chainparams.cpp CTestNetParams for the rationale.
+    # b3chain v1.1.5: testnet (chain=test) diverges from the rest --
+    # it uses 0x1f00ffff (~128x easier than v1.1.4's 0x1e01ffff) so a
+    # single CPU thread on a commodity VPS keeps testnet advancing in
+    # minutes per block.  Mainnet, testnet4 and signet keep the F-6
+    # tightening untouched.  See src/kernel/chainparams.cpp CTestNetParams.
     networks = [
         ("mainnet",  1739145600, 0x1d7fffff),
-        ("testnet",  1739145601, 0x1e01ffff),  # v1.1.4 testnet powLimit divergence
+        ("testnet",  1739145601, 0x1f00ffff),  # v1.1.5 testnet powLimit divergence
         ("regtest",  1739145602, 0x207fffff),
         ("testnet4", 1739145603, 0x1d7fffff),
         ("signet",   1739145604, 0x1d7fffff),

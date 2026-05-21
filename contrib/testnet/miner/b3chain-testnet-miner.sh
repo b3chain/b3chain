@@ -36,7 +36,10 @@ if [ -z "${COINBASE_ADDR:-}" ]; then
 fi
 
 CLI=/usr/local/bin/b3chain-cli
-ARGS=(-chain=test -conf="$CONF" -datadir="$DATADIR")
+# -rpcclienttimeout=0: no client-side abort on long generatetoaddress calls.
+# Bitcoin Core recommends this for mining RPCs; default 900s caused hourly
+# "timeout reached" while b3chaind kept hashing (overlapping httpworkers).
+ARGS=(-chain=test -rpcclienttimeout=0 -conf="$CONF" -datadir="$DATADIR")
 
 echo "B3Chain testnet miner (generatetoaddress loop)"
 echo "  coinbase: $COINBASE_ADDR"
