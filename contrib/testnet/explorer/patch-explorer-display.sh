@@ -125,39 +125,22 @@ exp = os.environ["EXP_DIR"]
 path = Path(exp) / "node_modules/btc-rpc-explorer/views/includes/index-network-summary.pug"
 text = path.read_text()
 
-diff_pat = re.compile(
-    r"(?P<indent>\t+)if \(getblockchaininfo\.difficulty > 1000\)\n"
-    r"\1\tspan\.border-dotted\(title=parseFloat\(getblockchaininfo\.difficulty\)\.toLocaleString\(\), data-bs-toggle=\"tooltip\"\)\n"
-    r"\1\t\tspan #\{difficultyData\[0\]\}\n"
-    r"\1\t\tspan\s+x 10\n"
-    r"\1\t\t\tsup #\{difficultyData\[1\]\.exponent\}\n"
-    r"\n"
-    r"\1else\n"
-    r"\1\tspan #\{new Decimal\(getblockchaininfo\.difficulty\)\.toDP\(3\)\}\n",
+else_pat = re.compile(
+    r"(?P<ind>\t+)else\n(?P=ind)\tspan #\{new Decimal\(getblockchaininfo\.difficulty\)\.toDP\(3\)\}\n",
     re.MULTILINE,
 )
-
-def diff_repl(m):
-    ind = m.group("indent")
-    return (
-        f"{ind}if (getblockchaininfo.difficulty > 1000)\n"
-        f"{ind}\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle=\"tooltip\")\n"
-        f"{ind}\t\tspan #{{difficultyData[0]}}\n"
-        f"{ind}\t\tspan  x 10\n"
-        f"{ind}\t\t\tsup #{{difficultyData[1].exponent}}\n"
-        f"\n"
-        f"{ind}else if (getblockchaininfo.difficulty > 0)\n"
-        f"{ind}\t// B3Chain-small-difficulty: toDP(3) rounds young testnet difficulty to 0.000\n"
-        f"{ind}\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-bs-toggle=\"tooltip\") #{{new Decimal(getblockchaininfo.difficulty).toExponential(3)}}\n"
-        f"\n"
-        f"{ind}else\n"
-        f"{ind}\tspan 0\n"
-    )
+else_repl = (
+    r"\1else if (getblockchaininfo.difficulty > 0)\n"
+    r"\1\t// B3Chain-small-difficulty: toDP(3) rounds young testnet difficulty to 0.000\n"
+    r"\1\tspan.border-dotted(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), "
+    r'data-bs-toggle="tooltip") #{new Decimal(getblockchaininfo.difficulty).toExponential(3)}\n'
+    r"\n\1else\n\1\tspan 0\n"
+)
 
 if "B3Chain-small-difficulty" not in text:
-    text2, n = diff_pat.subn(diff_repl, text, count=1)
+    text2, n = else_pat.subn(else_repl, text, count=1)
     if n != 1:
-        raise SystemExit("index-network-summary.pug: difficulty block not found")
+        raise SystemExit("index-network-summary.pug: difficulty else branch not found")
     text = text2
     print("index-network-summary.pug: difficulty patched")
 
