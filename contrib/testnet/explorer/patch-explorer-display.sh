@@ -28,34 +28,55 @@ path = Path(exp) / "node_modules/btc-rpc-explorer/routes/baseRouter.js"
 text = path.read_text()
 
 # 1) List blocks 0..tip when the chain is shorter than the homepage window.
-old_loop = """\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
+new_inner = """\t\t\t// B3Chain-young-chain-all-blocks: show genesis..tip when tip < recentBlocksCount
+\t\t\tconst _b3Tip = getblockchaininfo.blocks;
+\t\t\tconst _b3Want = config.site.homepage.recentBlocksCount + 1;
+\t\t\tif (_b3Tip + 1 < _b3Want) {
+\t\t\t\tfor (let _h = 0; _h <= _b3Tip; _h++) {
+\t\t\t\t\tblockHeights.push(_h);
+\t\t\t\t}
+\t\t\t} else {
+\t\t\t\tfor (let i = 0; i < _b3Want; i++) {
+\t\t\t\t\tlet _h = _b3Tip - i;
+\t\t\t\t\tif (_h >= 0) { blockHeights.push(_h); } // B3Chain-negative-height-guard
+\t\t\t\t}
+\t\t\t}"""
+old_blocks = [
+    """\t\tif (getblockchaininfo.blocks) {
+\t\t\t// +1 to page size here so we have the next block to calculate T.T.M.
+\t\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
+\t\t\t\tblockHeights.push(getblockchaininfo.blocks - i);
+\t\t\t}
+\t\t}""",
+    """\t\tif (getblockchaininfo.blocks) {
+\t\t\t// +1 to page size here so we have the next block to calculate T.T.M.
+\t\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
+\t\t\t\tlet _h = getblockchaininfo.blocks - i; if (_h >= 0) { blockHeights.push(_h); } // B3Chain-negative-height-guard
+\t\t\t}
+\t\t}""",
+    # Legacy bare loop (pre-if-wrapper installs)
+    """\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
 \t\t\tblockHeights.push(getblockchaininfo.blocks - i);
-\t\t}"""
-new_loop = """\t\t// B3Chain-young-chain-all-blocks: show genesis..tip when tip < recentBlocksCount
-\t\tconst _b3Tip = getblockchaininfo.blocks;
-\t\tconst _b3Want = config.site.homepage.recentBlocksCount + 1;
-\t\tif (_b3Tip + 1 < _b3Want) {
-\t\t\tfor (let _h = 0; _h <= _b3Tip; _h++) {
-\t\t\t\tblockHeights.push(_h);
-\t\t\t}
-\t\t} else {
-\t\t\tfor (let i = 0; i < _b3Want; i++) {
-\t\t\t\tlet _h = _b3Tip - i;
-\t\t\t\tif (_h >= 0) { blockHeights.push(_h); }
-\t\t\t}
-\t\t}"""
-if "B3Chain-young-chain-all-blocks" not in text:
-    if old_loop not in text:
-        # Already has negative-height guard only — replace that variant
-        old_loop = """\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
+\t\t}""",
+    """\t\tfor (let i = 0; i < (config.site.homepage.recentBlocksCount + 1); i++) {
 \t\t\tlet _h = getblockchaininfo.blocks - i; if (_h >= 0) { blockHeights.push(_h); } // B3Chain-negative-height-guard
-\t\t}"""
-        new_loop = new_loop.replace("\t\t\tfor (let i = 0; i < _b3Want; i++) {",
-            "\t\t\tfor (let i = 0; i < _b3Want; i++) { // B3Chain-negative-height-guard")
-    if old_loop in text:
-        text = text.replace(old_loop, new_loop, 1)
-        print("baseRouter.js: young-chain block list patched")
-    else:
+\t\t}""",
+]
+new_blocks = [
+    """\t\tif (getblockchaininfo.blocks) {
+\t\t\t// +1 to page size here so we have the next block to calculate T.T.M.
+""" + new_inner + """
+\t\t}""",
+] * 4  # same replacement for all variants
+if "B3Chain-young-chain-all-blocks" not in text:
+    patched = False
+    for old_loop, new_loop in zip(old_blocks, new_blocks):
+        if old_loop in text:
+            text = text.replace(old_loop, new_loop, 1)
+            patched = True
+            print("baseRouter.js: young-chain block list patched")
+            break
+    if not patched:
         raise SystemExit("baseRouter.js: blockHeights loop pattern not found")
 else:
     print("baseRouter.js: young-chain block list already patched")
