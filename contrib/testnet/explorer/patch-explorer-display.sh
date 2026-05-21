@@ -163,23 +163,20 @@ def coins_repl(m):
     )
 
 # Repair a prior broken patch (if/else body not indented under if).
-broken_coins = re.compile(
-    r"(?P<ind>\t+)if \(b3chainCirculatingSupply\)\n"
-    r"(?P=ind)- var estimatedSupply = b3chainCirculatingSupply;\n"
-    r"(?P<ind2>\t*)else\n"
-    r"(?P=ind2)\t- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
-    r"\n"
-    r"(?P=ind2)\tspan #\{parseInt\(estimatedSupply\)\.toLocaleString\(\)\}",
-    re.MULTILINE,
+broken_coins_literal = (
+    "\t\t\t\tif (b3chainCirculatingSupply)\n"
+    "\t\t\t\t- var estimatedSupply = b3chainCirculatingSupply;\n"
+    "\t\t\telse\n"
+    "\t\t\t\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);\n"
 )
-
-def coins_repair(m):
-    ind = m.group("ind")
-    return coins_repl(m)  # same as correct structure using ind from if line
-
-text2, n = broken_coins.subn(coins_repl, text, count=1)
-if n == 1:
-    text = text2
+fixed_coins_literal = (
+    "\t\t\t\tif (b3chainCirculatingSupply)\n"
+    "\t\t\t\t\t- var estimatedSupply = b3chainCirculatingSupply;\n"
+    "\t\t\t\telse\n"
+    "\t\t\t\t\t- var estimatedSupply = utils.estimatedSupply(getblockchaininfo.blocks);\n"
+)
+if broken_coins_literal in text:
+    text = text.replace(broken_coins_literal, fixed_coins_literal, 1)
     print("index-network-summary.pug: coins patch repaired")
 elif "b3chainCirculatingSupply" not in text:
     text2, n = coins_pat.subn(coins_repl, text, count=1)
