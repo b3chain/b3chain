@@ -2,7 +2,7 @@
 
 **Status:** draft v1.0
 **Author:** b3chain
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-21
 **Companion documents:**
 [`SECURITY-AUDIT.md`](SECURITY-AUDIT.md),
 [`SECURITY-INHERITANCE.md`](SECURITY-INHERITANCE.md),
@@ -117,6 +117,53 @@ References:
 - Eyal, Sirer, *Majority is not Enough: Bitcoin Mining is Vulnerable*, Financial Cryptography 2014.
 - Bonneau, Felten et al., *SoK: Research Perspectives on Bitcoin and Cryptocurrencies*, IEEE S&P 2015.
 - Heilman et al., *Eclipse Attacks on Bitcoin's Peer-to-Peer Network*, USENIX Security 2015.
+
+### 2.1 M-3 design note: why LWMA-3, not LWMA-1
+
+Zawy's public difficulty-algorithm repo
+([`zawy12/difficulty-algorithms` issue #3](https://github.com/zawy12/difficulty-algorithms/issues/3))
+defines a family of **Linear-Weighted Moving Average (LWMA)** retargets.
+**LWMA-3** (finished October 2018) is variant 3: same per-block LWMA core
+as LWMA-1, plus stricter handling of **negative / out-of-order solve
+times** so a majority miner cannot use block withholding to drag
+difficulty down indefinitely (see
+[issue #24 — history](https://github.com/zawy12/difficulty-algorithms/issues/24),
+September 2018 attack class).
+
+Later comments on issue #3 state that **LWMA-2/3/4 are "not recommended"
+for brand-new coins** because Zawy could not show they beat **LWMA-1** in
+testing — mainly because LWMA-2/4 add optional **jump rules** (extra
+difficulty bumps when recent blocks are very fast). That is a
+*simplicity / empirical-tuning* recommendation, not a claim that LWMA-3
+is unsuitable for production.
+
+**Why b3chain ships LWMA-3 (M-3) anyway**
+
+| Decision driver | Rationale |
+|---|---|
+| **Threat model (V-4, V-5)** | Bitcoin's 2016-block linear retarget responds in ~14 days. A low-hashrate chain (ETC Aug 2020 class) needs **per-block** retarget so a hashrate shock or bootstrap dip cannot be exploited for days. Both LWMA-1 and LWMA-3 provide that; Bitcoin's retarget does not. |
+| **Withholding / negative-solvetime fix** | Our chain uses **network time + BIP94 (M-2)**, i.e. Bitcoin-style timestamp rules, not Cryptonote node-time rules. We port Zawy's **BTC/ZEC-clone LWMA-3 reference** (negative solve-time clamp and `weighted_sum` floor), not the CN LWMA-1 path Monero uses. |
+| **No LWMA-2/4 jump heuristics** | [`src/pow/lwma3.cpp`](../../src/pow/lwma3.cpp) implements the LWMA-3 **security clamps only** (`+6T` / `−5T` per block, `min_weighted_sum = T×N/20`). It does **not** ship Zawy's optional 3-block / 8% jump rules from the commented reference pseudocode. |
+| **ASERT rejected** | Bitcoin Cash **aserti3-2d** was considered and skipped: for sudden hashrate drops (F-3 / V-5) our simulations and operator posture favour LWMA-3's responsiveness. See [`CHANGELOG.md`](../CHANGELOG.md) v1.1.x forward references. |
+| **Permanent, not bootstrap-only** | LWMA-3 replaces the 2016-block retarget on mainnet / testnet / signet / testnet4 (`use_lwma3` in `chainparams.cpp`). Regtest keeps the legacy path for functional-test compatibility only. |
+
+**Naming vs behaviour:** In Zawy's 2019+ taxonomy this implementation might be
+described as "LWMA-1 core + LWMA-3 clamps." We retain the **LWMA-3** label
+because (a) the C++ port matches the BTC-clone LWMA-3 reference on issue #3,
+and (b) the documented threat mitigations (V-4, F-6 floor interaction in
+M-13) are written against that variant.
+
+**Production citations (do not conflate)**
+
+- **LWMA family, CN coins:** Monero and Haven run **LWMA-1** — evidence the
+  family works at scale, not that we run their exact variant.
+- **LWMA-3-style BTC clones:** Bitcoin Gold, MicroBitcoin, and others listed
+  on issue #3 — closer analogues for our timestamp model.
+
+**Implementation map:** window `LWMA3_WINDOW = 60` ([`lwma3.h`](../../src/pow/lwma3.h));
+dispatch in [`pow.cpp::GetNextWorkRequired`](../../src/pow.cpp) when
+`params.use_lwma3`; unit tests `lwma3_tests.cpp`; functional
+`test/functional/feature_lwma3.py`.
 
 ---
 
@@ -741,6 +788,6 @@ Last full simulator run: pending first execution.
 - **γ**: selfish-mining propagation advantage.
 - **k**: confirmation depth.
 - **MTP**: median time past.
-- **LWMA-3**: Linear-Weighted Moving Average difficulty algorithm, window N=60.
+- **LWMA-3**: Linear-Weighted Moving Average difficulty algorithm (Zawy variant 3), window N=60 on b3chain. Rationale for choosing LWMA-3 over LWMA-1: §2.1.
 - **BIP94**: time-warp mitigation soft fork.
 - **B3Miner-1**: the b3chain reference FPGA mining board (KU5P).
