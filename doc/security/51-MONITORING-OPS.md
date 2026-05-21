@@ -452,7 +452,11 @@ Notes for seed1:
   `contrib/testnet/miner/b3chain-testnet-miner.sh` now passes
   **`-rpcclienttimeout=0`** (Bitcoin Core recommendation for mining
   RPCs).  Testnet genesis re-mined locally (Python+blake3, 0.1 s,
-  111470 nonces):
+  111470 nonces).  **Note:** `consensus.powLimit` must be the
+  64-char uint256 **`0000ffff00000000000000000000000000000000000000000000000000000000`**
+  (exact match for compact `0x1f00ffff`); the shorter
+  `000000ffff…` form is 256× too strict and causes
+  `DeriveTarget` to reject the genesis block on load.
   ```
   CreateGenesisBlock(1739145601, 111470, 0x1f00ffff, 1, 50*COIN)
   hashGenesisBlock = ebc117cd39760da3c8a3687484858e8ea2cfbc88990fb587957b4ba956a661c6
