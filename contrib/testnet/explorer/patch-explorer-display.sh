@@ -245,7 +245,31 @@ if "B3Chain-genesis-block-coinbase" not in text:
 \t\t\t}
 \t\t\treturn block;
 \t\t})"""
-    if old not in text and "B3Chain-genesis-coinbase-fallback" in text:
+    old_v115 = """\t\t}).catch(function() {
+\t\t\t// B3Chain-genesis-coinbase-fallback: b3chaind rejects getrawtransaction on genesis coinbase.
+\t\t\tblock.coinbaseTx = null;
+\t\t\tblock.totalFees = 0;
+\t\t\treturn block;
+\t\t})"""
+    new_v115 = """\t\t}).catch(function() {
+\t\t\t// B3Chain-genesis-block-coinbase: b3chaind may not serve genesis coinbase via getrawtransaction
+\t\t\tif (block.height === 0 && coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]) {
+\t\t\t\tblock.coinbaseTx = JSON.parse(JSON.stringify(coins[config.coin].genesisCoinbaseTransactionsByNetwork[global.activeBlockchain]));
+\t\t\t\tblock.coinbaseTx.time = block.time;
+\t\t\t\tblock.coinbaseTx.blocktime = block.time;
+\t\t\t\tblock.coinbaseTx.blockhash = block.hash;
+\t\t\t\tblock.totalFees = 0;
+\t\t\t\tblock.miner = utils.identifyMiner(block.coinbaseTx, block.height);
+\t\t\t} else {
+\t\t\t\tblock.coinbaseTx = null;
+\t\t\t\tblock.totalFees = 0;
+\t\t\t}
+\t\t\treturn block;
+\t\t})"""
+    if "B3Chain-genesis-block-coinbase" not in text and old_v115 in text:
+        text = text.replace(old_v115, new_v115, 1)
+        print("rpcApi.js: upgraded v115 genesis coinbase fallback")
+    elif old not in text and "B3Chain-genesis-coinbase-fallback" in text:
         print("rpcApi.js: getBlockByHash uses existing B3Chain-genesis-coinbase-fallback")
     elif old in text:
         text = text.replace(old, new, 1)
