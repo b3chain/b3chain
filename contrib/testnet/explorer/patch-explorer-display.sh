@@ -116,7 +116,8 @@ path.write_text(text)
 PY
 
 # --- index-network-summary.pug: difficulty, coins, hashrate labels ---
-if [ -f "$NETSUM" ] && ! grep -q 'B3Chain-small-difficulty' "$NETSUM"; then
+if [ -f "$NETSUM" ]; then
+    export EXP_DIR
     python3 <<PY
 from pathlib import Path
 import os, re
@@ -143,6 +144,8 @@ if "B3Chain-small-difficulty" not in text:
         raise SystemExit("index-network-summary.pug: difficulty else branch not found")
     text = text2
     print("index-network-summary.pug: difficulty patched")
+else:
+    print("index-network-summary.pug: difficulty already patched")
 
 coins_pat = re.compile(
     r"(?P<ind>\t+)- var estimatedSupply = utils\.estimatedSupply\(getblockchaininfo\.blocks\);\n"
