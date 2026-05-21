@@ -12,7 +12,9 @@ export CONTAINER_NAME="ci_mac_native"  # macos does not use a container, but the
 export PIP_PACKAGES="--break-system-packages zmq"
 export GOAL="install deploy"
 export CMAKE_GENERATOR="Ninja"
-export BITCOIN_CONFIG="-DBUILD_GUI=ON -DWITH_ZMQ=ON -DREDUCE_EXPORTS=ON -DCMAKE_EXE_LINKER_FLAGS='-Wl,-stack_size -Wl,0x80000'"
+# b3chain: miner_tests B3PoW loop needs headroom on macOS arm64 GUI job (run 26172916022).
+export TEST_RUNNER_TIMEOUT_FACTOR=180
+export BITCOIN_CONFIG="-DBUILD_GUI=ON -DWITH_ZMQ=ON -DREDUCE_EXPORTS=ON -DCMAKE_EXE_LINKER_FLAGS='-Wl,-stack_size -Wl,0x80000' -DAPPEND_CPPFLAGS='-DREDUCED_CI_MINER_BLOCKS'"
 export CI_OS_NAME="macos"
 export NO_DEPENDS=1
 export OSX_SDK=""

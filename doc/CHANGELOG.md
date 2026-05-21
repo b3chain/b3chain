@@ -16,6 +16,8 @@
   `-DREDUCED_CI_MINER_BLOCKS` (20-block import in `miner_tests`); CentOS/macOS
   `BITCOIN_CMD=b3chain -m`; Windows cross-built functional timeout 80×; tidy
   job cap 180m.
+- CI: macOS native GUI job — same `TEST_RUNNER_TIMEOUT_FACTOR=180` and
+  `REDUCED_CI_MINER_BLOCKS` (closes macOS GUI CTest failure on run 26172916022).
 - **benchmark-trend** (p9): green on `41dc252463` (28m); tracks
   `B3PoW.*|CheckBlock.*|ConnectBlock.*` — separate from main `ci.yml` matrix.
 - **Matrix sign-off** (p10): pending all `ci.yml` jobs `success` on a single
