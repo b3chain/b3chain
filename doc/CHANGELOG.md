@@ -19,9 +19,11 @@
 - CI: macOS native GUI job — same `TEST_RUNNER_TIMEOUT_FACTOR=180` and
   `REDUCED_CI_MINER_BLOCKS` (closes macOS GUI CTest failure on run 26172916022).
 - Explorer: `patch-explorer-display.sh` — young-chain homepage shows blocks
-  0..tip, correct coin supply `(height+1)×subsidy`, scientific difficulty,
-  estimated hashrate from `difficulty×2^32/target`, smart fees `0` when empty,
-  genesis coinbase timestamps from v1.1.5 block time.
+  0..tip (while `height+1 <= 2×recentBlocksCount`), correct coin supply
+  `(height+1)×subsidy`, scientific difficulty, estimated hashrate from
+  `difficulty×2^32/target`, smart fees `0` when empty, genesis coinbase
+  timestamps from v1.1.5 block time. Deployed on seed1 via
+  `contrib/testnet/explorer/patch-explorer-display.sh`.
 - **benchmark-trend** (p9): green on `41dc252463` (28m); tracks
   `B3PoW.*|CheckBlock.*|ConnectBlock.*` — separate from main `ci.yml` matrix.
 - **Matrix sign-off** (p10): pending all `ci.yml` jobs `success` on a single

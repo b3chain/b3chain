@@ -31,7 +31,7 @@ text = path.read_text()
 new_inner = """\t\t\t// B3Chain-young-chain-all-blocks: show genesis..tip when tip < recentBlocksCount
 \t\t\tconst _b3Tip = getblockchaininfo.blocks;
 \t\t\tconst _b3Want = config.site.homepage.recentBlocksCount + 1;
-\t\t\tif (_b3Tip + 1 < _b3Want) {
+\t\t\tif (_b3Tip + 1 <= _b3Want * 2) {
 \t\t\t\tfor (let _h = 0; _h <= _b3Tip; _h++) {
 \t\t\t\t\tblockHeights.push(_h);
 \t\t\t\t}
@@ -79,7 +79,14 @@ if "B3Chain-young-chain-all-blocks" not in text:
     if not patched:
         raise SystemExit("baseRouter.js: blockHeights loop pattern not found")
 else:
-    print("baseRouter.js: young-chain block list already patched")
+    # Upgrade v1: tip+1 < want → v2: tip+1 <= want*2 (show genesis on testnet < ~22 blocks)
+    old_young_v1 = "\t\t\tif (_b3Tip + 1 < _b3Want) {"
+    new_young_v2 = "\t\t\tif (_b3Tip + 1 <= _b3Want * 2) {"
+    if old_young_v1 in text:
+        text = text.replace(old_young_v1, new_young_v2, 1)
+        print("baseRouter.js: young-chain block list threshold upgraded")
+    else:
+        print("baseRouter.js: young-chain block list already patched")
 
 # 2) After homepage awaitPromises: supply, hashrate fallback, smart fees on empty mempool.
 import re
