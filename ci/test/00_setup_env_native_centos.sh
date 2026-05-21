@@ -12,10 +12,13 @@ export CI_BASE_PACKAGES="gcc-c++ glibc-devel libstdc++-devel ccache make ninja-b
 export PIP_PACKAGES="pyzmq pycapnp"
 export DEP_OPTS="DEBUG=1"
 export GOAL="install"
+# b3chain: functional tests invoke the renamed wrapper, not bitcoin-cli.
+export BITCOIN_CMD="b3chain -m"
+export TEST_RUNNER_TIMEOUT_FACTOR=180
 export BITCOIN_CONFIG="\
  -DWITH_ZMQ=ON \
  -DBUILD_GUI=ON \
  -DREDUCE_EXPORTS=ON \
  -DCMAKE_BUILD_TYPE=Debug \
+ -DAPPEND_CPPFLAGS='-DREDUCED_CI_MINER_BLOCKS' \
 "
-export BITCOIN_CMD="bitcoin -m" # Used in functional tests

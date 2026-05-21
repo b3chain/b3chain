@@ -12,6 +12,14 @@
   `-max_total_time=60` on empty corpus).
 - CI: `TEST_RUNNER_TIMEOUT_FACTOR=180` on ARM32 and previous-releases jobs for
   `miner_tests` headroom.
+- CI (p8): sanitizer/CentOS/i686/no-wallet jobs — timeout 180× and
+  `-DREDUCED_CI_MINER_BLOCKS` (20-block import in `miner_tests`); CentOS/macOS
+  `BITCOIN_CMD=b3chain -m`; Windows cross-built functional timeout 80×; tidy
+  job cap 180m.
+- **benchmark-trend** (p9): green on `41dc252463` (28m); tracks
+  `B3PoW.*|CheckBlock.*|ConnectBlock.*` — separate from main `ci.yml` matrix.
+- **Matrix sign-off** (p10): pending all `ci.yml` jobs `success` on a single
+  HEAD after queue drains; see GitHub Actions checklist on latest push.
 
 ## Launch package — Miner stack audit follow-up (in progress)
 

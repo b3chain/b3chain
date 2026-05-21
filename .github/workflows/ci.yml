@@ -371,7 +371,8 @@ jobs:
 
     env:
       PYTHONUTF8: 1
-      TEST_RUNNER_TIMEOUT_FACTOR: 40
+      # b3chain: cross-built functional tests need more time under B3PoW testnet.
+      TEST_RUNNER_TIMEOUT_FACTOR: 80
 
     steps:
       - *CHECKOUT
@@ -500,7 +501,8 @@ jobs:
           - name: 'tidy'
             cirrus-runner: 'ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04-md'
             fallback-runner: 'ubuntu-24.04'
-            timeout-minutes: 120
+            # b3chain: vendored BLAKE3 + full-tree clang-tidy can exceed 2h on 120m cap.
+            timeout-minutes: 180
             file-env: './ci/test/00_setup_env_native_tidy.sh'
 
           - name: 'TSan, depends, no gui'

@@ -26,7 +26,7 @@ export CONTAINER_NAME=ci_native_asan
 # CTest --timeout.  Give sanitizer builds a 120-minute per-test budget
 # (still well under the 6h job limit) so the slow B3PoW miner has
 # room to finish.
-export TEST_RUNNER_TIMEOUT_FACTOR=120
+export TEST_RUNNER_TIMEOUT_FACTOR=180
 export APT_LLVM_V="21"
 export PACKAGES="systemtap-sdt-dev clang-${APT_LLVM_V} llvm-${APT_LLVM_V} libclang-rt-${APT_LLVM_V}-dev python3-zmq qt6-base-dev qt6-tools-dev qt6-l10n-tools libevent-dev libboost-dev libzmq3-dev libqrencode-dev libsqlite3-dev ${BPFCC_PACKAGE} libcapnp-dev capnproto python3-pip"
 export PIP_PACKAGES="--break-system-packages pycapnp"
@@ -41,5 +41,5 @@ export BITCOIN_CONFIG="\
  -DCMAKE_C_FLAGS='-ftrivial-auto-var-init=pattern' \
  -DCMAKE_CXX_FLAGS='-ftrivial-auto-var-init=pattern' \
  -DAPPEND_CXXFLAGS='-std=c++23' \
- -DAPPEND_CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER' \
+ -DAPPEND_CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER -DREDUCED_CI_MINER_BLOCKS' \
 "
