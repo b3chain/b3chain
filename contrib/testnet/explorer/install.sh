@@ -638,7 +638,14 @@ EOF
 
 systemctl daemon-reload
 systemctl enable b3chain-explorer.service
-systemctl restart b3chain-explorer.service
+
+# Young-chain homepage display (supply, difficulty, block list 0..tip).
+DISPLAY_PATCH="$(cd "$(dirname "$0")" && pwd)/patch-explorer-display.sh"
+if [ -x "$DISPLAY_PATCH" ]; then
+    EXP_DIR="$EXP_DIR" "$DISPLAY_PATCH"
+else
+    systemctl restart b3chain-explorer.service
+fi
 
 echo "==> waiting for explorer HTTP to respond on 127.0.0.1:$EXP_PORT"
 # Accept any HTTP status code (including 5xx). On a brand-new chain

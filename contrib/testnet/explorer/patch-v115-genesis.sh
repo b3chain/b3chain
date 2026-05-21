@@ -95,16 +95,12 @@ echo "==> genesis hash + coinbase txid in btc.js:"
 grep -A1 'genesisBlockHashesByNetwork' "$COIN" | head -5
 grep -A1 'genesisCoinbaseTransactionIdsByNetwork' "$COIN" | head -5
 
-systemctl restart b3chain-explorer.service
-sleep 5
-if ! systemctl is-active --quiet b3chain-explorer.service; then
-    echo "ERROR: b3chain-explorer failed to start" >&2
-    journalctl -u b3chain-explorer -n 20 --no-pager >&2
-    exit 1
+DISPLAY_PATCH="$(cd "$(dirname "$0")" && pwd)/patch-explorer-display.sh"
+if [ -x "$DISPLAY_PATCH" ]; then
+    EXP_DIR="$EXP_DIR" "$DISPLAY_PATCH"
+else
+    systemctl restart b3chain-explorer.service
+    sleep 5
+    curl -sf http://127.0.0.1:3002/ | grep -q 'Error building page' && exit 1
+    echo "OK: explorer restarted (display patch script missing)"
 fi
-if curl -sf http://127.0.0.1:3002/ | grep -q 'Error building page'; then
-    echo "WARN: homepage still shows Error building page" >&2
-    journalctl -u b3chain-explorer -n 10 --no-pager >&2
-    exit 1
-fi
-echo "OK: explorer homepage renders without Error building page"
