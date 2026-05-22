@@ -1,5 +1,13 @@
 # B3Chain Project History
 
+## Explorer-ng rebrand-footer marker safety (2026-05-22)
+
+- **Fix:** `rebrand-footer.sh` no longer injects `<!-- B3CHAIN_FOOTER_REBRAND -->`
+  inside the `<footer>` opening tag (that pattern broke `ng build` with NG5002).
+  Marker is inserted on its own line via `awk`; `validate_footer_template()`
+  fails the script if corruption remains. Social links hidden with `d-none`
+  instead of `hidden *ngIf="false"`. Regression test: `patches/test-rebrand-footer.sh`.
+
 ## Explorer-ng header logo → B3Chain (2026-05-22)
 
 - **Fix:** Nav still showed upstream `mempoolSpace` inline SVG (half-block +
