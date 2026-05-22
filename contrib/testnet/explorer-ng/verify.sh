@@ -55,11 +55,15 @@ else
 fi
 
 echo "==> 5. websocket upgrade"
-WS_STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+# Force HTTP/1.1 — the WebSocket Upgrade protocol does not work over
+# HTTP/2 (which nginx negotiates by default), so without --http1.1 the
+# request is treated as a plain GET and 404s.
+WS_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --http1.1 \
     -H 'Connection: Upgrade' \
     -H 'Upgrade: websocket' \
     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
     -H 'Sec-WebSocket-Version: 13' \
+    --max-time 5 \
     "$EXPLORER_HOST/v2/api/v1/ws" || true)
 case "$WS_STATUS" in
     101|400|426) ok "ws upgrade response: $WS_STATUS" ;;
