@@ -215,6 +215,27 @@ FLUSH PRIVILEGES;
 SQL
 fi
 
+# Publish our static pools.json under the same domain (cosmetic — for
+# anyone who curls it manually) and pre-seed the `pools` table directly
+# so the mining indexer has its lookup table without depending on a
+# remote URL. AUTOMATIC_POOLS_UPDATE stays false; we manage this seed
+# ourselves whenever real B3Chain pools come online.
+install -d -m 0755 -o root -g www-data "/var/www/b3chain-explorer-ng/pool-data"
+install -m 0644 -o root -g www-data \
+    "$THIS_DIR/config/b3chain-pools.json" \
+    "/var/www/b3chain-explorer-ng/pool-data/pools.json"
+
+if [ "$ENABLE_MINING" = 1 ]; then
+    echo "==> seeding pools table"
+    mysql -u root explorer_ng <<'SEEDSQL'
+-- Wipe + reseed B3Chain pools. Tiny set — extend as real pools appear.
+DELETE FROM pools;
+INSERT INTO pools (id, name, link, addresses, regexes, slug, unique_id) VALUES
+    (1, 'B3Chain Pool', 'https://explorer.b3chain.org', '[]', '["b3chain-pool", "/b3chain/"]', 'b3chain-pool', 1),
+    (2, 'Unknown',      '',                              '[]', '[]',                              'unknown',      0);
+SEEDSQL
+fi
+
 CFG="$EXPLORER_NG_CONF_DIR/explorer-ng-config.json"
 template="$THIS_DIR/config/b3chain-config.json.template"
 sed \

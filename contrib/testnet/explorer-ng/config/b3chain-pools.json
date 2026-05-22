@@ -1,0 +1,15 @@
+{
+    "_comment_format": "Mempool-style pool database. coinbase_tags map a substring of a coinbase scriptSig.coin (or coinbase output OP_RETURN) to a pool. payout_addresses map a coinbase output address to a pool. The mining indexer joins blocks to pools via these. For B3Chain testnet the only known miner is the solo b3chain-pool stratum on seed1; everything else is binned as 'Unknown'. Update as real pools come online.",
+    "coinbase_tags": {
+        "b3chain-pool": {
+            "name": "B3Chain Pool",
+            "link": "https://explorer.b3chain.org"
+        },
+        "/b3chain/": {
+            "name": "B3Chain Pool",
+            "link": "https://explorer.b3chain.org"
+        }
+    },
+    "payout_addresses": {
+    }
+}
