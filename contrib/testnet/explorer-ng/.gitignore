@@ -1,0 +1,3 @@
+# Per-session helper scripts (used during deployment debugging on this
+# machine; not part of the shipped scaffolding).
+.tmp-*.sh
