@@ -1,5 +1,42 @@
 # B3Chain Project History
 
+## Explorer-ng scaffolding (2026-05-22)
+
+- New tree `contrib/testnet/explorer-ng/` adds operator scaffolding for the
+  upcoming **B3Chain Live Explorer** (a clean-room AGPLv3 fork of
+  `mempool/mempool` with **all upstream branding stripped** — no "Mempool"
+  marks, no half-block logo, no "Goggles"/"Accelerator" feature names; see
+  `.cursor/plans/mempool_replication_seed1_6aa9c3e1.plan.md` "Trademark
+  posture" section).
+- `bootstrap-fork.sh` clones upstream at a pinned ref, runs the
+  `tools/strip-upstream-brand.sh` codemod (deletes upstream brand assets,
+  renames internal files, rewrites visible tokens), applies
+  `patches/apply-chain-params.sh` (B3C ticker, bech32 HRPs, genesis hash
+  placeholders), runs `tools/tm-audit.sh` (must pass), then squash-pushes a
+  single neutral "import upstream sources" commit to
+  `git@github.com:b3chain/explorer-ng.git@b3chain-main`.
+- `install.sh` deploys the fork on seed1: Node 20, MariaDB, system user
+  `b3chain-explorer-ng`, systemd unit, nginx site under `/v2/`, ZMQ pubs in
+  `/etc/b3chain/conf.d/zmq.conf` (with `--enable-zmq`). Phase advance via
+  flags: `--enable-stats` (P3), `--enable-mining` (P5), `--enable-audit`
+  (P7), `--cutover` (move `/` from btc-rpc-explorer to explorer-ng).
+- `verify.sh` smoke-tests post-install: tm-audit clean, service active,
+  RPC tip == backend tip, frontend index served, WS upgrade, no upstream
+  brand string in served HTML.
+- `tools/tm-audit.sh` is the deploy gate: refuses any tree where the word
+  `Mempool` (capitalized brand), `mempool.space`, "Mempool Goggles",
+  "Mempool Accelerator", or upstream logo asset filenames appear, with
+  carve-outs only for AGPL §5/§7 attribution and bitcoind RPC method
+  names (`getrawmempool`, etc.). Auto-skips when run inside this
+  bitcoin-core mono-repo (which legitimately mentions "mempool" in
+  protocol code/docs); strict mode kicks in only inside the explorer-ng
+  tree.
+- Files: `README.md`, `bootstrap-fork.sh`, `install.sh`, `verify.sh`,
+  `mariadb-schema.sh`, `tools/{tm-audit,strip-upstream-brand}.sh`,
+  `patches/apply-chain-params.sh`, `nginx/explorer-ng.conf`,
+  `systemd/b3chain-explorer-ng.service`, `config/{b3chain-config.json
+  .template,zmq-snippet.conf}`, `assets/b3chain-explorer-ng-logo.svg`.
+
 ## CI matrix unblock (2026-05-21)
 
 - Remove accidental `agent-runs.py` and vendored subtree `.github/workflows`

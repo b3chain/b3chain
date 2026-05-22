@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="B3Chain Live Explorer">
+  <title>B3Chain Live Explorer</title>
+  <defs>
+    <linearGradient id="b3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6feb"/>
+      <stop offset="1" stop-color="#7a3ce0"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" fill-rule="evenodd">
+    <rect x="6" y="14" width="36" height="36" rx="8" fill="url(#b3)"/>
+    <text x="24" y="40" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="22" font-weight="700" fill="#fff" text-anchor="middle">B3</text>
+    <text x="56" y="42" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+          font-size="22" font-weight="600" fill="#e6edf3">B3Chain Live Explorer</text>
+  </g>
+</svg>

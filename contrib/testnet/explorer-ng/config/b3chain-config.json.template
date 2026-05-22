@@ -1,0 +1,135 @@
+{
+  "B3CHAIN": {
+    "NETWORK": "testnet",
+    "BACKEND": "electrum",
+    "HTTP_PORT": 8999,
+    "API_URL_PREFIX": "/api/v1/",
+    "AUDIT": @@ENABLE_AUDIT@@,
+    "ADVANCED_GBT_AUDIT": @@ENABLE_AUDIT@@,
+    "ADVANCED_GBT_MEMPOOL": false,
+    "RUST_GBT": false,
+    "BLOCK_WEIGHT_UNITS": 4000000,
+    "INITIAL_BLOCKS_AMOUNT": 8,
+    "MEMPOOL_BLOCKS_AMOUNT": 8,
+    "BLOCKS_SUMMARIES_INDEXING": @@ENABLE_AUDIT@@,
+    "GOGGLES_INDEXING": false,
+    "USE_SECOND_NODE_FOR_MINFEE": false,
+    "EXTERNAL_ASSETS": [],
+    "EXTERNAL_MAX_RETRY": 1,
+    "EXTERNAL_RETRY_INTERVAL": 10,
+    "USER_AGENT": "B3Chain Live Explorer",
+    "STDOUT_LOG_MIN_PRIORITY": "info",
+    "AUTOMATIC_POOLS_UPDATE": false,
+    "POOLS_JSON_TREE_URL": "https://raw.githubusercontent.com/b3chain/mining-pool-db/main/pools.json",
+    "POOLS_JSON_URL": "https://raw.githubusercontent.com/b3chain/mining-pool-db/main/pools.json",
+    "POOLS_UPDATE_HOUR": 0,
+    "AUDIT_START_HEIGHT": 0,
+    "OFFICIAL": false,
+    "POOLS_PIE_INTERVAL_HOURS": 24,
+    "MAX_TRACKED_ADDRESSES": 100
+  },
+  "DATABASE": {
+    "ENABLED": true,
+    "HOST": "127.0.0.1",
+    "PORT": 3306,
+    "DATABASE": "explorer_ng",
+    "USERNAME": "@@DB_USER@@",
+    "PASSWORD": "@@DB_PASS@@",
+    "TIMEOUT": 180000,
+    "POOL_SIZE": 100
+  },
+  "SYSLOG": {
+    "ENABLED": true,
+    "HOST": "127.0.0.1",
+    "PORT": 514,
+    "MIN_PRIORITY": "info",
+    "FACILITY": "local7"
+  },
+  "STATISTICS": {
+    "ENABLED": @@ENABLE_STATS@@,
+    "TX_PER_SECOND_SAMPLE_PERIOD": 150
+  },
+  "CORE_RPC": {
+    "HOST": "127.0.0.1",
+    "PORT": 18534,
+    "USERNAME": "b3chain",
+    "PASSWORD": "@@RPC_PASS@@",
+    "TIMEOUT": 60000,
+    "DEBUG_LOG_PATH": ""
+  },
+  "ELECTRUM": {
+    "HOST": "127.0.0.1",
+    "PORT": 50001,
+    "TLS_ENABLED": false
+  },
+  "ESPLORA": {
+    "REST_API_URL": "http://127.0.0.1:3000",
+    "UNIX_SOCKET_PATH": "",
+    "RETRY_UNIX_SOCKET_AFTER": 30000,
+    "REQUEST_TIMEOUT": 10000,
+    "FALLBACK_TIMEOUT": 5000,
+    "FALLBACK": []
+  },
+  "SOCKS5PROXY": {
+    "ENABLED": false,
+    "USE_ONION": false,
+    "HOST": "127.0.0.1",
+    "PORT": 9050,
+    "USERNAME": "",
+    "PASSWORD": ""
+  },
+  "PRICE_DATA_SERVER": {
+    "TOR_URL": "",
+    "CLEARNET_URL": ""
+  },
+  "EXTERNAL_DATA_SERVER": {
+    "MEMPOOL_API": "",
+    "MEMPOOL_ONION": "",
+    "LIQUID_API": "",
+    "LIQUID_ONION": "",
+    "BISQ_URL": "",
+    "BISQ_ONION": ""
+  },
+  "MAXMIND": {
+    "ENABLED": false,
+    "GEOLITE2_CITY": "",
+    "GEOLITE2_ASN": "",
+    "GEOIP2_ISP": ""
+  },
+  "REPLICATION": {
+    "ENABLED": false,
+    "AUDIT": false,
+    "AUDIT_START_HEIGHT": 0,
+    "STATISTICS": false,
+    "STATISTICS_START_TIME": 0,
+    "SERVERS": []
+  },
+  "MEMPOOL_SERVICES": {
+    "API": "",
+    "ACCELERATIONS": false
+  },
+  "REDIS": {
+    "ENABLED": false,
+    "UNIX_SOCKET_PATH": "",
+    "BATCH_QUERY_BASE_SIZE": 5000
+  },
+  "LIGHTNING": {
+    "ENABLED": @@ENABLE_LIGHTNING@@,
+    "BACKEND": "lnd",
+    "TOPOLOGY_FOLDER": "",
+    "STATS_REFRESH_INTERVAL": 600,
+    "GRAPH_REFRESH_INTERVAL": 600,
+    "LOGGER_UPDATE_INTERVAL": 30,
+    "FORENSICS_INTERVAL": 43200,
+    "FORENSICS_RATE_LIMIT": 20
+  },
+  "LND": {
+    "TLS_CERT_PATH": "",
+    "MACAROON_PATH": "",
+    "REST_API_URL": "https://localhost:8080",
+    "TIMEOUT": 10000
+  },
+  "CLIGHTNING": {
+    "SOCKET": ""
+  }
+}

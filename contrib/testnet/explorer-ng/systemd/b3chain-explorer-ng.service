@@ -1,0 +1,35 @@
+[Unit]
+Description=B3Chain Live Explorer (explorer-ng) backend
+Documentation=https://explorer.b3chain.org/v2/about
+After=network-online.target mariadb.service b3chaind.service
+Wants=network-online.target mariadb.service
+
+[Service]
+Type=simple
+User=b3chain-explorer-ng
+Group=b3chain-explorer-ng
+WorkingDirectory=/opt/b3chain-explorer-ng/explorer-ng/backend
+ExecStart=/usr/bin/node --max-old-space-size=2048 dist/index.js
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/b3chain-explorer-ng /var/log/b3chain-explorer-ng /opt/b3chain-explorer-ng/explorer-ng/backend/cache
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
