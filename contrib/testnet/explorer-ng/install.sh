@@ -226,13 +226,21 @@ install -m 0644 -o root -g www-data \
     "/var/www/b3chain-explorer-ng/pool-data/pools.json"
 
 if [ "$ENABLE_MINING" = 1 ]; then
-    echo "==> seeding pools table"
+    echo "==> ensuring B3Chain Pool row in pools table (additive)"
+    # Upstream's database-migration ships ~170 mainstream BTC pool rows
+    # automatically, and `blocks.pool_id` has FK references to them, so
+    # we cannot wipe the table. Just ADD our B3Chain row if not present
+    # (using slug uniqueness via UPDATE-or-INSERT pattern).
     mysql -u root explorer_ng <<'SEEDSQL'
--- Wipe + reseed B3Chain pools. Tiny set — extend as real pools appear.
-DELETE FROM pools;
-INSERT INTO pools (id, name, link, addresses, regexes, slug, unique_id) VALUES
-    (1, 'B3Chain Pool', 'https://explorer.b3chain.org', '[]', '["b3chain-pool", "/b3chain/"]', 'b3chain-pool', 1),
-    (2, 'Unknown',      '',                              '[]', '[]',                              'unknown',      0);
+INSERT INTO pools (name, link, addresses, regexes, slug, unique_id)
+SELECT 'B3Chain Pool',
+       'https://explorer.b3chain.org',
+       '[]',
+       '["b3chain-pool", "/b3chain/"]',
+       'b3chain-pool',
+       (SELECT IFNULL(MAX(unique_id), 0) + 1 FROM (SELECT unique_id FROM pools) p)
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM pools WHERE slug='b3chain-pool');
 SEEDSQL
 fi
 
