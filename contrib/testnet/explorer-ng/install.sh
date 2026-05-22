@@ -244,7 +244,13 @@ echo "==> backend npm install + build"
 # (`rust/gbt/`). Even with B3CHAIN.RUST_GBT=false (we run JS GBT at
 # runtime), TypeScript still needs the `rust-gbt` module compiled so
 # `import { GbtGenerator } from 'rust-gbt'` resolves at type-check time.
-# We always run the preinstall hook; rustup is installed above.
+# Upstream pins rust-toolchain=1.84 but ships Cargo.lock v4 (which
+# stabilized in 1.85). Bump the pin so cargo can parse the lockfile.
+if [ -f "$EXPLORER_NG_SRC/rust/gbt/rust-toolchain" ]; then
+    echo "stable" > "$EXPLORER_NG_SRC/rust/gbt/rust-toolchain"
+    chown "$EXPLORER_NG_USER":"$EXPLORER_NG_USER" \
+        "$EXPLORER_NG_SRC/rust/gbt/rust-toolchain"
+fi
 NPM_BACKEND_FLAGS="--no-audit --no-fund --prefer-offline"
 sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
     export RUSTUP_HOME=/opt/rustup
