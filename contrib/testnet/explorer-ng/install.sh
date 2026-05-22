@@ -104,6 +104,26 @@ if [ "$need_node" = 1 ]; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
 fi
 
+# Rust toolchain (required for rust-gbt native preinstall hook). Install
+# system-wide via rustup if not already present. Idempotent.
+export RUSTUP_HOME=/opt/rustup
+export CARGO_HOME=/opt/cargo
+export PATH="/opt/cargo/bin:$PATH"
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "==> installing rustup (cargo + rustc) system-wide"
+    mkdir -p "$RUSTUP_HOME" "$CARGO_HOME"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --default-toolchain stable \
+            --profile minimal
+    chmod -R a+rX /opt/rustup /opt/cargo
+fi
+cat >/etc/profile.d/cargo.sh <<'CARGOEOF'
+export RUSTUP_HOME=/opt/rustup
+export CARGO_HOME=/opt/cargo
+export PATH="/opt/cargo/bin:$PATH"
+CARGOEOF
+chmod 0644 /etc/profile.d/cargo.sh
+
 # ---------------------------------------------------------------------------
 # 2) System user + dirs
 # ---------------------------------------------------------------------------
@@ -220,15 +240,16 @@ ln -snf "$CFG" "$EXPLORER_NG_SRC/backend/explorer-ng-config.json"
 # 8) Backend deps + build
 # ---------------------------------------------------------------------------
 echo "==> backend npm install + build"
-# --ignore-scripts skips backend's preinstall hook that builds the optional
-# native Rust GBT module. Our config sets B3CHAIN.RUST_GBT=false so the
-# backend uses the slower-but-portable JS GBT path. If you later want
-# RUST_GBT, install Rust >= 1.84 (rustup) and re-run with RUST_GBT_INSTALL=1.
+# Backend's preinstall hook compiles the native Rust GBT module
+# (`rust/gbt/`). Even with B3CHAIN.RUST_GBT=false (we run JS GBT at
+# runtime), TypeScript still needs the `rust-gbt` module compiled so
+# `import { GbtGenerator } from 'rust-gbt'` resolves at type-check time.
+# We always run the preinstall hook; rustup is installed above.
 NPM_BACKEND_FLAGS="--no-audit --no-fund --prefer-offline"
-if [ "${RUST_GBT_INSTALL:-0}" != "1" ]; then
-    NPM_BACKEND_FLAGS="$NPM_BACKEND_FLAGS --ignore-scripts"
-fi
 sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
+    export RUSTUP_HOME=/opt/rustup
+    export CARGO_HOME=/opt/cargo
+    export PATH=/opt/cargo/bin:\$PATH
     set -e
     cd '$EXPLORER_NG_SRC/backend'
     npm ci $NPM_BACKEND_FLAGS || npm install $NPM_BACKEND_FLAGS
