@@ -274,15 +274,37 @@ sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
 # ---------------------------------------------------------------------------
 if [ "$REBUILD_FRONTEND" = 1 ] || [ ! -f "$EXPLORER_NG_WEB/index.html" ]; then
     echo "==> frontend build (this can take ~10 minutes)"
+    # Upstream's frontend build runs three steps:
+    #   1. generate-themes.js (copies src/index.<brand>.html -> src/index.html
+    #      and injects theme manifest)
+    #   2. generate-config.js (writes src/resources/config.js + customize.js)
+    #   3. ng build (the actual Angular build)
+    # We must run all three (not just step 3). We skip --localize to keep
+    # build time/memory reasonable; only the default (en-US) bundle ships.
     sudo -u "$EXPLORER_NG_USER" -H bash -lc "
         set -e
         cd '$EXPLORER_NG_SRC/frontend'
         npm ci --no-audit --no-fund --prefer-offline || npm install --no-audit --no-fund
-        # Build with /v2/ base href so we can serve under nginx /v2/.
+        node generate-themes.js
+        node generate-config.js
         npx ng build --configuration production --base-href /v2/
     "
-    rsync -a --delete "$EXPLORER_NG_SRC/frontend/dist/explorer/" "$EXPLORER_NG_WEB/" \
-        || rsync -a --delete "$EXPLORER_NG_SRC/frontend/dist/" "$EXPLORER_NG_WEB/"
+    # Output dir name comes from angular.json (\"outputPath\":
+    # \"dist/mempool\" upstream). Try multiple candidates.
+    SRC_DIST=
+    for d in dist/mempool/browser dist/mempool dist/explorer/browser \
+             dist/explorer dist; do
+        if [ -d "$EXPLORER_NG_SRC/frontend/$d" ] && \
+           [ -f "$EXPLORER_NG_SRC/frontend/$d/index.html" ]; then
+            SRC_DIST="$EXPLORER_NG_SRC/frontend/$d"
+            break
+        fi
+    done
+    if [ -z "$SRC_DIST" ]; then
+        echo "ERROR: could not locate frontend dist with index.html" >&2
+        exit 5
+    fi
+    rsync -a --delete "$SRC_DIST/" "$EXPLORER_NG_WEB/"
     chown -R root:www-data "$EXPLORER_NG_WEB"
     find "$EXPLORER_NG_WEB" -type d -exec chmod 0755 {} +
     find "$EXPLORER_NG_WEB" -type f -exec chmod 0644 {} +
