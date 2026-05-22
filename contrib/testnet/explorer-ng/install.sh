@@ -104,12 +104,13 @@ if [ "$need_node" = 1 ]; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
 fi
 
-# Rust toolchain (required for rust-gbt native preinstall hook). Install
-# system-wide via rustup if not already present. Idempotent.
+# Rust toolchain (required for rust-gbt native preinstall hook). Always
+# install rustup system-wide so we have a recent stable cargo (>=1.85,
+# needed for Cargo.lock v4). Ubuntu's apt cargo is too old. Idempotent.
 export RUSTUP_HOME=/opt/rustup
 export CARGO_HOME=/opt/cargo
 export PATH="/opt/cargo/bin:$PATH"
-if ! command -v cargo >/dev/null 2>&1; then
+if [ ! -x /opt/cargo/bin/cargo ]; then
     echo "==> installing rustup (cargo + rustc) system-wide"
     mkdir -p "$RUSTUP_HOME" "$CARGO_HOME"
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
@@ -123,6 +124,7 @@ export CARGO_HOME=/opt/cargo
 export PATH="/opt/cargo/bin:$PATH"
 CARGOEOF
 chmod 0644 /etc/profile.d/cargo.sh
+echo "==> cargo: $(/opt/cargo/bin/cargo --version 2>&1 || true)"
 
 # ---------------------------------------------------------------------------
 # 2) System user + dirs
