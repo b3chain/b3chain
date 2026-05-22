@@ -220,10 +220,18 @@ ln -snf "$CFG" "$EXPLORER_NG_SRC/backend/explorer-ng-config.json"
 # 8) Backend deps + build
 # ---------------------------------------------------------------------------
 echo "==> backend npm install + build"
-sudo -u "$EXPLORER_NG_USER" -H bash -lc "
+# --ignore-scripts skips backend's preinstall hook that builds the optional
+# native Rust GBT module. Our config sets B3CHAIN.RUST_GBT=false so the
+# backend uses the slower-but-portable JS GBT path. If you later want
+# RUST_GBT, install Rust >= 1.84 (rustup) and re-run with RUST_GBT_INSTALL=1.
+NPM_BACKEND_FLAGS="--no-audit --no-fund --prefer-offline"
+if [ "${RUST_GBT_INSTALL:-0}" != "1" ]; then
+    NPM_BACKEND_FLAGS="$NPM_BACKEND_FLAGS --ignore-scripts"
+fi
+sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
     set -e
     cd '$EXPLORER_NG_SRC/backend'
-    npm ci --no-audit --no-fund --prefer-offline || npm install --no-audit --no-fund
+    npm ci $NPM_BACKEND_FLAGS || npm install $NPM_BACKEND_FLAGS
     npm run build
 "
 
