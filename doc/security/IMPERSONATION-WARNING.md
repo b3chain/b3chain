@@ -1,7 +1,7 @@
 # Impersonation warning — b3cblockchain (not us)
 
 **Status:** active as of 2026-05-22  
-**Canonical issue:** [b3chain/b3chain#TBD](https://github.com/b3chain/b3chain/issues) — pin when filed
+**Canonical issue:** [b3chain/b3chain#4](https://github.com/b3chain/b3chain/issues/4) (pinned)
 
 An unrelated GitHub account is impersonating B3Chain.
 
@@ -40,4 +40,4 @@ Typical pattern: fork an early-stage coin, strip identity links, promote elsewhe
 ## Report the impersonator
 
 - GitHub: [Report abuse](https://github.com/contact/report-abuse) — reference user `b3cblockchain`, repo `b3c-chain`.
-- Link moderators and users to the pinned GitHub issue on `b3chain/b3chain` when available.
+- Link moderators and users to the pinned GitHub issue: [b3chain/b3chain#4](https://github.com/b3chain/b3chain/issues/4).
