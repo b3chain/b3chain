@@ -89,14 +89,15 @@ if command -v rg >/dev/null 2>&1; then
                        -g '*.html' -g '*.scss' -g '*.css' \
                        -g 'manifest*.json' -g '*og-tags*' \
                        -g 'README.md' -g '*/README.md' \
-                       -g '*.svg'; }
+                       -g '*.svg' -g '*.xlf' -g '*.md'; }
 else
     LIST_VISIBLE() { find . -type f \
                   -not -path './.git/*' -not -path './node_modules/*' \
                   -not -path './dist/*' -not -path './cache/*' \
                   \( -name '*.html' -o -name '*.scss' -o -name '*.css' \
                      -o -name 'manifest*.json' -o -name '*og-tags*' \
-                     -o -name 'README.md' -o -name '*.svg' \); }
+                     -o -name 'README.md' -o -name '*.svg' \
+                     -o -name '*.xlf' -o -name '*.md' \); }
 fi
 
 is_text_file() { LC_ALL=C grep -Iq . "$1" 2>/dev/null; }
