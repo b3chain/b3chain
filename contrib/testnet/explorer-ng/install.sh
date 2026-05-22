@@ -238,6 +238,11 @@ else
 fi
 
 # Backend reads config from this conventional path inside its own tree.
+# Compiled backend resolves `require('../mempool-config.json')` (path is
+# baked into the upstream source). Rather than patching the TS, just
+# expose our config under that filename. This is a filesystem-internal
+# name and never reaches users.
+ln -snf "$CFG" "$EXPLORER_NG_SRC/backend/mempool-config.json"
 ln -snf "$CFG" "$EXPLORER_NG_SRC/backend/explorer-ng-config.json"
 
 # ---------------------------------------------------------------------------
