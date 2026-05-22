@@ -42,6 +42,13 @@ In-tree security posture documents:
 - [`doc/SECURITY-ROADMAP.md`](doc/SECURITY-ROADMAP.md) — what we plan to harden next.
 - [`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](doc/security/B3POW-51-ATTACK-ANALYSIS.md) — 51%-attack threat model.
 - [`doc/security/RESPONSE-RUNBOOK-51ATTACK.md`](doc/security/RESPONSE-RUNBOOK-51ATTACK.md) — incident response.
+- [`doc/security/IMPERSONATION-WARNING.md`](doc/security/IMPERSONATION-WARNING.md) — known impersonators (not security vulnerabilities; public advisory).
+
+## Impersonation / scam accounts
+
+Third-party accounts copying our name or source are **not** B3Chain.
+See [`doc/security/IMPERSONATION-WARNING.md`](doc/security/IMPERSONATION-WARNING.md).
+Do not download prebuilt wallets from unofficial GitHub accounts.
 
 ## Upstream security
 
