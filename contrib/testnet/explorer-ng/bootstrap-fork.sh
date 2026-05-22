@@ -99,6 +99,9 @@ bash "$THIS/tools/strip-upstream-brand.sh" "$(pwd)"
 echo "==> running B3Chain copy + link rebrand"
 bash "$THIS/patches/rebrand-b3chain-copy.sh" "$(pwd)"
 
+echo "==> replacing mempool header logo with B3Chain asset"
+bash "$THIS/patches/replace-header-logo.sh" "$(pwd)"
+
 # Drop in the B3Chain logo asset.
 mkdir -p frontend/src/resources
 cp "$THIS/assets/b3chain-explorer-ng-logo.svg" \

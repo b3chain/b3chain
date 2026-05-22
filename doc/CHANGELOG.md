@@ -1,5 +1,13 @@
 # B3Chain Project History
 
+## Explorer-ng header logo → B3Chain (2026-05-22)
+
+- **Fix:** Nav still showed upstream `mempoolSpace` inline SVG (half-block +
+  “mempool” wordmark) when `OFFICIAL=false`.
+- **Deploy:** `patches/replace-header-logo.sh` swaps `app-svg-images
+  name="mempoolSpace"` for `/resources/b3chain-explorer-ng-logo.svg` in
+  master-page, preview, tracker, and footer; requires frontend rebuild.
+
 ## Explorer-ng copy + link rebrand at `/v2/` (2026-05-22)
 
 - **Fix:** Served HTML still had upstream taglines (“Explore the full Bitcoin
@@ -9,6 +17,18 @@
   outbound links; `install.sh` runs strip + rebrand + chain-params on every
   install, rsyncs `src/resources/`, and falls back OG preview to
   `dashboard.png`; `verify.sh` fails on `Bitcoin ecosystem` in served HTML.
+
+## Explorer-ng end-to-end UI rebrand (2026-05-22)
+
+- **Footer/header:** `replace-header-logo.sh` (flexible regex for all
+  `mempoolSpace` SVGs), new `rebrand-footer.sh` (B3Chain tagline, FAQ copy,
+  hide mempool social links + mainnet network switchers, `b3chain.org` link).
+  **Fix:** `rebrand-footer.sh` uses `#` perl delimiters (not `|`) — `|` in
+  patterns had corrupted `global-footer.component.html` on seed1.
+- **Ticker:** `apply-chain-params.sh` already maps visible `BTC` → `B3C`
+  (including amount selector).
+- **verify.sh:** checks built `main.*.js` and patched `global-footer` source,
+  not only static `index.html`.
 
 ## Explorer-ng redirect /testnet4 → /v2/testnet (2026-05-22)
 

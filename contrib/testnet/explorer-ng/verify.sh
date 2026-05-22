@@ -9,7 +9,8 @@
 #   4. Frontend index.html renders at https://explorer.b3chain.org/v2/.
 #   5. /resources/config.js is served (application/javascript, not HTML 404).
 #   6. WebSocket upgrade succeeds at /api/v1/ws.
-#   6. No upstream brand string is HTML-served at /v2/.
+#   7. Built main.*.js has no user-visible upstream brand strings.
+#   8. global-footer source patched (logo + tagline + social).
 set -euo pipefail
 export LC_ALL=C
 
@@ -81,14 +82,45 @@ case "$WS_STATUS" in
     *) bad "ws upgrade unexpected status: $WS_STATUS" ;;
 esac
 
-echo "==> 7. served HTML free of upstream brand"
+echo "==> 7. served index shell free of upstream brand"
 if [ -f /tmp/v2-index.html ]; then
-    if grep -E '\bMempool\b|mempool\.space|Mempool Goggles|Mempool Accelerator|Bitcoin ecosystem|mempool - Bitcoin' \
+    if grep -E '\bMempool\b|mempool\.space|Mempool Goggles|Mempool Accelerator|Bitcoin ecosystem|mempool - Bitcoin|name="mempoolSpace"' \
             /tmp/v2-index.html >/dev/null; then
-        bad "served HTML contains upstream brand or stale copy"
+        bad "index.html contains upstream brand or stale copy"
     else
-        ok "no upstream brand string"
+        ok "index shell clean"
     fi
+fi
+
+echo "==> 8. built bundle free of user-visible upstream brand"
+MAIN_JS=$(curl -fsS "$EXPLORER_HOST/v2/" 2>/dev/null \
+    | grep -oE 'main\.[a-f0-9]+\.js' | head -1 || true)
+if [ -z "$MAIN_JS" ]; then
+    bad "could not find main.*.js hash in index.html"
+else
+    curl -fsS "$EXPLORER_HOST/v2/$MAIN_JS" -o /tmp/v2-main.js 2>/dev/null || true
+    if [ -s /tmp/v2-main.js ]; then
+        if grep -qE 'Be your own explorer|x\.com/mempool|name="mempoolSpace"|stats\.explorer' /tmp/v2-main.js; then
+            bad "main bundle still contains upstream brand strings"
+        else
+            ok "main bundle clean ($MAIN_JS)"
+        fi
+    else
+        bad "could not download /v2/$MAIN_JS"
+    fi
+fi
+
+echo "==> 9. footer source patched on server"
+FOOTER="$EXPLORER_NG_SRC/frontend/src/app/shared/components/global-footer/global-footer.component.html"
+if [ -f "$FOOTER" ] \
+   && grep -q 'B3CHAIN_FOOTER_REBRAND' "$FOOTER" \
+   && grep -q 'Explore the B3Chain testnet' "$FOOTER" \
+   && grep -q 'b3chain-explorer-ng-logo.svg' "$FOOTER" \
+   && ! grep -q 'name="mempoolSpace"' "$FOOTER" \
+   && ! grep -q '<footer <!--' "$FOOTER"; then
+    ok "footer HTML patched"
+else
+    bad "footer HTML missing B3Chain rebrand markers"
 fi
 
 echo
