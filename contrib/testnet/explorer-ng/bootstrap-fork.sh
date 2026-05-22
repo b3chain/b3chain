@@ -115,11 +115,11 @@ B3Chain block explorer for https://explorer.b3chain.org/.
 ## Source attribution
 
 This source tree was forked at $UPSTREAM_SHA from the AGPLv3 source at
-https://github.com/mempool/mempool. The B3Chain Live Explorer is **not
-endorsed by, affiliated with, or trademarked by The Mempool Open Source
-Project**. The trademark "Mempool", the half-block logo, "Mempool Goggles™"
-and "Mempool Accelerator®" are trademarks of The Mempool Open Source
-Project and are **not** used in this fork.
+https://github.com/mempool/mempool. This is an independent B3Chain project,
+not endorsed by or affiliated with the upstream project. The upstream
+project's trademark notices, where applicable, are reproduced unchanged in
+[LICENSE](LICENSE) and are **not** used in this fork's branding, logo, page
+titles, or trade dress.
 
 ## License
 

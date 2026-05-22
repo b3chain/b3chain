@@ -22,21 +22,52 @@ fi
 
 echo "==> stripping upstream brand assets and naming"
 
-# 1. Delete upstream brand assets and pages we replace wholesale.
+# 1. Delete upstream brand pages, integrator HTMLs, brand-only feature dirs,
+#    and the entire upstream cypress test suite (it targets mempool.space's
+#    specific RBF history fixtures and is irrelevant to B3Chain).
 rm -rf \
     frontend/src/app/components/about \
     frontend/src/app/components/trademark-policy \
     frontend/src/app/components/terms-of-service \
     frontend/src/app/components/privacy-policy \
     frontend/src/app/components/acceleration \
+    frontend/src/app/components/accelerate-* \
     frontend/src/app/components/accelerator-* \
-    frontend/src/resources/mempool-logo* \
-    frontend/src/resources/mempool-icon* \
-    frontend/src/resources/og-image* \
-    frontend/src/assets/img/og-image* \
-    frontend/src/assets/img/mempool-logo* \
-    backend/src/api/services/accelerator* \
+    frontend/src/app/components/acceleration-* \
+    frontend/src/app/services/accelerat* \
+    backend/src/api/services/accelerat* \
+    backend/src/api/services/mempool-acceleration* \
+    frontend/cypress \
+    frontend/src/index.mempool.*.html \
     docker/.github 2>/dev/null || true
+
+# 2. Brand asset filenames (any path, broad glob).
+find . -type f \( \
+        -iname '*mempool*logo*' \
+     -o -iname '*mempool*icon*' \
+     -o -iname 'mempool-space-*' \
+     -o -iname '*mempool*-blocks-*' \
+     -o -iname 'mempool-preview*' \
+     -o -iname 'mempool-tube*' \
+     -o -iname 'mempool-research*' \
+     -o -iname 'mempool-holdings*' \
+     -o -iname 'mempool-transaction*' \
+     -o -iname 'mempool-promo*' \
+     -o -iname '*-accelerator-*' \
+     -o -iname 'og-image*' \
+     -o -iname 'half-block*' \
+     \) \
+     -not -path './.git/*' \
+     -not -path './node_modules/*' \
+     -delete 2>/dev/null || true
+
+# 3. Drop frontend integrator config templates (mempool.space-specific).
+rm -f \
+    frontend/mempool-frontend-config.sample.json \
+    docker/backend/mempool-config.json \
+    nginx-mempool.conf \
+    frontend/src/resources/bimi.svg \
+    2>/dev/null || true
 
 # 2. Rename internal files where the rename is mechanical and free.
 move_safe() {
@@ -52,6 +83,8 @@ move_safe backend/src/repositories/MempoolBlocksRepository.ts backend/src/reposi
 move_safe production/nginx-mempool-frontend.conf production/nginx-explorer-ng-frontend.conf
 move_safe production/nginx-mempool-backend.conf production/nginx-explorer-ng-backend.conf
 move_safe mempool-config.sample.json explorer-ng-config.sample.json
+move_safe backend/mempool-config.sample.json backend/explorer-ng-config.sample.json
+move_safe backend/mempool-config.sample-dev.json backend/explorer-ng-config.sample-dev.json
 
 # 3. Source-level token rewrites. Targets text files only (rg --files).
 echo "==> rewriting tokens in source"
@@ -59,18 +92,25 @@ echo "==> rewriting tokens in source"
 if command -v rg >/dev/null 2>&1; then
     LIST() { rg --files --hidden --no-ignore-vcs \
                 -g '!.git' -g '!node_modules' -g '!dist' -g '!cache' -g '!*.svg' \
-                -g '!*.png' -g '!*.jpg' -g '!*.gif' -g '!*.webp' \
+                -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.gif' -g '!*.webp' \
                 -g '!*.woff' -g '!*.woff2' -g '!*.ttf' -g '!*.eot' -g '!*.ico' \
-                -g '!*.map'; }
+                -g '!*.map' -g '!*.lock' -g '!package-lock.json'; }
 else
     LIST() { find . -type f \
                   -not -path './.git/*' -not -path './node_modules/*' \
                   -not -path './dist/*' -not -path './cache/*' \
                   -not -name '*.svg' -not -name '*.png' -not -name '*.jpg' \
+                  -not -name '*.jpeg' \
                   -not -name '*.gif' -not -name '*.webp' -not -name '*.woff' \
                   -not -name '*.woff2' -not -name '*.ttf' -not -name '*.eot' \
-                  -not -name '*.ico' -not -name '*.map'; }
+                  -not -name '*.ico' -not -name '*.map' \
+                  -not -name '*.lock' -not -name 'package-lock.json'; }
 fi
+
+# Helper: skip binary / non-UTF8 files which choke perl -CSD.
+is_text_file() {
+    LC_ALL=C grep -Iq . "$1" 2>/dev/null
+}
 
 # We allow the AGPL attribution line and the bitcoind RPC method names to stay.
 # Everything else: rewrite.
@@ -79,8 +119,10 @@ LIST | while IFS= read -r f; do
     case "$f" in
         */LICENSE|*/LICENSE.md|*/COPYING) continue ;;
     esac
-    # Use perl for multi-pattern atomic in-place edit (works on POSIX + GNU).
-    perl -CSD -i -pe '
+    is_text_file "$f" || continue
+    # Use perl WITHOUT -CSD (we let perl treat input as bytes; rewrites are
+    # ASCII-safe). Multi-pattern atomic in-place edit.
+    perl -i -pe '
         # 1) The Mempool Open Source Project -> B3Chain Live Explorer Project
         s/\bThe Mempool Open Source Project\b/B3Chain Live Explorer Project/g;
         s/\bMempool Open Source Project\b/B3Chain Live Explorer Project/g;
@@ -90,14 +132,18 @@ LIST | while IFS= read -r f; do
         # 3) Page titles and product strings
         s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
         s/Mempool Open Source Project/B3Chain Live Explorer/g;
-        # 4) Domain references (allowlist preserves AGPL attribution line elsewhere)
+        # 4) Domain references (canonical upstream brand domain). Catch both
+        #    bare "mempool.space" string literals and full URLs. Allowlist
+        #    preserves the AGPL attribution line elsewhere.
         s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
+            unless m{AGPLv3 source at https://github\.com/mempool/mempool};
+        s|\bmempool\.space\b|explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
         # 5) Brand word in UI labels (keep RPC names)
         s/\bMempool by vBytes\b/Tx Pool by vBytes/g;
         s/\bMempool Block\b/Pending Block/g;
         s/\bMempool size\b/Tx pool size/g;
-        s/\bMempool Goggles®?\b/Tx Filters/g;
+        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
         s/Visualize the Mempool/Visualize the Pending Pool/g;
         # 6) Brand word standalone (capitalized) outside RPC names
         s/\bMempool\b/B3Chain Live Explorer/g
@@ -111,7 +157,8 @@ LIST | while IFS= read -r f; do
     case "$f" in
         */LICENSE|*/LICENSE.md|*/COPYING) continue ;;
     esac
-    perl -CSD -i -pe '
+    is_text_file "$f" || continue
+    perl -i -pe '
         # ENV vars at start of line or after whitespace
         s/(^|[\s\W])MEMPOOL_(?=[A-Z_]+)/$1B3CHAIN_/g;
         # Config namespace key "MEMPOOL" before "."
