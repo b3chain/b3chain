@@ -36,15 +36,17 @@ fi
 
 echo "==> stripping upstream brand assets, marketing copy, integrator templates"
 
-# 1. Delete upstream marketing / brand pages (we replace with our own).
+# 1. Delete upstream-only artifacts. We KEEP the about/terms/privacy/
+#    trademark Angular modules in place (they are referenced by
+#    master-page.module.ts route tables and removing them breaks the
+#    Angular build) — the visible-text codemod below will rewrite their
+#    HTML content. We only remove integrator-specific HTML index
+#    variants (index.mempool.*.html) and cypress e2e tests.
 rm -rf \
-    frontend/src/app/components/about \
-    frontend/src/app/components/trademark-policy \
-    frontend/src/app/components/terms-of-service \
-    frontend/src/app/components/privacy-policy \
     frontend/cypress \
-    frontend/src/index.mempool.*.html \
     docker/.github 2>/dev/null || true
+find frontend/src -maxdepth 1 -type f -name 'index.mempool.*.html' \
+    -delete 2>/dev/null || true
 
 # 2. Brand asset files: delete by *name pattern* (any path).
 find . -type f \( \
