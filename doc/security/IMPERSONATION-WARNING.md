@@ -1,7 +1,8 @@
 # Impersonation warning — b3cblockchain (not us)
 
 **Status:** active as of 2026-05-22  
-**Canonical issue:** [b3chain/b3chain#4](https://github.com/b3chain/b3chain/issues/4) (pinned)
+**Canonical issue:** [b3chain/b3chain#4](https://github.com/b3chain/b3chain/issues/4) (pinned)  
+**Official Bitcointalk ANN:** [topic 5583665](https://bitcointalk.org/index.php?topic=5583665.0)
 
 An unrelated GitHub account is impersonating B3Chain.
 

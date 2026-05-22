@@ -1,5 +1,8 @@
 # Bitcointalk ANN-thread template
 
+**Live thread (official):** https://bitcointalk.org/index.php?topic=5583665.0  
+**Forum account:** [b3chain](https://bitcointalk.org/index.php?action=profile;u=3757578) · posted 2026-05-22 · self-moderated
+
 This file is the ready-to-paste body for the **Bitcointalk announcements**
 thread (`https://bitcointalk.org/index.php?board=159.0`). It is written
 in BBCode, the markup the Bitcointalk forum software uses.
@@ -237,12 +240,11 @@ Please post technical questions [b]in this thread[/b], not via PM. We do not off
 
 Once the thread is live:
 
-- [ ] Edit OP within an hour to add the live thread URL into
-  `doc/outreach/BITCOINTALK-ANN.md` (close the loop in the repo).
+- [x] Live thread URL recorded (2026-05-22): https://bitcointalk.org/index.php?topic=5583665.0
 - [ ] Reply with first comment containing: a) pinned impersonation
   advisory [issue #4](https://github.com/b3chain/b3chain/issues/4),
   b) testnet quick-start ([testnet.html](https://b3chain.org/testnet.html)),
-  c) "post here, not via PM" note.
+  c) "post here, not via PM" note — paste from [`BITCOINTALK-ANN-FIRST-REPLY.bbcode`](BITCOINTALK-ANN-FIRST-REPLY.bbcode)
 - [ ] Subscribe via the forum's notification system so the first
   hostile reply (there will be one) is seen and triaged within an hour.
 - [ ] After the thread settles, mirror the OP into the project Discord
