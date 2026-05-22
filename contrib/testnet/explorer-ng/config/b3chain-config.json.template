@@ -1,9 +1,11 @@
 {
-  "B3CHAIN": {
+  "_comment": "Internal namespace 'MEMPOOL' is the upstream config key; left as-is to avoid patching every backend file. This is filesystem-only; users see 'B3Chain Live Explorer'.",
+  "MEMPOOL": {
     "NETWORK": "testnet",
-    "BACKEND": "electrum",
+    "BACKEND": "none",
     "HTTP_PORT": 8999,
     "API_URL_PREFIX": "/api/v1/",
+    "POLL_RATE_MS": 2000,
     "AUDIT": @@ENABLE_AUDIT@@,
     "ADVANCED_GBT_AUDIT": @@ENABLE_AUDIT@@,
     "ADVANCED_GBT_MEMPOOL": false,
