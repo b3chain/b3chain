@@ -380,6 +380,10 @@ if [ "$CUTOVER" = 1 ]; then
             /etc/nginx/sites-available/explorer.conf
     fi
     cp "$NGINX_SITE" "$NGINX_SITE.pre-cutover.bak"
+    # First strip the pre-cutover `location / { proxy_pass :3002 }` block
+    # (delimited by @cutover-pre-begin/@cutover-pre-end sentinels) so we
+    # don't end up with two `location /` blocks after the /v2/ -> / rename.
+    sed -i '/@cutover-pre-begin/,/@cutover-pre-end/d' "$NGINX_SITE"
     sed -i \
         -e 's|location /v2/ {|location / {|g' \
         -e 's|location /v2/api/ {|location /api/ {|g' \
