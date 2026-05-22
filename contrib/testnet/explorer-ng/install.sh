@@ -134,7 +134,15 @@ if [ "$ENABLE_ZMQ" = 1 ]; then
     if ! grep -q '^includeconf=conf\.d/zmq\.conf' /etc/b3chain/b3chain.conf 2>/dev/null; then
         echo "includeconf=conf.d/zmq.conf" >> /etc/b3chain/b3chain.conf
     fi
-    systemctl restart b3chaind@test || systemctl restart b3chaind || true
+    # Restart whichever b3chaind systemd unit is present on this host. seed1
+    # uses b3chaind-testnet.service; other hosts may use b3chaind@test or
+    # plain b3chaind. Ignore the "no such unit" error from the unused names.
+    for unit in b3chaind-testnet b3chaind@test b3chaind; do
+        if systemctl list-unit-files | grep -q "^${unit}\.service"; then
+            systemctl restart "${unit}.service" || true
+            break
+        fi
+    done
 fi
 
 # ---------------------------------------------------------------------------

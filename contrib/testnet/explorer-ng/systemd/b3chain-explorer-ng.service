@@ -1,8 +1,8 @@
 [Unit]
 Description=B3Chain Live Explorer (explorer-ng) backend
 Documentation=https://explorer.b3chain.org/v2/about
-After=network-online.target mariadb.service b3chaind.service
-Wants=network-online.target mariadb.service
+After=network-online.target mariadb.service b3chaind-testnet.service
+Wants=network-online.target mariadb.service b3chaind-testnet.service
 
 [Service]
 Type=simple
