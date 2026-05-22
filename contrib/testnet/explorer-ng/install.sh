@@ -365,15 +365,31 @@ install -m 0644 "$THIS_DIR/nginx/explorer-ng.conf" "$NGINX_SITE"
 ln -snf "$NGINX_SITE" "$NGINX_LINK"
 
 if [ "$CUTOVER" = 1 ]; then
-    echo "==> cutover requested: editing existing /etc/nginx/sites-available/explorer.conf"
+    echo "==> cutover requested:"
+    echo "    - rewriting /etc/nginx/sites-available/explorer.conf (old btc-rpc-explorer)"
+    echo "      to demote its root location to /legacy/"
+    echo "    - rewriting /etc/nginx/sites-available/explorer-ng.conf (new explorer-ng)"
+    echo "      to move /v2/ -> / and /v2/api/ -> /api/"
+    echo "    Backups are written to *.pre-cutover.bak"
     if [ -f /etc/nginx/sites-available/explorer.conf ]; then
-        # Move root location to explorer-ng /var/www; demote btc-rpc-explorer to /legacy/.
-        # We just write a marker; the operator should review the resulting diff.
         cp /etc/nginx/sites-available/explorer.conf \
            /etc/nginx/sites-available/explorer.conf.pre-cutover.bak
-        sed -i 's|location / {|location /legacy/ {|' \
-            /etc/nginx/sites-available/explorer.conf || true
+        sed -i \
+            -e 's|location / {|location /legacy/ {|g' \
+            -e 's|server_name explorer.b3chain.org;|server_name explorer.b3chain.org;\n    # Demoted to /legacy/ at cutover time. Original config preserved at .pre-cutover.bak|' \
+            /etc/nginx/sites-available/explorer.conf
     fi
+    cp "$NGINX_SITE" "$NGINX_SITE.pre-cutover.bak"
+    sed -i \
+        -e 's|location /v2/ {|location / {|g' \
+        -e 's|location /v2/api/ {|location /api/ {|g' \
+        -e 's|location = /v2/api/v1/ws|location = /api/v1/ws|g' \
+        -e 's|rewrite ^/v2/api/(.\*)$ /api/\\\$1 break;|# rewrite removed at cutover|g' \
+        -e 's|/v2/index.html|/index.html|g' \
+        "$NGINX_SITE"
+    nginx -t
+    systemctl reload nginx
+    echo "==> cutover complete. /  serves explorer-ng. /legacy/ serves old explorer."
 fi
 
 nginx -t
