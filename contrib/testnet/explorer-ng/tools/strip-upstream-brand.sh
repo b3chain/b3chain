@@ -125,6 +125,13 @@ LIST_VISIBLE | while IFS= read -r f; do
         s/\bMempool size\b/Pending pool size/g;
         s/Visualize the Mempool/Visualize the Pending Pool/g;
         s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
+        # Upstream HTML metadata: title (lowercase), twitter handle,
+        # preview image filename. These are brand references even when
+        # lowercase, so handle them specifically.
+        s|<title>mempool - Bitcoin Explorer</title>|<title>B3Chain Live Explorer</title>|g;
+        s/"@mempool"/"@b3chain"/g;
+        s/mempool-space-preview\.jpg/b3chain-explorer-preview.jpg/g;
+        s/og:image[^"]*"[^"]*mempool-space[^"]*"/og:image" content="https:\/\/explorer.b3chain.org\/resources\/previews\/b3chain-explorer-preview.jpg"/g;
         # Domain references (canonical upstream brand domain)
         s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
