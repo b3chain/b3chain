@@ -20,7 +20,8 @@
 # Acceptance after default install (P0+P1+P2+P4):
 #   - https://explorer.b3chain.org/v2/ shows latest B3Chain testnet block.
 #   - tools/tm-audit.sh PASS in /opt/b3chain-explorer-ng/explorer-ng.
-#   - websocket /v2/api/v1/ws upgrades cleanly (curl -i upgrade).
+#   - websocket /api/v1/ws upgrades cleanly (curl --http1.1 -i upgrade).
+#   - /resources/config.js served (production ng build omits src/resources).
 set -euo pipefail
 export LC_ALL=C
 
@@ -54,7 +55,7 @@ while [ $# -gt 0 ]; do
         --enable-lightning) ENABLE_LIGHTNING=1; shift ;;
         --rebuild-frontend) REBUILD_FRONTEND=1; shift ;;
         --skip-fetch) SKIP_FETCH=1; shift ;;
-        --cutover) CUTOVER=1; shift ;;
+        --cutover) CUTOVER=1; REBUILD_FRONTEND=1; shift ;;
         --uninstall) UNINSTALL=1; shift ;;
         -h|--help)
             grep -E '^#( |$)' "$0" | sed 's/^# \?//'; exit 0 ;;
@@ -184,13 +185,24 @@ elif [ "$SKIP_FETCH" = 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6) Trademark audit (must pass before we deploy anything)
+# 6) Rebrand codemods (idempotent on every install)
+# ---------------------------------------------------------------------------
+echo "==> applying B3Chain rebrand codemods"
+if [ -x "$THIS_DIR/tools/strip-upstream-brand.sh" ]; then
+    bash "$THIS_DIR/tools/strip-upstream-brand.sh" "$EXPLORER_NG_SRC"
+fi
+bash "$THIS_DIR/patches/rebrand-b3chain-copy.sh" "$EXPLORER_NG_SRC"
+bash "$THIS_DIR/patches/apply-chain-params.sh" "$EXPLORER_NG_SRC"
+bash "$THIS_DIR/patches/disable-matomo.sh" "$EXPLORER_NG_SRC"
+
+# ---------------------------------------------------------------------------
+# 7) Trademark audit (must pass before we deploy anything)
 # ---------------------------------------------------------------------------
 echo "==> running trademark audit on cloned tree"
 bash "$THIS_DIR/tools/tm-audit.sh" "$EXPLORER_NG_SRC"
 
 # ---------------------------------------------------------------------------
-# 7) Render backend config from template
+# 8) Render backend config from template
 # ---------------------------------------------------------------------------
 RPC_PASS=""
 if [ -f /etc/b3chain/b3chain.conf ]; then
@@ -234,7 +246,7 @@ if [ "$ENABLE_MINING" = 1 ]; then
     mysql -u root explorer_ng <<'SEEDSQL'
 INSERT INTO pools (name, link, addresses, regexes, slug, unique_id)
 SELECT 'B3Chain Pool',
-       'https://explorer.b3chain.org',
+       'https://explorer.b3chain.org/v2/',
        '[]',
        '["b3chain-pool", "/b3chain/"]',
        'b3chain-pool',
@@ -308,8 +320,13 @@ sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
 # ---------------------------------------------------------------------------
 # 9) Frontend build (only if requested or first install)
 # ---------------------------------------------------------------------------
+FRONTEND_BASE_HREF="/v2/"
+if [ "$CUTOVER" = 1 ]; then
+    FRONTEND_BASE_HREF="/"
+fi
+
 if [ "$REBUILD_FRONTEND" = 1 ] || [ ! -f "$EXPLORER_NG_WEB/index.html" ]; then
-    echo "==> frontend build (this can take ~10 minutes)"
+    echo "==> frontend build (this can take ~10 minutes; base-href=${FRONTEND_BASE_HREF})"
     # Upstream's frontend build runs three steps:
     #   1. generate-themes.js (copies src/index.<brand>.html -> src/index.html
     #      and injects theme manifest)
@@ -317,13 +334,15 @@ if [ "$REBUILD_FRONTEND" = 1 ] || [ ! -f "$EXPLORER_NG_WEB/index.html" ]; then
     #   3. ng build (the actual Angular build)
     # We must run all three (not just step 3). We skip --localize to keep
     # build time/memory reasonable; only the default (en-US) bundle ships.
+    install -m 0644 "$THIS_DIR/config/b3chain-frontend-config.json" \
+        "$EXPLORER_NG_SRC/frontend/mempool-frontend-config.json"
     sudo -u "$EXPLORER_NG_USER" -H bash -lc "
         set -e
         cd '$EXPLORER_NG_SRC/frontend'
         npm ci --no-audit --no-fund --prefer-offline || npm install --no-audit --no-fund
         node generate-themes.js
         node generate-config.js
-        npx ng build --configuration production --base-href /v2/
+        npx ng build --configuration production --base-href '${FRONTEND_BASE_HREF}'
     "
     # Output dir name comes from angular.json (\"outputPath\":
     # \"dist/mempool\" upstream). Try multiple candidates.
@@ -344,6 +363,33 @@ if [ "$REBUILD_FRONTEND" = 1 ] || [ ! -f "$EXPLORER_NG_WEB/index.html" ]; then
     chown -R root:www-data "$EXPLORER_NG_WEB"
     find "$EXPLORER_NG_WEB" -type d -exec chmod 0755 {} +
     find "$EXPLORER_NG_WEB" -type f -exec chmod 0644 {} +
+fi
+
+# Production ng build drops src/resources from assets; index.html still
+# loads /resources/config.js and /resources/customize.js at domain root.
+if [ -d "$EXPLORER_NG_SRC/frontend/src/resources" ]; then
+    echo "==> syncing frontend src/resources -> $EXPLORER_NG_WEB/resources/"
+    install -d -m 0755 -o root -g www-data "$EXPLORER_NG_WEB/resources"
+    rsync -a "$EXPLORER_NG_SRC/frontend/src/resources/" \
+        "$EXPLORER_NG_WEB/resources/"
+    chown -R root:www-data "$EXPLORER_NG_WEB/resources"
+    find "$EXPLORER_NG_WEB/resources" -type d -exec chmod 0755 {} +
+    find "$EXPLORER_NG_WEB/resources" -type f -exec chmod 0644 {} +
+    # strip-upstream-brand rewrites og:image to this filename; upstream never
+    # shipped it under our name — fall back to dashboard.png.
+    if [ ! -f "$EXPLORER_NG_WEB/resources/previews/b3chain-explorer-preview.jpg" ] \
+       && [ -f "$EXPLORER_NG_WEB/resources/previews/dashboard.png" ]; then
+        cp "$EXPLORER_NG_WEB/resources/previews/dashboard.png" \
+           "$EXPLORER_NG_WEB/resources/previews/b3chain-explorer-preview.jpg"
+    fi
+fi
+# Upstream fork omitted mining-pool placeholder SVGs; ship our own.
+if [ -d "$THIS_DIR/assets/mining-pools" ]; then
+    echo "==> installing mining-pools placeholder SVGs"
+    install -d -m 0755 -o root -g www-data "$EXPLORER_NG_WEB/resources/mining-pools"
+    install -m 0644 -o root -g www-data \
+        "$THIS_DIR/assets/mining-pools/"*.svg \
+        "$EXPLORER_NG_WEB/resources/mining-pools/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -386,10 +432,8 @@ if [ "$CUTOVER" = 1 ]; then
     sed -i '/@cutover-pre-begin/,/@cutover-pre-end/d' "$NGINX_SITE"
     sed -i \
         -e 's|location /v2/ {|location / {|g' \
-        -e 's|location /v2/api/ {|location /api/ {|g' \
-        -e 's|location = /v2/api/v1/ws|location = /api/v1/ws|g' \
-        -e 's|rewrite ^/v2/api/(.\*)$ /api/\\\$1 break;|# rewrite removed at cutover|g' \
         -e 's|/v2/index.html|/index.html|g' \
+        -e 's|/v2/testnet|/testnet|g' \
         "$NGINX_SITE"
     nginx -t
     systemctl reload nginx

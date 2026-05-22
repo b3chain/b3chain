@@ -125,10 +125,14 @@ LIST_VISIBLE | while IFS= read -r f; do
         s/\bMempool size\b/Pending pool size/g;
         s/Visualize the Mempool/Visualize the Pending Pool/g;
         s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
+        s/Explore the full Bitcoin ecosystem/Explore the B3Chain network/g;
+        s/explore the full Bitcoin ecosystem/explore the B3Chain network/g;
+        s/B3Chain Live Explorer Project(?:\xC2?\xAE|&reg;|\xAE)?/B3Chain Live Explorer/g;
         # Upstream HTML metadata: title (lowercase), twitter handle,
         # preview image filename. These are brand references even when
         # lowercase, so handle them specifically.
         s|<title>mempool - Bitcoin Explorer</title>|<title>B3Chain Live Explorer</title>|g;
+        s/content="@mempool"/content="@b3chain"/g;
         s/"@mempool"/"@b3chain"/g;
         s/mempool-space-preview\.jpg/b3chain-explorer-preview.jpg/g;
         s/og:image[^"]*"[^"]*mempool-space[^"]*"/og:image" content="https:\/\/explorer.b3chain.org\/resources\/previews\/b3chain-explorer-preview.jpg"/g;

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Mining pool">
+  <rect width="32" height="32" rx="6" fill="#2d3348"/>
+  <path fill="#9aa0a6" d="M8 22V10h3v12H8zm6 0V14h3v8h-3zm6 0V12h3v10h-3z"/>
+</svg>

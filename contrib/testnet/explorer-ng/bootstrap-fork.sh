@@ -96,6 +96,9 @@ git init -b "$TARGET_BRANCH"
 echo "==> running strip-upstream-brand codemod"
 bash "$THIS/tools/strip-upstream-brand.sh" "$(pwd)"
 
+echo "==> running B3Chain copy + link rebrand"
+bash "$THIS/patches/rebrand-b3chain-copy.sh" "$(pwd)"
+
 # Drop in the B3Chain logo asset.
 mkdir -p frontend/src/resources
 cp "$THIS/assets/b3chain-explorer-ng-logo.svg" \

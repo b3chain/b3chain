@@ -3,11 +3,11 @@
     "coinbase_tags": {
         "b3chain-pool": {
             "name": "B3Chain Pool",
-            "link": "https://explorer.b3chain.org"
+            "link": "https://explorer.b3chain.org/v2/"
         },
         "/b3chain/": {
             "name": "B3Chain Pool",
-            "link": "https://explorer.b3chain.org"
+            "link": "https://explorer.b3chain.org/v2/"
         }
     },
     "payout_addresses": {

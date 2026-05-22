@@ -29,17 +29,74 @@ skip() { echo "    skip: $1 ($2)"; }
 edit() { echo "    edit: $1"; }
 
 # --- 1. Frontend ticker / coin label override ------------------------------
-# Upstream has a `currency` config in frontend; we set default ticker to B3C.
+# Upstream renders amounts as "<prefix>BTC" (with prefix='t' for testnet,
+# 's' for signet, etc). For B3Chain we want a single neutral ticker
+# "B3C" on every network (no testnet/signet prefix). Two surfaces:
+#
+#   a. amount.component.html: `<ng-container ...prefix></ng-container>BTC`
+#      → drop the prefix template ref, hard-code "B3C". Same for "sats"
+#      mode where we don't want "tsats" — replace prefix with empty.
+#
+#   b. common.utils.ts: `${prefix}BTC` in the formatter helper
+#      → strip prefix and rename ticker.
+#
+#   c. Misc graph/tooltip strings (block-fees-graph, address-graph, etc.)
+#      that hardcode "BTC" as the unit.
+#
+# We deliberately DO NOT rename the `prefix` variable itself (keep the
+# `${prefix}sats` path harmless — empty prefix = clean "sats" label).
+
+echo "    (1) ticker rebrand: BTC -> B3C across rendering surfaces"
+
+if [ -f frontend/src/app/components/amount/amount.component.html ]; then
+    perl -i -pe '
+        s|(<ng-container \*ngTemplateOutlet="prefix"></ng-container>)BTC|B3C|g;
+        s|(<ng-container \*ngTemplateOutlet="prefix"></ng-container>)sats|sats|g;
+    ' -- frontend/src/app/components/amount/amount.component.html
+    edit frontend/src/app/components/amount/amount.component.html
+fi
+
+if [ -f frontend/src/app/shared/common.utils.ts ]; then
+    perl -i -pe '
+        s/\$\{prefix\}BTC/B3C/g;
+        s/\bprefix\s*\+\s*[\x27"]BTC[\x27"]/"B3C"/g;
+    ' -- frontend/src/app/shared/common.utils.ts
+    edit frontend/src/app/shared/common.utils.ts
+fi
+
+# Misc charts / graphs / tooltips with hardcoded "BTC" unit.
+for f in frontend/src/app/components/block-fees-graph/block-fees-graph.component.ts \
+         frontend/src/app/components/block-rewards-graph/block-rewards-graph.component.ts \
+         frontend/src/app/components/block-prediction-graph/block-prediction-graph.component.ts \
+         frontend/src/app/components/address-graph/address-graph.component.ts \
+         frontend/src/app/components/amount-selector/amount-selector.component.html \
+         frontend/src/app/dashboard/dashboard.component.html \
+         frontend/src/app/components/transactions-list/transactions-list.component.html ; do
+    [ -f "$f" ] || continue
+    # Match standalone "BTC" tokens in user-visible string contexts:
+    #   - inside backticks/strings ending in " BTC" (with leading space, the unit form)
+    #   - inside Angular templates as ">BTC<" or "BTC</span>"
+    #   - i18n tags labelled shared.btc|BTC stay as B3C
+    perl -i -pe '
+        s/ BTC\b/ B3C/g;
+        s/>BTC</>B3C</g;
+        s/i18n="shared\.btc\|BTC"/i18n="shared.btc|B3C"/g;
+    ' -- "$f"
+    edit "$f"
+done
+
+# `formatBTC` is just a function name; its return value is what shows.
+# The helper is fine; only the surrounding " BTC" strings matter.
+
+# DEFAULT_CURRENCY constant override (rare upstream pattern but cheap).
 for f in frontend/src/app/shared/services/state.service.ts \
-         frontend/src/app/services/state.service.ts \
-         frontend/src/app/components/amount/amount.component.ts ; do
-    if [ -f "$f" ]; then
-        perl -i -pe '
-            s/(const|let)\s+DEFAULT_CURRENCY\s*=\s*[\x27"]BTC[\x27"]/$1 DEFAULT_CURRENCY = "B3C"/g;
-            s/[\x27"]btc[\x27"]\s*:\s*\{[^}]*name:\s*[\x27"]Bitcoin[\x27"]/"b3c": { name: "B3Chain"/g;
-        ' -- "$f"
-        edit "$f"
-    fi
+         frontend/src/app/services/state.service.ts ; do
+    [ -f "$f" ] || continue
+    perl -i -pe '
+        s/(const|let)\s+DEFAULT_CURRENCY\s*=\s*[\x27"]BTC[\x27"]/$1 DEFAULT_CURRENCY = "B3C"/g;
+        s/[\x27"]btc[\x27"]\s*:\s*\{[^}]*name:\s*[\x27"]Bitcoin[\x27"]/"b3c": { name: "B3Chain"/g;
+    ' -- "$f"
+    edit "$f"
 done
 
 # --- 2. Frontend network constant: bech32 HRP + sample addresses -----------

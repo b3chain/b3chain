@@ -1,5 +1,48 @@
 # B3Chain Project History
 
+## Explorer-ng copy + link rebrand at `/v2/` (2026-05-22)
+
+- **Fix:** Served HTML still had upstream taglines (“Explore the full Bitcoin
+  ecosystem”), `@mempool` Twitter meta, wrong canonical URL, and a missing
+  `b3chain-explorer-preview.jpg` OG image.
+- **Deploy:** `patches/rebrand-b3chain-copy.sh` rewrites user-visible copy and
+  outbound links; `install.sh` runs strip + rebrand + chain-params on every
+  install, rsyncs `src/resources/`, and falls back OG preview to
+  `dashboard.png`; `verify.sh` fails on `Bitcoin ecosystem` in served HTML.
+
+## Explorer-ng redirect /testnet4 → /v2/testnet (2026-05-22)
+
+- **Fix:** `https://explorer.b3chain.org/testnet4` returned btc-rpc-explorer
+  404 (`Not Found: /testnet4`). Nginx now 301-redirects mempool-style network
+  paths (`/testnet4`, `/testnet`, `/mempool`, `/signet`, `/regtest`) to
+  `/v2/testnet` until `--cutover` moves explorer-ng to `/`.
+
+## Explorer-ng Matomo + mining-pool icons (2026-05-22)
+
+- **Fix:** Console `stats.explorer.b3chain.org/m.js ERR_NAME_NOT_RESOLVED` —
+  `enterprise.service.ts` still called `insertMatomo()` for
+  `explorer.b3chain.org` but no analytics host exists. `patches/disable-matomo.sh`
+  no-ops `insertMatomo()`; requires frontend rebuild to take effect in bundles.
+- **Fix:** `/resources/mining-pools/{unknown,default}.svg` 404 — fork omitted
+  upstream `src/resources/mining-pools/`; install now copies placeholder SVGs
+  from `contrib/testnet/explorer-ng/assets/mining-pools/` (includes
+  `b3chain-pool.svg`).
+
+## Explorer-ng `/resources` + `/api` root paths (2026-05-22)
+
+- **Fix:** B3Chain Live Explorer at `/v2/` failed in the browser because
+  `index.html` loads `/resources/config.js` and the Angular app calls
+  root-absolute `/api/v1/*` and `wss://…/api/v1/ws`, but production
+  `ng build` omits `src/resources/` and nginx only proxied `/v2/api/`.
+- **Deploy:** nginx now serves `/resources/` from
+  `/var/www/b3chain-explorer-ng/resources/` and proxies `/api/` to the
+  backend on `:8999`; `install.sh` installs
+  `config/b3chain-frontend-config.json`, runs `generate-config.js`, and
+  rsyncs `src/resources/` after every frontend build.
+- **Verify:** `curl` returns 200 for `/resources/config.js` and
+  `/api/v1/statistics/2h`; use `https://explorer.b3chain.org/v2/` (not
+  `/mempool`, which is not a route on this host).
+
 ## B3Chain Live Explorer live at `/v2/` (2026-05-22)
 
 - `b3chain/explorer-ng` repo created — clean-room AGPLv3 fork of upstream
