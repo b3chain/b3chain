@@ -133,6 +133,8 @@ if ! id "$EXPLORER_NG_USER" >/dev/null 2>&1; then
     useradd -r -m -d "$EXPLORER_NG_HOME" -s /usr/sbin/nologin "$EXPLORER_NG_USER"
 fi
 install -d -m 0755 -o "$EXPLORER_NG_USER" -g "$EXPLORER_NG_USER" "$EXPLORER_NG_HOME"
+install -d -m 0755 -o "$EXPLORER_NG_USER" -g "$EXPLORER_NG_USER" \
+    "/var/log/b3chain-explorer-ng"
 install -d -m 0755 -o root -g root "$EXPLORER_NG_CONF_DIR"
 install -d -m 0755 -o root -g www-data "$EXPLORER_NG_WEB"
 install -d -m 2775 -o "$EXPLORER_NG_USER" -g "$EXPLORER_NG_USER" \
