@@ -1,5 +1,30 @@
 # B3Chain Project History
 
+## B3Chain Live Explorer live at `/v2/` (2026-05-22)
+
+- `b3chain/explorer-ng` repo created — clean-room AGPLv3 fork of upstream
+  `mempool/mempool` rebranded as "B3Chain Live Explorer", squash-imported
+  to `b3chain-main` after passing `tools/tm-audit.sh` (no `Mempool`
+  brand-name, no `mempool.space`, no upstream logo assets in
+  user-visible surfaces). Internal code identifiers (`MempoolBlock`
+  class, `MEMPOOL` config namespace) are deliberately preserved to keep
+  the upstream codebase compilable.
+- Deployed on seed1 via `contrib/testnet/explorer-ng/install.sh` with
+  feature flags **`--enable-stats --enable-audit --enable-mining`** and
+  `b3chaind-testnet` running with **`txindex=1`**. Frontend served at
+  `https://explorer.b3chain.org/v2/`; WebSocket upgrade live at
+  `/v2/api/v1/ws`; old `btc-rpc-explorer` still on `/`.
+- `verify.sh` (6 checks) PASSES: tm-audit clean, service active, RPC
+  tip == backend tip, frontend index served, ws upgrade returns 101
+  over `--http1.1`, no upstream brand string in served HTML.
+- Mining indexer running: 31 blocks indexed; lastEstimatedHashrate
+  ~273 H/s; B3Chain Pool row seeded for future blocks tagged with our
+  pool string. RBF/CPFP endpoints HTTP 200 (empty list — awaits
+  testnet faucet).
+- `install.sh --cutover` (move `/v2/ → /` and demote old explorer to
+  `/legacy/`) is implemented but **deferred to operator decision** —
+  not run automatically.
+
 ## Explorer-ng scaffolding (2026-05-22)
 
 - New tree `contrib/testnet/explorer-ng/` adds operator scaffolding for the
