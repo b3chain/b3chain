@@ -254,9 +254,14 @@ if [ -f "$EXPLORER_NG_SRC/rust/gbt/rust-toolchain" ]; then
         "$EXPLORER_NG_SRC/rust/gbt/rust-toolchain"
 fi
 NPM_BACKEND_FLAGS="--no-audit --no-fund --prefer-offline"
+# /opt/cargo holds the system-wide rustup-installed cargo binary
+# (read-only for non-root). The service user needs its own CARGO_HOME
+# under its $HOME for the registry cache + per-build target dir.
+install -d -m 0755 -o "$EXPLORER_NG_USER" -g "$EXPLORER_NG_USER" \
+    "$EXPLORER_NG_HOME/.cargo"
 sudo -u "$EXPLORER_NG_USER" -H -E bash -lc "
     export RUSTUP_HOME=/opt/rustup
-    export CARGO_HOME=/opt/cargo
+    export CARGO_HOME=$EXPLORER_NG_HOME/.cargo
     export PATH=/opt/cargo/bin:\$PATH
     set -e
     cd '$EXPLORER_NG_SRC/backend'
