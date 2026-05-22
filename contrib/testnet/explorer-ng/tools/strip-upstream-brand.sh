@@ -69,13 +69,16 @@ find . -type f \( \
      -not -path './node_modules/*' \
      -delete 2>/dev/null || true
 
-# 3. Other brand-only files at root or top level.
+# 3. Other brand-only files at root or top level. Also drop the
+#    upstream `contributors/` CLA tree (paper trail of contributors agreeing
+#    to The Mempool Open Source Project's CLA — not applicable to our fork).
 rm -f \
     frontend/mempool-frontend-config.sample.json \
     docker/backend/mempool-config.json \
     nginx-mempool.conf \
     frontend/src/resources/bimi.svg \
     2>/dev/null || true
+rm -rf contributors 2>/dev/null || true
 
 # 4. Source-level token rewrites (USER-VISIBLE channels only:
 #    HTML, SCSS, CSS, manifest JSON, top-level README files,
@@ -131,11 +134,12 @@ LIST_VISIBLE | while IFS= read -r f; do
     ' -- "$f" || true
 done
 
-# 5. Code-surface pass: replace `mempool.space` URL references (the canonical
-#    upstream brand domain) in ALL text files. This narrow rule does NOT
-#    rename class names or config namespace; it just stops production code
-#    from pointing at upstream's servers.
-echo "==> rewriting mempool.space references in all text files"
+# 5. Code-surface pass: rewrite the small set of TIER 1 brand strings in
+#    ALL text files (TS/JS string literals, .ts/.json data files, etc.).
+#    These rewrites do NOT include the catchall `\bMempool\b` rule (which
+#    would corrupt TypeScript class names like `class Mempool` or `MempoolBlock`).
+#    Only multi-word brand phrases and the canonical domain are touched.
+echo "==> rewriting TIER 1 brand strings + mempool.space in all text files"
 if command -v rg >/dev/null 2>&1; then
     LIST_ALL() { rg --files --hidden --no-ignore-vcs \
                     -g '!.git' -g '!node_modules' -g '!dist' -g '!cache' \
@@ -161,6 +165,13 @@ LIST_ALL | while IFS= read -r f; do
     esac
     is_text_file "$f" || continue
     perl -i -pe '
+        # TIER 1 multi-word brand strings (safe to replace anywhere)
+        s/\bThe Mempool Open Source Project\b/B3Chain Live Explorer Project/g;
+        s/\bMempool Open Source Project\b/B3Chain Live Explorer Project/g;
+        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
+        s/\bMempool Accelerator\xC2?\xAE?\b/Transaction Accelerator (disabled)/g;
+        s/\bMempool Enterprise\xC2?\xAE?\b/B3Chain Enterprise (n\/a)/g;
+        # mempool.space domain (canonical upstream brand domain)
         s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
         s|\bmempool\.space\b|explorer.b3chain.org|g
