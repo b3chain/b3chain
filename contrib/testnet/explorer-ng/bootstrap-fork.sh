@@ -161,7 +161,10 @@ fi
 git remote add origin "$TARGET_SSH"
 PUSH_ARGS=("origin" "$TARGET_BRANCH":"$TARGET_BRANCH")
 if [ "$FORCE" = 1 ]; then
-    PUSH_ARGS=("--force-with-lease" "${PUSH_ARGS[@]}")
+    # Use --force (not --force-with-lease) because this is a fresh
+    # workdir with no local-tracking ref to compare against. We own the
+    # branch and the import is squashed by design.
+    PUSH_ARGS=("--force" "${PUSH_ARGS[@]}")
 fi
 
 echo "==> pushing to $TARGET_SSH ($TARGET_BRANCH)"

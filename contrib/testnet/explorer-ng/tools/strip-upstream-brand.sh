@@ -122,31 +122,33 @@ LIST | while IFS= read -r f; do
     is_text_file "$f" || continue
     # Use perl WITHOUT -CSD (we let perl treat input as bytes; rewrites are
     # ASCII-safe). Multi-pattern atomic in-place edit.
+    #
+    # The catchall `\bMempool\b` rule must produce a SINGLE-WORD identifier
+    # because `Mempool` appears in TypeScript class names like
+    # `class Mempool { ... }` and replacing with a multi-word phrase
+    # ("B3Chain Live Explorer") would corrupt the source. We use `TxPool`,
+    # which is a valid TS identifier and an acceptable user-visible label.
+    # The full brand name "B3Chain Live Explorer" is set elsewhere, in
+    # specific page titles / og-tags via apply-chain-params.sh.
     perl -i -pe '
-        # 1) The Mempool Open Source Project -> B3Chain Live Explorer Project
+        # 1) Trademark feature / entity strings (multi-word; safe everywhere)
         s/\bThe Mempool Open Source Project\b/B3Chain Live Explorer Project/g;
         s/\bMempool Open Source Project\b/B3Chain Live Explorer Project/g;
-        # 2) "Mempool" branded features -> generic
-        s/\bMempool Goggles\b/Tx Filters/g;
+        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
         s/\bMempool Accelerator\b/Transaction Accelerator (disabled)/g;
-        # 3) Page titles and product strings
+        # 2) Specific UI labels first (more specific than the catchall)
+        s/\bMempool by vBytes\b/TxPool by vBytes/g;
+        s/\bMempool Block\b/Pending Block/g;
+        s/\bMempool size\b/TxPool size/g;
+        s/Visualize the Mempool/Visualize the Pending Pool/g;
         s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
-        s/Mempool Open Source Project/B3Chain Live Explorer/g;
-        # 4) Domain references (canonical upstream brand domain). Catch both
-        #    bare "mempool.space" string literals and full URLs. Allowlist
-        #    preserves the AGPL attribution line elsewhere.
+        # 3) Domain references (canonical upstream brand domain).
         s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
         s|\bmempool\.space\b|explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
-        # 5) Brand word in UI labels (keep RPC names)
-        s/\bMempool by vBytes\b/Tx Pool by vBytes/g;
-        s/\bMempool Block\b/Pending Block/g;
-        s/\bMempool size\b/Tx pool size/g;
-        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
-        s/Visualize the Mempool/Visualize the Pending Pool/g;
-        # 6) Brand word standalone (capitalized) outside RPC names
-        s/\bMempool\b/B3Chain Live Explorer/g
+        # 4) Standalone brand word -> single-word identifier "TxPool".
+        s/\bMempool\b/TxPool/g
             unless m{getrawmempool|testmempoolaccept|getmempoolentry|getmempoolinfo|getmempoolancestors|getmempooldescendants|savemempool|importmempool|AGPLv3 source at https://github\.com/mempool/mempool};
     ' -- "$f" || true
 done
