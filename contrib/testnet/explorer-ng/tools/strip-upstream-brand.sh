@@ -6,9 +6,23 @@
 #   - bootstrap-fork.sh (one-shot during fork creation)
 #   - operator on every upstream rebase
 #
-# Idempotent: running twice is a no-op.
+# Idempotent. After this script, `tools/tm-audit.sh` should pass.
 #
-# After this script, `tools/tm-audit.sh` should pass on the same tree.
+# Strategy (aligned with the plan's "Trademark posture"):
+#
+#   AGGRESSIVE on the public surface (assets, HTML user-visible text,
+#   marketing copy, og-image, integrator templates, page titles).
+#
+#   CONSERVATIVE in the code surface — keep TypeScript class names
+#   (MempoolBlock, MempoolBlocksRepository, etc.), config namespace
+#   (`MEMPOOL` / `MEMPOOL_X` env vars), and internal source filenames.
+#   The plan explicitly permits these as AGPL-inherited internal
+#   identifiers; rebranding them would require a costly fork that we
+#   couldn't keep in sync with upstream.
+#
+#   The trademark line we don't cross: capital "Mempool" / brand assets /
+#   "Mempool Goggles" / "Mempool Accelerator" / "The Mempool Open Source
+#   Project" / mempool.space domain in user-visible channels.
 set -euo pipefail
 export LC_ALL=C
 
@@ -20,48 +34,42 @@ if [ ! -f frontend/package.json ] && [ ! -f backend/package.json ]; then
     exit 2
 fi
 
-echo "==> stripping upstream brand assets and naming"
+echo "==> stripping upstream brand assets, marketing copy, integrator templates"
 
-# 1. Delete upstream brand pages, integrator HTMLs, brand-only feature dirs,
-#    and the entire upstream cypress test suite (it targets mempool.space's
-#    specific RBF history fixtures and is irrelevant to B3Chain).
+# 1. Delete upstream marketing / brand pages (we replace with our own).
 rm -rf \
     frontend/src/app/components/about \
     frontend/src/app/components/trademark-policy \
     frontend/src/app/components/terms-of-service \
     frontend/src/app/components/privacy-policy \
-    frontend/src/app/components/acceleration \
-    frontend/src/app/components/accelerate-* \
-    frontend/src/app/components/accelerator-* \
-    frontend/src/app/components/acceleration-* \
-    frontend/src/app/services/accelerat* \
-    backend/src/api/services/accelerat* \
-    backend/src/api/services/mempool-acceleration* \
     frontend/cypress \
     frontend/src/index.mempool.*.html \
     docker/.github 2>/dev/null || true
 
-# 2. Brand asset filenames (any path, broad glob).
+# 2. Brand asset files: delete by *name pattern* (any path).
 find . -type f \( \
-        -iname '*mempool*logo*' \
-     -o -iname '*mempool*icon*' \
+        -iname '*mempool*-logo*' \
+     -o -iname '*mempool*-icon*' \
      -o -iname 'mempool-space-*' \
-     -o -iname '*mempool*-blocks-*' \
+     -o -iname 'mempool-blocks-2-*' \
+     -o -iname 'mempool-blocks-3-*' \
      -o -iname 'mempool-preview*' \
      -o -iname 'mempool-tube*' \
      -o -iname 'mempool-research*' \
      -o -iname 'mempool-holdings*' \
      -o -iname 'mempool-transaction*' \
      -o -iname 'mempool-promo*' \
-     -o -iname '*-accelerator-*' \
+     -o -iname 'mempool-accelerator*' \
+     -o -iname '*-accelerator-sparkle*' \
      -o -iname 'og-image*' \
      -o -iname 'half-block*' \
+     -o -iname 'index.mempool.*.html' \
      \) \
      -not -path './.git/*' \
      -not -path './node_modules/*' \
      -delete 2>/dev/null || true
 
-# 3. Drop frontend integrator config templates (mempool.space-specific).
+# 3. Other brand-only files at root or top level.
 rm -f \
     frontend/mempool-frontend-config.sample.json \
     docker/backend/mempool-config.json \
@@ -69,116 +77,93 @@ rm -f \
     frontend/src/resources/bimi.svg \
     2>/dev/null || true
 
-# 2. Rename internal files where the rename is mechanical and free.
-move_safe() {
-    local from=$1 to=$2
-    if [ -e "$from" ] && [ ! -e "$to" ]; then
-        mkdir -p "$(dirname "$to")"
-        git mv -f "$from" "$to" 2>/dev/null || mv "$from" "$to"
-    fi
-}
-move_safe backend/src/api/mempool-blocks.ts backend/src/api/pending-blocks.ts
-move_safe backend/src/api/mempool.ts backend/src/api/tx-pool.ts
-move_safe backend/src/repositories/MempoolBlocksRepository.ts backend/src/repositories/PendingBlocksRepository.ts
-move_safe production/nginx-mempool-frontend.conf production/nginx-explorer-ng-frontend.conf
-move_safe production/nginx-mempool-backend.conf production/nginx-explorer-ng-backend.conf
-move_safe mempool-config.sample.json explorer-ng-config.sample.json
-move_safe backend/mempool-config.sample.json backend/explorer-ng-config.sample.json
-move_safe backend/mempool-config.sample-dev.json backend/explorer-ng-config.sample-dev.json
-
-# 3. Source-level token rewrites. Targets text files only (rg --files).
-echo "==> rewriting tokens in source"
+# 4. Source-level token rewrites (USER-VISIBLE channels only:
+#    HTML, SCSS, CSS, manifest JSON, top-level README files,
+#    SVG title-tag content). We do NOT touch TS/JS class names,
+#    config namespace, or internal identifiers.
+echo "==> rewriting user-visible brand tokens (HTML/SCSS/CSS/manifest/README/SVG)"
 
 if command -v rg >/dev/null 2>&1; then
-    LIST() { rg --files --hidden --no-ignore-vcs \
-                -g '!.git' -g '!node_modules' -g '!dist' -g '!cache' -g '!*.svg' \
-                -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.gif' -g '!*.webp' \
-                -g '!*.woff' -g '!*.woff2' -g '!*.ttf' -g '!*.eot' -g '!*.ico' \
-                -g '!*.map' -g '!*.lock' -g '!package-lock.json'; }
+    LIST_VISIBLE() { rg --files --hidden --no-ignore-vcs \
+                       -g '!.git' -g '!node_modules' -g '!dist' -g '!cache' \
+                       -g '*.html' -g '*.scss' -g '*.css' \
+                       -g 'manifest*.json' -g '*og-tags*' \
+                       -g 'README.md' -g '*/README.md' \
+                       -g '*.svg'; }
 else
-    LIST() { find . -type f \
+    LIST_VISIBLE() { find . -type f \
                   -not -path './.git/*' -not -path './node_modules/*' \
                   -not -path './dist/*' -not -path './cache/*' \
-                  -not -name '*.svg' -not -name '*.png' -not -name '*.jpg' \
-                  -not -name '*.jpeg' \
+                  \( -name '*.html' -o -name '*.scss' -o -name '*.css' \
+                     -o -name 'manifest*.json' -o -name '*og-tags*' \
+                     -o -name 'README.md' -o -name '*.svg' \); }
+fi
+
+is_text_file() { LC_ALL=C grep -Iq . "$1" 2>/dev/null; }
+
+LIST_VISIBLE | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    case "$f" in
+        */LICENSE|*/LICENSE.md|*/COPYING) continue ;;
+    esac
+    is_text_file "$f" || continue
+    perl -i -pe '
+        # Trademark feature / entity strings (multi-word, brand-only)
+        s/\bThe Mempool Open Source Project\b/B3Chain Live Explorer Project/g;
+        s/\bMempool Open Source Project\b/B3Chain Live Explorer Project/g;
+        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
+        s/\bMempool Accelerator\b/Transaction Accelerator (disabled)/g;
+        # Specific upstream UI labels
+        s/\bMempool by vBytes\b/Pending Pool by vBytes/g;
+        s/\bMempool Block\b/Pending Block/g;
+        s/\bMempool size\b/Pending pool size/g;
+        s/Visualize the Mempool/Visualize the Pending Pool/g;
+        s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
+        # Domain references (canonical upstream brand domain)
+        s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
+            unless m{AGPLv3 source at https://github\.com/mempool/mempool};
+        s|\bmempool\.space\b|explorer.b3chain.org|g
+            unless m{AGPLv3 source at https://github\.com/mempool/mempool};
+        # Standalone brand word in user-visible text
+        s/\bMempool\b/B3Chain Live Explorer/g
+            unless m{AGPLv3 source at https://github\.com/mempool/mempool};
+    ' -- "$f" || true
+done
+
+# 5. Code-surface pass: replace `mempool.space` URL references (the canonical
+#    upstream brand domain) in ALL text files. This narrow rule does NOT
+#    rename class names or config namespace; it just stops production code
+#    from pointing at upstream's servers.
+echo "==> rewriting mempool.space references in all text files"
+if command -v rg >/dev/null 2>&1; then
+    LIST_ALL() { rg --files --hidden --no-ignore-vcs \
+                    -g '!.git' -g '!node_modules' -g '!dist' -g '!cache' \
+                    -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.gif' \
+                    -g '!*.webp' -g '!*.woff' -g '!*.woff2' -g '!*.ttf' \
+                    -g '!*.eot' -g '!*.ico' -g '!*.map' \
+                    -g '!*.lock' -g '!package-lock.json'; }
+else
+    LIST_ALL() { find . -type f \
+                  -not -path './.git/*' -not -path './node_modules/*' \
+                  -not -path './dist/*' -not -path './cache/*' \
+                  -not -name '*.png' -not -name '*.jpg' -not -name '*.jpeg' \
                   -not -name '*.gif' -not -name '*.webp' -not -name '*.woff' \
                   -not -name '*.woff2' -not -name '*.ttf' -not -name '*.eot' \
                   -not -name '*.ico' -not -name '*.map' \
                   -not -name '*.lock' -not -name 'package-lock.json'; }
 fi
 
-# Helper: skip binary / non-UTF8 files which choke perl -CSD.
-is_text_file() {
-    LC_ALL=C grep -Iq . "$1" 2>/dev/null
-}
-
-# We allow the AGPL attribution line and the bitcoind RPC method names to stay.
-# Everything else: rewrite.
-LIST | while IFS= read -r f; do
+LIST_ALL | while IFS= read -r f; do
     [ -f "$f" ] || continue
     case "$f" in
         */LICENSE|*/LICENSE.md|*/COPYING) continue ;;
     esac
     is_text_file "$f" || continue
-    # Use perl WITHOUT -CSD (we let perl treat input as bytes; rewrites are
-    # ASCII-safe). Multi-pattern atomic in-place edit.
-    #
-    # The catchall `\bMempool\b` rule must produce a SINGLE-WORD identifier
-    # because `Mempool` appears in TypeScript class names like
-    # `class Mempool { ... }` and replacing with a multi-word phrase
-    # ("B3Chain Live Explorer") would corrupt the source. We use `TxPool`,
-    # which is a valid TS identifier and an acceptable user-visible label.
-    # The full brand name "B3Chain Live Explorer" is set elsewhere, in
-    # specific page titles / og-tags via apply-chain-params.sh.
     perl -i -pe '
-        # 1) Trademark feature / entity strings (multi-word; safe everywhere)
-        s/\bThe Mempool Open Source Project\b/B3Chain Live Explorer Project/g;
-        s/\bMempool Open Source Project\b/B3Chain Live Explorer Project/g;
-        s/\bMempool Goggles\xC2?\xAE?\b/Tx Filters/g;
-        s/\bMempool Accelerator\b/Transaction Accelerator (disabled)/g;
-        # 2) Specific UI labels first (more specific than the catchall)
-        s/\bMempool by vBytes\b/TxPool by vBytes/g;
-        s/\bMempool Block\b/Pending Block/g;
-        s/\bMempool size\b/TxPool size/g;
-        s/Visualize the Mempool/Visualize the Pending Pool/g;
-        s/Mempool - Bitcoin Explorer/B3Chain Live Explorer/g;
-        # 3) Domain references (canonical upstream brand domain).
         s|https?://(?:www\.)?mempool\.space|https://explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
         s|\bmempool\.space\b|explorer.b3chain.org|g
             unless m{AGPLv3 source at https://github\.com/mempool/mempool};
-        # 4) Standalone brand word -> single-word identifier "TxPool".
-        s/\bMempool\b/TxPool/g
-            unless m{getrawmempool|testmempoolaccept|getmempoolentry|getmempoolinfo|getmempoolancestors|getmempooldescendants|savemempool|importmempool|AGPLv3 source at https://github\.com/mempool/mempool};
-    ' -- "$f" || true
-done
-
-# 4. Backend env namespace: MEMPOOL_X / MEMPOOL.X -> B3CHAIN_X / B3CHAIN.X.
-LIST | while IFS= read -r f; do
-    [ -f "$f" ] || continue
-    case "$f" in
-        */LICENSE|*/LICENSE.md|*/COPYING) continue ;;
-    esac
-    is_text_file "$f" || continue
-    perl -i -pe '
-        # ENV vars at start of line or after whitespace
-        s/(^|[\s\W])MEMPOOL_(?=[A-Z_]+)/$1B3CHAIN_/g;
-        # Config namespace key "MEMPOOL" before "."
-        s/"MEMPOOL"(\s*:)/"B3CHAIN"$1/g;
-        s/\bconfig\.MEMPOOL\b/config.B3CHAIN/g;
-        s/\bMEMPOOL\.([A-Z_]+)/B3CHAIN.$1/g
-            unless m{MEMPOOL_BLOCKS|MEMPOOL_TX};  # leave ngrx-style code names alone for now
-    ' -- "$f" || true
-done
-
-# 5. Drop accelerator routes from frontend routing if a residue remained.
-for f in \
-    frontend/src/app/graphs/graphs.routing.module.ts \
-    frontend/src/app/master-page.module.ts ; do
-    [ -f "$f" ] || continue
-    perl -i -0777 -pe '
-        s/,?\s*\{\s*path:\s*[^\}]*acceleration[^\}]*\}//g;
-        s/,?\s*\{\s*path:\s*[^\}]*accelerator[^\}]*\}//gi;
     ' -- "$f" || true
 done
 
