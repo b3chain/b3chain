@@ -196,6 +196,7 @@ bash "$THIS_DIR/patches/apply-chain-params.sh" "$EXPLORER_NG_SRC"
 bash "$THIS_DIR/patches/disable-matomo.sh" "$EXPLORER_NG_SRC"
 bash "$THIS_DIR/patches/replace-header-logo.sh" "$EXPLORER_NG_SRC"
 bash "$THIS_DIR/patches/rebrand-footer.sh" "$EXPLORER_NG_SRC"
+bash "$THIS_DIR/patches/rebrand-about-page.sh" "$EXPLORER_NG_SRC"
 
 # ---------------------------------------------------------------------------
 # 7) Trademark audit (must pass before we deploy anything)

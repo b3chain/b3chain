@@ -1,5 +1,17 @@
 # B3Chain Project History
 
+## Explorer-ng footer logo + About page rebrand (2026-05-23)
+
+- **Fix:** Footer on `/v2/about` (and all pages) still showed upstream
+  `mempoolSpace` SVG because `rebrand-footer.sh` exited early once copy/marker
+  were patched but never checked whether the logo was swapped.
+- **Deploy:** `rebrand-footer.sh` now replaces both footer `app-svg-images`
+  logos with `/resources/b3chain-explorer-ng-logo.svg` and requires
+  `footer_logo_ok()` before idempotent skip. `rebrand-about-page.sh` removes
+  upstream About assets/sections and stubs sponsor/donation API routes when no
+  upstream server is configured (fixes 500s). nginx `/api/*` → `/api/v1/*`
+  rewrite for Esplora-style paths. Rebuilt and rsynced on seed1.
+
 ## Explorer-ng rebrand-footer marker safety (2026-05-22)
 
 - **Fix:** `rebrand-footer.sh` no longer injects `<!-- B3CHAIN_FOOTER_REBRAND -->`

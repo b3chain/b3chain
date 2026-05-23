@@ -111,15 +111,35 @@ ensure_footer_marker_above_opening_tag() {
     echo "rebrand-footer: inserted marker line above <footer>"
 }
 
-# --- idempotency: marker on its own line + B3Chain copy already applied ------
-if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F"; then
+# --- idempotency: marker + B3Chain copy + logo + social links hidden ------
+social_links_hidden() {
+    grep -q 'class="d-none" href="https://x.com/mempool"' "$F" 2>/dev/null
+}
+
+footer_logo_ok() {
+    grep -q 'b3chain-explorer-ng-logo.svg' "$F" 2>/dev/null \
+        && ! grep -q 'name="mempoolSpace"' "$F" 2>/dev/null
+}
+
+if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && social_links_hidden && footer_logo_ok; then
     echo "rebrand-footer: already patched"
     validate_footer_template
     exit 0
 fi
 
+if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && ! footer_logo_ok; then
+    echo "rebrand-footer: copy/marker ok; applying footer logo swap"
+fi
+
+if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && footer_logo_ok && ! social_links_hidden; then
+    echo "rebrand-footer: copy/marker ok; applying social-link hide only"
+fi
+
 # --- user-visible copy / link tweaks (never touch the <footer> opening line) ---
 perl -i -pe '
+    s|<app-svg-images \*ngIf="officialMempoolSpace" name="officialMempoolSpace" viewBox="0 0 500 126"></app-svg-images>|<img *ngIf="officialMempoolSpace" src="/resources/b3chain-explorer-ng-logo.svg" alt="B3Chain Live Explorer" class="b3chain-logo" style="height:50px;width:auto;" />|g;
+    s|<app-svg-images \*ngIf="!officialMempoolSpace" name="mempoolSpace" viewBox="0 0 500 126"></app-svg-images>|<img *ngIf="!officialMempoolSpace" src="/resources/b3chain-explorer-ng-logo.svg" alt="B3Chain Live Explorer" class="b3chain-logo" style="height:50px;width:auto;" />|g;
+
     s#<ng-container i18n="shared\.be-your-own-explorer">Be your own explorer</ng-container>#<ng-container i18n="shared.be-your-own-explorer">Explore the B3Chain testnet in real time</ng-container>#g;
 
     s#fragment="what-is-a-mempool"#fragment="what-is-a-block-explorer"#g;
@@ -138,7 +158,7 @@ perl -i -pe '
     s#/clock/mempool/#/clock/mempool/#g;
 
     s#<a href="https://x\.com/mempool"#<a class="d-none" href="https://x.com/mempool" tabindex="-1" aria-hidden="true"#g;
-    s#<a href="nostr:#<a class="d-none" href="nostr:" tabindex="-1" aria-hidden="true"#g;
+    s#<a href="(nostr:[^"]+)"#<a class="d-none" href="$1" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://primal\.net/mempool"#<a class="d-none" href="https://primal.net/mempool" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://youtube\.com/@mempool"#<a class="d-none" href="https://youtube.com/@mempool" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://bitcointv\.com/c/mempool/videos"#<a class="d-none" href="https://bitcointv.com/c/mempool/videos" tabindex="-1" aria-hidden="true"#g;
@@ -152,6 +172,20 @@ if ! grep -q 'b3chain.org' "$F"; then
 fi
 
 ensure_footer_marker_above_opening_tag
+
+SCSS="$ROOT/frontend/src/app/shared/components/global-footer/global-footer.component.scss"
+if [ -f "$SCSS" ] && ! grep -q 'b3chain-logo' "$SCSS" 2>/dev/null; then
+    cat >>"$SCSS" <<'SCSS'
+
+.b3chain-logo {
+  height: 36px;
+  width: auto;
+  max-width: 220px;
+  object-fit: contain;
+}
+SCSS
+    echo "rebrand-footer: added .b3chain-logo styles to global-footer.component.scss"
+fi
 
 echo "rebrand-footer: patched $F"
 mkdir -p "$ROOT/.b3chain"
