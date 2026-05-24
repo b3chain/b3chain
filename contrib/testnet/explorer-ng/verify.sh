@@ -100,7 +100,7 @@ if [ -z "$MAIN_JS" ]; then
 else
     curl -fsS "$EXPLORER_HOST/v2/$MAIN_JS" -o /tmp/v2-main.js 2>/dev/null || true
     if [ -s /tmp/v2-main.js ]; then
-        if grep -qE 'Be your own explorer|x\.com/mempool|name="mempoolSpace"|stats\.explorer' /tmp/v2-main.js; then
+        if grep -qE 'Be your own explorer|x\.com/mempool|youtube\.com/@mempool|name="mempoolSpace"|stats\.explorer|github\.com/mempool/mempool|v3\.4-dev' /tmp/v2-main.js; then
             bad "main bundle still contains upstream brand strings"
         else
             ok "main bundle clean ($MAIN_JS)"
@@ -117,6 +117,9 @@ if [ -f "$FOOTER" ] \
    && grep -q 'Explore the B3Chain testnet' "$FOOTER" \
    && grep -q 'b3chain-explorer-ng-logo.svg' "$FOOTER" \
    && ! grep -q 'name="mempoolSpace"' "$FOOTER" \
+   && ! grep -q 'github.com/mempool/mempool' "$FOOTER" \
+   && ! grep -q 'v{{ packetJsonVersion }}' "$FOOTER" \
+   && ! grep -q '<a href="https://youtube.com/@mempool"' "$FOOTER" \
    && ! grep -q '<footer <!--' "$FOOTER"; then
     ok "footer HTML patched"
 else

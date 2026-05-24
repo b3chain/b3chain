@@ -79,7 +79,9 @@ if [ "$UNINSTALL" = 1 ]; then
     rm -f "$SYSTEMD_UNIT"
     systemctl daemon-reload
     rm -f "$NGINX_LINK"
-    nginx -t && systemctl reload nginx || true
+    if nginx -t; then
+        systemctl reload nginx || true
+    fi
     echo "==> service stopped. config preserved at: $EXPLORER_NG_CONF_DIR"
     exit 0
 fi

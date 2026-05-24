@@ -113,7 +113,9 @@ ensure_footer_marker_above_opening_tag() {
 
 # --- idempotency: marker + B3Chain copy + logo + social links hidden ------
 social_links_hidden() {
-    grep -q 'class="d-none" href="https://x.com/mempool"' "$F" 2>/dev/null
+    grep -q 'class="d-none" href="https://x.com/mempool"' "$F" 2>/dev/null \
+        && grep -q 'class="d-none" href="https://github.com/mempool"' "$F" 2>/dev/null \
+        && grep -q 'class="d-none" href="https://youtube.com/@mempool"' "$F" 2>/dev/null
 }
 
 footer_logo_ok() {
@@ -121,7 +123,14 @@ footer_logo_ok() {
         && ! grep -q 'name="mempoolSpace"' "$F" 2>/dev/null
 }
 
-if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && social_links_hidden && footer_logo_ok; then
+footer_version_ok() {
+    grep -q 'B3Chain Live Explorer \[' "$F" 2>/dev/null \
+        && grep -q 'github.com/b3chain/explorer-ng/commit/' "$F" 2>/dev/null \
+        && ! grep -q 'github.com/mempool/mempool' "$F" 2>/dev/null \
+        && ! grep -q 'v{{ packetJsonVersion }}' "$F" 2>/dev/null
+}
+
+if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && social_links_hidden && footer_logo_ok && footer_version_ok; then
     echo "rebrand-footer: already patched"
     validate_footer_template
     exit 0
@@ -133,6 +142,10 @@ fi
 
 if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && footer_logo_ok && ! social_links_hidden; then
     echo "rebrand-footer: copy/marker ok; applying social-link hide only"
+fi
+
+if footer_marker_ok && grep -q 'Explore the B3Chain testnet' "$F" && ! footer_version_ok; then
+    echo "rebrand-footer: applying footer version rebrand"
 fi
 
 # --- user-visible copy / link tweaks (never touch the <footer> opening line) ---
@@ -157,10 +170,15 @@ perl -i -pe '
     s#>Clock \(Mempool\)<#>Clock (Tx Pool)<#g;
     s#/clock/mempool/#/clock/mempool/#g;
 
+    s#https://github\.com/mempool/mempool/commit/#https://github.com/b3chain/explorer-ng/commit/#g;
+    s#<p \*ngIf="!officialMempoolSpace">v\{\{ packetJsonVersion \}\} \[#<p *ngIf="!officialMempoolSpace">B3Chain Live Explorer [#g;
+
+    s#<a href="https://github\.com/mempool"#<a class="d-none" href="https://github.com/mempool" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://x\.com/mempool"#<a class="d-none" href="https://x.com/mempool" tabindex="-1" aria-hidden="true"#g;
     s#<a href="(nostr:[^"]+)"#<a class="d-none" href="$1" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://primal\.net/mempool"#<a class="d-none" href="https://primal.net/mempool" tabindex="-1" aria-hidden="true"#g;
-    s#<a href="https://youtube\.com/@mempool"#<a class="d-none" href="https://youtube.com/@mempool" tabindex="-1" aria-hidden="true"#g;
+    s#<a href="https://youtube\.com/\@mempool"#<a class="d-none" href="https://youtube.com/\@mempool" tabindex="-1" aria-hidden="true"#g;
+    s#<a class="d-none" href="https://youtube\.com/" tabindex="-1" aria-hidden="true"([^>]*aria-label="mempool on YouTube")#<a class="d-none" href="https://youtube.com/\@mempool" tabindex="-1" aria-hidden="true"$1#g;
     s#<a href="https://bitcointv\.com/c/mempool/videos"#<a class="d-none" href="https://bitcointv.com/c/mempool/videos" tabindex="-1" aria-hidden="true"#g;
     s#<a href="https://mempool\.chat"#<a class="d-none" href="https://mempool.chat" tabindex="-1" aria-hidden="true"#g;
 ' -- "$F"

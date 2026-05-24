@@ -160,7 +160,7 @@ fi
 declare -a USER_VISIBLE=()
 for f in "${FILES[@]+"${FILES[@]}"}"; do
     case "$f" in
-        *.html|*.scss|*.css|*.svg|*.xlf|*.md|*manifest*.json|*og-tags*|README.md|*/README.md)
+        *.html|*.scss|*.css|*.svg|*.xlf|*.md|*manifest*.json|*og-tags*)
             USER_VISIBLE+=("$f") ;;
     esac
 done

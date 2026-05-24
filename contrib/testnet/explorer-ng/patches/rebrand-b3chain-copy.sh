@@ -76,14 +76,14 @@ for f in frontend/src/index.mempool.html frontend/src/index.html frontend/src/in
     echo "    edit: $f"
 done
 
-for f in frontend/src/app/shared/components/global-footer/global-footer.component.html; do
-    [ -f "$f" ] || continue
+f="frontend/src/app/shared/components/global-footer/global-footer.component.html"
+if [ -f "$f" ]; then
     perl -i -pe '
         s|href="https://github\.com/mempool"|href="https://github.com/b3chain"|g;
         s|aria-label="mempool on GitHub"|aria-label="B3Chain on GitHub"|g;
     ' -- "$f"
     echo "    edit: $f"
-done
+fi
 
 mkdir -p .b3chain
 date -u +"%Y-%m-%dT%H:%M:%SZ" > .b3chain/rebrand-b3chain-copy.last-run.txt
