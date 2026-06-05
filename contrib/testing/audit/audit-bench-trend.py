@@ -120,6 +120,30 @@ def status_marker(delta_pct: float, threshold_pct: float) -> str:
     return "REGRESS"
 
 
+def is_noise_regression(
+    baseline_s: float,
+    head_s: float,
+    delta_pct: float,
+    threshold_pct: float,
+    min_absolute_s: float,
+) -> bool:
+    """
+    True when a %-only regression is below CI measurement noise.
+
+    Shared runners jitter sub-ms microbenchmarks by single-digit
+    microseconds even when the bench binary is unchanged.  For baselines
+    under 1 ms, ignore slowdowns smaller than min_absolute_s.
+    """
+    if delta_pct <= threshold_pct:
+        return False
+    slowdown_s = head_s - baseline_s
+    if slowdown_s <= 0.0:
+        return False
+    if baseline_s >= 1e-3:
+        return False
+    return slowdown_s < min_absolute_s
+
+
 def render_markdown(rows: list[tuple[str, float, float, float, str]],
                     threshold_pct: float,
                     baseline_path: Path,
@@ -134,7 +158,7 @@ def render_markdown(rows: list[tuple[str, float, float, float, str]],
     lines.append("| Benchmark | baseline median | head median | Δ% | status |")
     lines.append("|---|---:|---:|---:|---|")
     for name, base, head, delta_pct, status in rows:
-        emoji = (":white_check_mark:" if status in ("OK", "FASTER")
+        emoji = (":white_check_mark:" if status in ("OK", "FASTER", "OK (noise)")
                  else ":x:")
         sign = "+" if delta_pct >= 0 else ""
         lines.append(
@@ -153,6 +177,9 @@ def parse_args() -> argparse.Namespace:
                    help="CSV from the proposed commit (HEAD)")
     p.add_argument("--threshold", type=float, default=5.0,
                    help="regression threshold in %% (default: 5.0)")
+    p.add_argument("--min-absolute-regression-us", type=float, default=10.0,
+                   help="for sub-ms baselines, ignore slowdowns smaller than "
+                        "this many microseconds (default: 10.0)")
     p.add_argument("--markdown-out", type=Path, default=None,
                    help="if set, also write the markdown table to this path")
     p.add_argument("--only", default=None,
@@ -188,6 +215,8 @@ def main() -> int:
         print(RED("ERROR: no benchmarks in common between baseline and head"))
         return 2
 
+    min_absolute_s = args.min_absolute_regression_us * 1e-6
+
     rows: list[tuple[str, float, float, float, str]] = []
     any_regress = False
 
@@ -199,6 +228,10 @@ def main() -> int:
         else:
             delta_pct = (h - b) / b * 100.0
         status = status_marker(delta_pct, args.threshold)
+        if status == "REGRESS" and is_noise_regression(
+            b, h, delta_pct, args.threshold, min_absolute_s
+        ):
+            status = "OK (noise)"
         if status == "REGRESS":
             any_regress = True
         rows.append((name, b, h, delta_pct, status))
@@ -214,7 +247,7 @@ def main() -> int:
     for name, base, head_val, delta_pct, status in rows:
         sign = "+" if delta_pct >= 0 else ""
         col = (RED if status == "REGRESS"
-               else GREEN if status in ("OK", "FASTER")
+               else GREEN if status in ("OK", "FASTER", "OK (noise)")
                else YELLOW)
         print(
             f"{name:40} | {fmt_seconds(base):>12} | "

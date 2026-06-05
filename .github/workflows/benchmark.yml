@@ -28,6 +28,17 @@ on:
   push:
     branches:
       - 'b3chain-main'
+    paths:
+      - 'src/**'
+      - 'src/bench/**'
+      - 'src/crypto/b3pow_scratch.*'
+      - 'src/pow/**'
+      - 'src/validation.cpp'
+      - 'src/consensus/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/benchmark.yml'
+      - 'contrib/testing/audit/audit-bench-trend.py'
   schedule:
     # Nightly drift watch -- 03:30 UTC.  Runs against b3chain-main HEAD
     # vs b3chain-main HEAD~1 so a slow drift across many merged PRs is
@@ -54,6 +65,10 @@ jobs:
     # `paths` filter above already keeps doc-only PRs from triggering.
     env:
       THRESHOLD_PERCENT: '5.0'
+      # Sub-ms microbenchmarks (e.g. CheckBlockIndex ~80–100 us) swing by
+      # single-digit microseconds on shared CI runners.  Require both the
+      # percent threshold AND this absolute slowdown before failing.
+      MIN_ABSOLUTE_REGRESSION_US: '10.0'
       # Focused filter: only the benchmarks that exercise consensus-
       # critical code paths.  Adjust here when adding new B3PoW or
       # block-validation benchmarks.
@@ -146,6 +161,7 @@ jobs:
             --baseline bench-out/baseline.csv \
             --head     bench-out/head.csv \
             --threshold "${THRESHOLD_PERCENT}" \
+            --min-absolute-regression-us "${MIN_ABSOLUTE_REGRESSION_US}" \
             --markdown-out bench-out/summary.md
           echo "Wrote bench-out/summary.md"
 
