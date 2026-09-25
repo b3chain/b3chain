@@ -6,6 +6,10 @@ import { requireAuth, requireVerified, AuthedUser } from "../middleware/auth";
 import { setFlash } from "../middleware/session";
 import { isValidB3AddressForNetwork } from "../../lib/address";
 import { validateAddress } from "../../lib/rpc";
+import { payoutReadiness } from "../../lib/payout-readiness";
+import { previewImmatureB3c } from "../../pool/pplns";
+import { explorerTxUrl } from "../../lib/explorer";
+import { fetchStratumStats } from "../socket";
 
 export function dashboardRoutes(): Router {
     const r = Router();
@@ -66,18 +70,35 @@ export function dashboardRoutes(): Router {
     r.get("/workers", requireVerified, async (req, res) => {
         const u = (req as Request & { user: AuthedUser }).user;
         const workers = await query(
-            `SELECT w.id, w.name, w.last_seen_at,
+            `SELECT w.id, w.name, w.last_seen_at, w.last_difficulty,
+                    w.rejected_duplicate, w.rejected_low_diff, w.rejected_invalid, w.rejected_other,
+                    w.last_reject_reason,
                     COALESCE((SELECT SUM(diff)*4294967296.0/3600.0 FROM shares
                                  WHERE worker_id = w.id
                                    AND submitted_at >= NOW() - interval '1 hour'), 0)::float8 AS h_hour,
                     COALESCE((SELECT COUNT(*) FROM shares
-                                 WHERE worker_id = w.id), 0) AS shares_total
+                                 WHERE worker_id = w.id), 0) AS shares_total,
+                    (SELECT MAX(submitted_at) FROM shares WHERE worker_id = w.id) AS last_share_at
                FROM workers w
               WHERE w.user_id = $1
               ORDER BY w.last_seen_at DESC NULLS LAST`,
             [u.id]
         );
-        res.render("dashboard/workers", { title: "Workers", workers });
+        const live = await fetchStratumStats();
+        const byName = new Map(
+            (live.connections ?? [])
+                .filter((c) => c.user === u.email)
+                .map((c) => [c.worker, c])
+        );
+        const rows = workers.map((w) => {
+            const conn = byName.get(String(w.name));
+            return {
+                ...w,
+                live_difficulty: conn ? conn.difficulty : null,
+                live_rejected: conn ? conn.rejected : null,
+            };
+        });
+        res.render("dashboard/workers", { title: "Workers", workers: rows });
     });
 
     r.get("/payouts", requireVerified, async (req, res) => {
@@ -94,11 +115,23 @@ export function dashboardRoutes(): Router {
             `SELECT COALESCE(SUM(delta_b3c),0)::text AS b FROM balance_entries WHERE user_id = $1`,
             [u.id]
         );
+        const spendable = parseFloat(balance[0]!.b);
+        const immature = await previewImmatureB3c(u.id);
+        const readiness = payoutReadiness({
+            emailVerified: u.emailVerified,
+            payoutAddress: u.payoutAddress,
+            balance: spendable,
+            minimum: u.minimumPayoutB3c,
+            network: config.network,
+        });
         res.render("dashboard/payouts", {
             title: "Payouts",
             payouts: rows,
-            balance: parseFloat(balance[0]!.b),
+            balance: spendable,
+            immature,
             minimum: u.minimumPayoutB3c,
+            readiness,
+            explorerTxUrl,
         });
     });
 

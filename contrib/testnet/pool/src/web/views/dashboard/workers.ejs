@@ -6,19 +6,40 @@
   <% if (workers.length === 0) { %>
     <p class="muted">No workers yet. Connect a miner with username <code><%= user.email %>.&lt;workerName&gt;</code>.</p>
   <% } else { %>
+    <div class="table-scroll">
     <table>
-      <thead><tr><th>Name</th><th>1h hashrate</th><th>Total shares</th><th>Last seen</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Difficulty</th>
+          <th>1h hashrate</th>
+          <th>Accepted</th>
+          <th>Rejected</th>
+          <th>Last share</th>
+        </tr>
+      </thead>
       <tbody>
-      <% workers.forEach(w => { %>
+      <% workers.forEach(w => {
+           const rejected = Number(w.rejected_duplicate) + Number(w.rejected_low_diff) + Number(w.rejected_invalid) + Number(w.rejected_other);
+           const diff = w.live_difficulty != null ? w.live_difficulty : w.last_difficulty;
+      %>
         <tr>
           <td class="mono"><%= w.name %></td>
+          <td><%= diff == null ? '—' : Number(diff) %></td>
           <td><%= formatHashrate(Number(w.h_hour)) %></td>
           <td><%= w.shares_total %></td>
-          <td class="muted"><%= w.last_seen_at || '—' %></td>
+          <td title="duplicate <%= w.rejected_duplicate %>, low-diff <%= w.rejected_low_diff %>, invalid <%= w.rejected_invalid %>, other <%= w.rejected_other %>">
+            <%= rejected %><% if (w.last_reject_reason) { %> <span class="muted">(<%= w.last_reject_reason %>)</span><% } %>
+          </td>
+          <td class="muted">
+            <% if (w.last_share_at) { %><time data-ts="<%= w.last_share_at %>"><%= w.last_share_at %></time>
+            <% } else { %>—<% } %>
+          </td>
         </tr>
       <% }) %>
       </tbody>
     </table>
+    </div>
   <% } %>
 </section>
 

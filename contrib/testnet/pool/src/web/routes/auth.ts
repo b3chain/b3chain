@@ -9,6 +9,9 @@ import { sendEmail } from "../../email/send";
 import { authLimiter, signupLimiter, passwordResetLimiter } from "../middleware/ratelimit";
 import { setFlash } from "../middleware/session";
 import { isValidB3AddressForNetwork } from "../../lib/address";
+import { safeNext } from "../safe-next";
+import { createSession, deleteSession } from "../session-store";
+import { AuthedUser } from "../middleware/auth";
 
 function isEmail(s: string): boolean {
     return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length < 256;
@@ -148,17 +151,23 @@ export function authRoutes(): Router {
         }
         if (row.totp_enabled) {
             sess.pendingTotpUserId = parseInt(row.id, 10);
-            sess.pendingTotpNext = next;
+            sess.pendingTotpNext = safeNext(next);
             res.redirect("/auth/2fa-verify");
             return;
         }
-        sess.userId = parseInt(row.id, 10);
+        delete sess.userId;
+        sess.sid = await createSession(parseInt(row.id, 10), req);
         await query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [row.id]);
         res.redirect(safeNext(next));
     });
 
-    r.post("/logout", (req, res) => {
-        if (req.session) (req.session as Record<string, unknown>).userId = undefined;
+    r.post("/logout", async (req, res) => {
+        const sess = req.session as { sid?: string } | null;
+        if (sess?.sid) await deleteSession(sess.sid);
+        if (req.session) {
+            delete (req.session as Record<string, unknown>).sid;
+            delete (req.session as Record<string, unknown>).userId;
+        }
         res.redirect("/");
     });
 
@@ -231,14 +240,15 @@ export function authRoutes(): Router {
     });
 
     r.get("/2fa-setup", async (req, res) => {
-        const sess = req.session as { userId?: number } | null;
-        if (!sess?.userId) {
+        const user = (req as Request & { user?: AuthedUser }).user;
+        const sess = req.session as Record<string, unknown> | null;
+        if (!user || !sess) {
             res.redirect("/auth/login");
             return;
         }
         const u = await query<{ totp_enabled: boolean; email: string }>(
             "SELECT totp_enabled, email FROM users WHERE id = $1",
-            [sess.userId]
+            [user.id]
         );
         if (u.length === 0) {
             res.redirect("/auth/login");
@@ -256,14 +266,15 @@ export function authRoutes(): Router {
     });
 
     r.post("/2fa-setup", async (req, res) => {
-        const sess = req.session as { userId?: number; pendingTotpSecret?: string } | null;
-        if (!sess?.userId || !sess.pendingTotpSecret) {
+        const user = (req as Request & { user?: AuthedUser }).user;
+        const sess = req.session as { pendingTotpSecret?: string } | null;
+        if (!user || !sess?.pendingTotpSecret) {
             res.redirect("/auth/login");
             return;
         }
         const code = String(req.body.code ?? "").trim();
         if (!authenticator.check(code, sess.pendingTotpSecret)) {
-            const u = await query<{ email: string }>("SELECT email FROM users WHERE id = $1", [sess.userId]);
+            const u = await query<{ email: string }>("SELECT email FROM users WHERE id = $1", [user.id]);
             const otpauth = authenticator.keyuri(u[0]!.email, "B3ChainPool", sess.pendingTotpSecret);
             const qrDataUrl = await qrcode.toDataURL(otpauth);
             res.status(400).render("auth/2fa-setup", {
@@ -278,7 +289,7 @@ export function authRoutes(): Router {
         }
         await query(
             "UPDATE users SET totp_secret = $1, totp_enabled = TRUE WHERE id = $2",
-            [sess.pendingTotpSecret, sess.userId]
+            [sess.pendingTotpSecret, user.id]
         );
         delete (sess as Record<string, unknown>).pendingTotpSecret;
         setFlash(req, "success", "Two-factor authentication enabled.");
@@ -286,14 +297,14 @@ export function authRoutes(): Router {
     });
 
     r.post("/2fa-disable", async (req, res) => {
-        const sess = req.session as { userId?: number } | null;
-        if (!sess?.userId) {
+        const user = (req as Request & { user?: AuthedUser }).user;
+        if (!user) {
             res.redirect("/auth/login");
             return;
         }
         await query(
             "UPDATE users SET totp_secret = NULL, totp_enabled = FALSE WHERE id = $1",
-            [sess.userId]
+            [user.id]
         );
         setFlash(req, "success", "Two-factor authentication disabled.");
         res.redirect("/dashboard/settings");
@@ -327,7 +338,8 @@ export function authRoutes(): Router {
         const next = sess.pendingTotpNext ?? "/dashboard";
         delete (sess as Record<string, unknown>).pendingTotpUserId;
         delete (sess as Record<string, unknown>).pendingTotpNext;
-        (sess as Record<string, unknown>).userId = uid;
+        delete (sess as Record<string, unknown>).userId;
+        (sess as Record<string, unknown>).sid = await createSession(uid, req);
         await query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [uid]);
         res.redirect(safeNext(next));
     });
@@ -335,7 +347,3 @@ export function authRoutes(): Router {
     return r;
 }
 
-function safeNext(next: string): string {
-    if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//")) return "/dashboard";
-    return next;
-}

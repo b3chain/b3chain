@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+
+<section>
+  <h1>Block <%= block.height %></h1>
+  <div class="grid-3">
+    <div class="tile"><div class="tile-label">Reward</div><div class="tile-value"><%= Number(block.reward_b3c).toFixed(4) %> B3C</div></div>
+    <div class="tile"><div class="tile-label">Confirmations</div><div class="tile-value"><%= block.confirmations %>/<%= confirmationsRequired %></div></div>
+    <div class="tile">
+      <div class="tile-label">Status</div>
+      <div class="tile-value">
+        <% if (block.is_orphan) { %><span class="tag tag-fail">orphan</span>
+        <% } else if (block.is_confirmed) { %><span class="tag tag-pass">confirmed</span>
+        <% } else { %><span class="tag tag-pending">pending</span><% } %>
+      </div>
+    </div>
+  </div>
+  <p>Hash <span class="mono"><%= block.hash %></span></p>
+  <p>Found <time data-ts="<%= block.found_at %>"><%= block.found_at %></time></p>
+  <p>Finder <%= block.email ? block.email : "unknown" %><% if (block.worker_name) { %> · <span class="mono"><%= block.worker_name %></span><% } %></p>
+  <p><a href="<%= explorerUrl %>" target="_blank" rel="noopener">View on the explorer</a></p>
+</section>
+
+<%- include('partials/footer') %>

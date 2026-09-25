@@ -2,6 +2,7 @@
 <%- include('partials/dashnav') %>
 
 <section>
+  <p id="live-status" class="muted" hidden></p>
   <div class="grid-3">
     <div class="tile">
       <div class="tile-label">Hashrate (5-min avg)</div>
@@ -16,7 +17,13 @@
       <div class="tile-value"><span id="user-balance">…</span> B3C</div>
     </div>
   </div>
-  <h2>Last 24h</h2>
+  <h2>Hashrate</h2>
+  <div class="range-row">
+    <button type="button" class="btn-secondary" data-range="1h">1h</button>
+    <button type="button" class="btn-secondary" data-range="24h">24h</button>
+    <button type="button" class="btn-secondary" data-range="7d">7d</button>
+    <button type="button" class="btn-secondary" data-range="30d">30d</button>
+  </div>
   <canvas id="user-chart" height="120"></canvas>
 </section>
 
@@ -25,6 +32,7 @@
   <% if (recentShares.length === 0) { %>
     <p class="muted">No shares yet. Connect a miner.</p>
   <% } else { %>
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Worker</th><th>Difficulty</th><th>Block?</th><th>Submitted</th></tr></thead>
       <tbody>
@@ -33,18 +41,20 @@
           <td><%= s.worker_name %></td>
           <td><%= Number(s.diff).toFixed(2) %></td>
           <td><%= s.is_block ? 'YES (block ' + s.block_hash.slice(0, 12) + '…)' : '' %></td>
-          <td class="muted"><%= s.submitted_at %></td>
+          <td class="muted"><time data-ts="<%= s.submitted_at %>"><%= s.submitted_at %></time></td>
         </tr>
       <% }) %>
       </tbody>
     </table>
+    </div>
   <% } %>
 </section>
 
 <% if (recentBlocks.length > 0) { %>
 <section>
   <h2>Blocks you found</h2>
-  <table>
+  <div class="table-scroll">
+    <table>
     <thead><tr><th>Height</th><th>Hash</th><th>Reward</th><th>Status</th><th>Found at</th></tr></thead>
     <tbody>
     <% recentBlocks.forEach(b => { %>
@@ -57,20 +67,19 @@
           <% } else if (b.is_confirmed) { %><span class="tag tag-pass">confirmed</span>
           <% } else { %><%= b.confirmations %>/100<% } %>
         </td>
-        <td class="muted"><%= b.found_at %></td>
+        <td class="muted"><time data-ts="<%= b.found_at %>"><%= b.found_at %></time></td>
       </tr>
     <% }) %>
     </tbody>
   </table>
+    </div>
 </section>
 <% } %>
 
-<script src="/vendor/socket.io.min.js"></script>
-<script src="/vendor/chart.umd.js"></script>
-<script>
-window.__userBuckets = <%- JSON.stringify(buckets || []) %>;
-window.__userInitial = <%- JSON.stringify(stats || {}) %>;
-</script>
-<script src="/js/dashboard.js"></script>
+<script src="/vendor/socket.io.min.js?v=20260926"></script>
+<script src="/vendor/chart.umd.js?v=20260926"></script>
+<script id="user-buckets" type="application/json"><%- JSON.stringify(buckets || []).replace(/</g, "\\u003c") %></script>
+<script id="user-initial" type="application/json"><%- JSON.stringify(stats || {}).replace(/</g, "\\u003c") %></script>
+<script src="/js/dashboard.js?v=20260926b"></script>
 
 <%- include('../partials/footer') %>

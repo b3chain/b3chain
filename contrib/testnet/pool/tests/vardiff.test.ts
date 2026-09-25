@@ -52,6 +52,33 @@ test("vardiff respects minDiff/maxDiff", () => {
     assert.ok(up !== null && up <= 200, `clipped to maxDiff, got ${up}`);
 });
 
+test("zero shares and a 600s target do not raise difficulty in 30s", () => {
+    const v = new Vardiff({
+        targetSeconds: 600,
+        retuneSeconds: 30,
+        minDiff: 0.000001,
+        maxDiff: 16_000_000,
+        initialDiff: 0.00008,
+        maxStep: 4,
+    }, 1_000_000);
+    const next = v.maybeRetune(1_000_000 + 30_000);
+    assert.equal(next, null);
+    assert.equal(v.diff, 0.00008);
+});
+
+test("zero shares after the target interval lower difficulty", () => {
+    const v = new Vardiff({
+        targetSeconds: 10,
+        retuneSeconds: 30,
+        minDiff: 1,
+        maxDiff: 1_000_000,
+        initialDiff: 1024,
+        maxStep: 4,
+    }, 1_000_000);
+    const next = v.maybeRetune(1_000_000 + 30_000);
+    assert.ok(next !== null && next < 1024);
+});
+
 test("vardiff converges within ~10 retunes from constant input", () => {
     let t = 0;
     const v = new Vardiff({

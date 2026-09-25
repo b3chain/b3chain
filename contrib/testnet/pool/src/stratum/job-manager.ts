@@ -19,6 +19,14 @@ import { addressToScriptPubKey } from "../lib/address";
 
 let jobCounter = 0;
 
+export function workSignature(tpl: { previousblockhash: string; transactions: unknown[]; bits: string; version: number }): string {
+    return `${tpl.previousblockhash}|${tpl.transactions.length}|${tpl.bits}|${tpl.version}`;
+}
+
+export function cleanJobsFor(lastPrev: string, nextPrev: string): boolean {
+    return lastPrev !== nextPrev;
+}
+
 export interface StratumJob extends JobContext {
     cleanJobs: boolean;
     ntimeMin: number;
@@ -28,6 +36,8 @@ export interface StratumJob extends JobContext {
 export class JobManager extends EventEmitter {
     private timer: NodeJS.Timeout | null = null;
     private lastTemplateHash: string = "";
+    private lastWorkSig: string = "";
+    private lastPrev: string = "";
     private currentJob: StratumJob | null = null;
     private jobsById = new Map<string, StratumJob>();
     private maxJobs = 32;
@@ -63,12 +73,22 @@ export class JobManager extends EventEmitter {
             this.emit("template-error", e);
             return;
         }
-        const sig = `${tpl.previousblockhash}|${tpl.transactions.length}|${tpl.curtime}`;
-        const isNew = sig !== this.lastTemplateHash;
-        if (!isNew && this.currentJob) return;
-        this.lastTemplateHash = sig;
+        const workSig = workSignature(tpl);
+        const timeSig = `${workSig}|${tpl.curtime}`;
+        if (timeSig === this.lastTemplateHash && this.currentJob) return;
+        const clean = cleanJobsFor(this.lastPrev, tpl.previousblockhash);
+        if (!clean && workSig === this.lastWorkSig && this.currentJob) {
+            this.currentJob.ntimeRoll = tpl.curtime;
+            this.currentJob.cleanJobs = false;
+            this.lastTemplateHash = timeSig;
+            this.emit("job", this.currentJob);
+            return;
+        }
+        this.lastTemplateHash = timeSig;
+        this.lastWorkSig = workSig;
+        this.lastPrev = tpl.previousblockhash;
 
-        const job = this.buildJob(tpl);
+        const job = this.buildJob(tpl, clean);
         this.currentJob = job;
         this.jobsById.set(job.jobId, job);
         // Trim cache
@@ -80,7 +100,7 @@ export class JobManager extends EventEmitter {
         this.log.info({ jobId: job.jobId, height: job.height, txns: tpl.transactions.length }, "new job");
     }
 
-    private buildJob(tpl: BlockTemplate): StratumJob {
+    private buildJob(tpl: BlockTemplate, cleanJobs: boolean): StratumJob {
         // Pool builds the coinbase locally, mirroring what every modern
         // mining pool does. b3chaind / Bitcoin Core 30+ no longer returns
         // `coinbasetxn` from getblocktemplate, so we compose it ourselves
@@ -117,7 +137,7 @@ export class JobManager extends EventEmitter {
             networkTargetHexBE: tpl.target,
             txnsHex: txns,
             height: tpl.height,
-            cleanJobs: true,
+            cleanJobs,
             ntimeMin: tpl.mintime,
             ntimeRoll: tpl.curtime,
         };

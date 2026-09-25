@@ -36,6 +36,13 @@ test("network difficulty grows as nBits target shrinks", () => {
     assert.ok(hard > easy);
 });
 
+test("sub-micro difficulty is rejected instead of becoming all-accepting", () => {
+    assert.throws(() => targetFromShareDifficulty(0.0000001));
+    assert.throws(() => targetFromShareDifficulty(0));
+    const tiny = targetFromShareDifficulty(0.000001);
+    assert.ok(tiny > 0n && tiny < (1n << 256n) - 1n);
+});
+
 test("bigIntFromBytesLE round-trips", () => {
     const buf = new Uint8Array([0x78, 0x56, 0x34, 0x12]);
     assert.equal(bigIntFromBytesLE(buf), 0x12345678n);

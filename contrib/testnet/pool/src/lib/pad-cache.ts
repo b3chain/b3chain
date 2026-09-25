@@ -93,7 +93,7 @@ function bytesKey(b: Uint8Array): string {
     // not value equality, so a string key is mandatory here.
     let s = "";
     for (let i = 0; i < b.length; i++) {
-        const v = b[i];
+        const v = b[i] ?? 0;
         s += (v < 16 ? "0" : "") + v.toString(16);
     }
     return s;

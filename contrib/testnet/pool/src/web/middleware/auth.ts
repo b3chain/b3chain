@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { query } from "../../lib/db";
+import { userIdForSession } from "../session-store";
 
 export interface AuthedUser {
     id: number;
@@ -16,9 +17,14 @@ export async function loadCurrentUser(
     res: Response,
     next: NextFunction
 ): Promise<void> {
-    const sess = req.session as { userId?: number } | null;
-    const uid = sess?.userId;
+    const sess = req.session as { sid?: string; userId?: number } | null;
+    const sid = typeof sess?.sid === "string" ? sess.sid : "";
+    const uid = sid ? await userIdForSession(sid) : null;
     if (!uid) {
+        if (sess) {
+            delete sess.sid;
+            delete sess.userId;
+        }
         res.locals.user = null;
         return next();
     }
@@ -37,7 +43,10 @@ export async function loadCurrentUser(
         [uid]
     );
     if (rows.length === 0) {
-        if (req.session) delete (req.session as Record<string, unknown>).userId;
+        if (req.session) {
+            delete (req.session as Record<string, unknown>).sid;
+            delete (req.session as Record<string, unknown>).userId;
+        }
         res.locals.user = null;
         return next();
     }
@@ -60,6 +69,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const u = (req as Request & { user?: AuthedUser }).user;
     if (!u) {
         res.redirect("/auth/login?next=" + encodeURIComponent(req.originalUrl));
+        return;
+    }
+    next();
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+    const u = (req as Request & { user?: AuthedUser }).user;
+    if (!u) {
+        res.redirect("/auth/login?next=" + encodeURIComponent(req.originalUrl));
+        return;
+    }
+    if (!u.isAdmin) {
+        res.status(403).render("error", { title: "Forbidden", message: "Admin only." });
         return;
     }
     next();

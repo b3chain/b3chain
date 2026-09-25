@@ -39,12 +39,16 @@ export class Vardiff {
         const elapsed = (now - this.windowStart) / 1000;
         if (elapsed < this.params.retuneSeconds) return null;
 
+        // No share in this window is not evidence that shares are too frequent.
+        // A 600s target over a 30s empty window must not multiply difficulty.
+        if (this.sharesInWindow === 0) {
+            this.windowStart = now;
+            if (elapsed < this.params.targetSeconds) return null;
+        }
         const observedInterval = this.sharesInWindow > 0 ? elapsed / this.sharesInWindow : elapsed;
         // ratio > 1 means we want a HIGHER diff (shares too frequent).
-        // E.g. target=10s, observed=1s → ratio=10 → diff should multiply by 10.
-        // Conversely target=10s, observed=30s → ratio=1/3 → diff should drop to a third.
         const ratio = this.params.targetSeconds > 0
-            ? observedInterval > 0 ? this.params.targetSeconds / observedInterval : this.params.maxStep
+            ? observedInterval > 0 ? this.params.targetSeconds / observedInterval : 1
             : 1;
         let multiplier = ratio;
         // clamp single-step magnitude
@@ -62,6 +66,22 @@ export class Vardiff {
         if (Math.abs(next - this.currentDiff) / this.currentDiff < 0.1) return null;
 
         this.currentDiff = next;
+        return next;
+    }
+
+    /** Operator or miner suggestion. Rejects non-positive and out-of-range values. */
+    setDiff(next: number): number {
+        if (!Number.isFinite(next) || next <= 0) {
+            throw new Error(`difficulty must be finite and > 0, got ${next}`);
+        }
+        if (next < this.params.minDiff || next > this.params.maxDiff) {
+            throw new Error(
+                `difficulty ${next} outside [${this.params.minDiff}, ${this.params.maxDiff}]`
+            );
+        }
+        this.currentDiff = next;
+        this.windowStart = Date.now();
+        this.sharesInWindow = 0;
         return next;
     }
 }

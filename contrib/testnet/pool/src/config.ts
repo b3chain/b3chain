@@ -37,6 +37,20 @@ function envBool(name: string, def: boolean): boolean {
     return /^(1|true|yes|on)$/i.test(v.trim());
 }
 
+function parseWorkerDifficulty(raw: string): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const part of raw.split(",")) {
+        const item = part.trim();
+        if (!item) continue;
+        const eq = item.lastIndexOf("=");
+        if (eq <= 0) continue;
+        const user = item.slice(0, eq).trim();
+        const diff = Number(item.slice(eq + 1));
+        if (user && Number.isFinite(diff) && diff > 0) out.set(user, diff);
+    }
+    return out;
+}
+
 function envFileOrInline(name: string): string {
     const fileEnv = process.env[`${name}_FILE`];
     if (fileEnv && fileEnv.length > 0) {
@@ -66,9 +80,13 @@ export const config = {
     stratum: {
         bind: env("B3POOL_STRATUM_BIND", "0.0.0.0"),
         port: envInt("B3POOL_STRATUM_PORT", 3333),
-        defaultDifficulty: envInt("B3POOL_STRATUM_DEFAULT_DIFF", 1024),
-        vardiffTargetSeconds: envInt("B3POOL_STRATUM_VARDIFF_TARGET_S", 10),
+        defaultDifficulty: envFloat("B3POOL_STRATUM_DEFAULT_DIFF", 1024),
+        minDifficulty: envFloat("B3POOL_STRATUM_MIN_DIFF", 0.000001),
+        maxDifficulty: envFloat("B3POOL_STRATUM_MAX_DIFF", 16_000_000),
+        vardiffEnabled: envBool("B3POOL_STRATUM_VARDIFF", false),
+        vardiffTargetSeconds: envInt("B3POOL_STRATUM_VARDIFF_TARGET_S", 600),
         vardiffRetuneSeconds: envInt("B3POOL_STRATUM_VARDIFF_RETUNE_S", 30),
+        workerDifficulty: parseWorkerDifficulty(env("B3POOL_WORKER_DIFF", "")),
     },
     pool: {
         feePercent: envFloat("B3POOL_FEE_PERCENT", 1.0),

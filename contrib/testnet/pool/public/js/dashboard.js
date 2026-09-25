@@ -9,10 +9,14 @@
     return h.toFixed(2) + " H/s";
   }
 
-  var initial = (window.__userBuckets || []).map(function (b) {
+  function readJson(id, fallback) {
+    var node = document.getElementById(id);
+    try { return JSON.parse(node ? node.textContent || "" : ""); } catch (e) { return fallback; }
+  }
+  var initial = (readJson("user-buckets", []) || []).map(function (b) {
     return { x: new Date(b.bucket_at).getTime(), y: parseFloat(b.hashrate_hps) };
   });
-  var stats = window.__userInitial || {};
+  var stats = readJson("user-initial", {}) || {};
 
   var hashEl = document.getElementById("user-hashrate");
   var workersEl = document.getElementById("user-workers");
@@ -40,28 +44,48 @@
       animation: false,
       responsive: true,
       scales: {
-        x: { type: "linear", ticks: { callback: function (v) { return new Date(v).toLocaleTimeString(); } } },
-        y: { ticks: { callback: function (v) { return fmtH(v); } } },
+        x: { type: "linear", title: { display: true, text: "Time" }, ticks: { callback: function (v) { return new Date(v).toLocaleTimeString(); } } },
+        y: { title: { display: true, text: "Hashrate (H/s)" }, ticks: { callback: function (v) { return fmtH(v); } } },
       },
       plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
     },
   });
 
-  function pushPoint(t, y) {
-    if (!chart) return;
-    var ds = chart.data.datasets[0].data;
-    ds.push({ x: t, y: y });
-    var cutoff = Date.now() - 24 * 3600 * 1000;
-    while (ds.length > 0 && ds[0].x < cutoff) ds.shift();
-    chart.update("none");
-  }
+  document.querySelectorAll(".range-row button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var range = btn.getAttribute("data-range");
+      fetch("/api/me/buckets?range=" + encodeURIComponent(range))
+        .then(function (r) { return r.json(); })
+        .then(function (rows) {
+          if (!chart) return;
+          chart.data.datasets[0].data = (rows || []).map(function (b) {
+            return { x: new Date(b.bucket_at).getTime(), y: parseFloat(b.hashrate_hps) };
+          });
+          chart.update("none");
+        })
+        .catch(function () {});
+    });
+  });
 
   var s = io("/me", { path: "/socket.io/" });
+  var live = document.getElementById("live-status");
+  function showDisconnected() {
+    if (!live) return;
+    live.hidden = false;
+    live.textContent = "Live updates disconnected.";
+  }
+  function clearDisconnected() {
+    if (!live) return;
+    live.hidden = true;
+    live.textContent = "";
+  }
+  s.on("connect", clearDisconnected);
+  s.on("disconnect", showDisconnected);
+  s.on("connect_error", showDisconnected);
   s.on("hashrate:update", function (msg) {
     if (hashEl) hashEl.textContent = fmtH(msg.hashrate);
     if (workersEl) workersEl.textContent = msg.activeWorkers;
     if (balanceEl) balanceEl.textContent = (msg.balance || 0).toFixed(8);
-    pushPoint(msg.t, msg.hashrate);
   });
   s.on("block:found", function (msg) {
     var n = document.createElement("div");

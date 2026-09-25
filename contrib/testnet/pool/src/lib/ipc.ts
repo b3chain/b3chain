@@ -20,7 +20,16 @@ export type ShareEvent = {
     timestampMs: number;
 };
 
-export type IpcMessage = ShareEvent;
+export type RejectEvent = {
+    type: "reject";
+    user: string;
+    workerName: string;
+    reason: "duplicate" | "low-diff" | "invalid" | "other";
+    diff: number;
+    timestampMs: number;
+};
+
+export type IpcMessage = ShareEvent | RejectEvent;
 
 export class IpcServer extends EventEmitter {
     private server: net.Server;

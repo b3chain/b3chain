@@ -31,6 +31,7 @@ export const sharedPadCache = new PadCache(8);
 export type ShareCheckOk = {
     ok: true;
     isBlock: boolean;
+    meetsShare: boolean;
     powHashHexBE: string;
     powInt: bigint;
     blockHashHexBE: string;
@@ -98,6 +99,17 @@ export function buildHeader(s: ShareInput): {
     };
 }
 
+export function classifyCandidate(
+    powInt: bigint,
+    shareTarget: bigint,
+    networkTarget: bigint,
+): { ok: true; isBlock: boolean; meetsShare: boolean } | { ok: false; reason: "low-diff" } {
+    const isBlock = powInt <= networkTarget;
+    const meetsShare = powInt <= shareTarget;
+    if (!meetsShare && !isBlock) return { ok: false, reason: "low-diff" };
+    return { ok: true, isBlock, meetsShare };
+}
+
 export function validateShare(
     s: ShareInput,
     padCache: PadCache = sharedPadCache,
@@ -126,11 +138,9 @@ export function validateShare(
     // Share target derived from current connection difficulty.
     const shareTarget = targetFromShareDifficulty(s.shareDifficulty);
 
-    if (powInt > shareTarget) {
-        return { ok: false, reason: "low-diff" };
-    }
-
-    const isBlock = powInt <= networkTarget;
+    const classified = classifyCandidate(powInt, shareTarget, networkTarget);
+    if (!classified.ok) return classified;
+    const { isBlock, meetsShare } = classified;
     const blockHashLE = doubleSha256Local(header);
     const blockHashHexBE = bytesToHex(reverseBytes(blockHashLE));
 
@@ -142,6 +152,7 @@ export function validateShare(
     return {
         ok: true,
         isBlock,
+        meetsShare,
         powHashHexBE: bytesToHex(reverseBytes(powLE)),
         powInt,
         blockHashHexBE,

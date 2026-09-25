@@ -13,16 +13,28 @@ import { Server as HttpServer } from "http";
 import cookieSession from "cookie-session";
 import { config } from "../config";
 import { query } from "../lib/db";
+import { consumeNew } from "../lib/event-cursor";
+import { userIdForSession } from "./session-store";
+import { shareHashrateHps, SHARE_HASHRATE_WINDOW_SECONDS } from "../lib/pool-stats";
 import { Logger, makeLogger } from "../lib/logger";
 import * as http from "http";
 
 interface StratumStats {
     miners: number;
-    hashrate: number;
     lastJobHeight: number | null;
+    connections?: LiveConnection[];
 }
 
-async function fetchStratumStats(): Promise<StratumStats> {
+export interface LiveConnection {
+    user: string;
+    worker: string;
+    difficulty: number;
+    accepted: number;
+    rejected: number;
+    lastShareAt: number | null;
+}
+
+export async function fetchStratumStats(): Promise<StratumStats> {
     return new Promise((resolve) => {
         const req = http.get({ host: "127.0.0.1", port: 3334, path: "/stats", timeout: 1500 }, (res) => {
             let buf = "";
@@ -31,14 +43,14 @@ async function fetchStratumStats(): Promise<StratumStats> {
                 try {
                     resolve(JSON.parse(buf));
                 } catch {
-                    resolve({ miners: 0, hashrate: 0, lastJobHeight: null });
+                    resolve({ miners: 0, lastJobHeight: null, connections: [] });
                 }
             });
         });
-        req.on("error", () => resolve({ miners: 0, hashrate: 0, lastJobHeight: null }));
+        req.on("error", () => resolve({ miners: 0, lastJobHeight: null, connections: [] }));
         req.on("timeout", () => {
             req.destroy();
-            resolve({ miners: 0, hashrate: 0, lastJobHeight: null });
+            resolve({ miners: 0, lastJobHeight: null, connections: [] });
         });
     });
 }
@@ -76,6 +88,9 @@ export class SocketIoBus {
     private log: Logger;
     private tickTimer: NodeJS.Timeout | null = null;
     public lastBlock: { height: number; hash: string } | null = null;
+    /** Null until the first tick records the current max ids. */
+    private blockCursor: number | null = null;
+    private payoutCursor: number | null = null;
 
     constructor(httpServer: HttpServer) {
         this.log = makeLogger("socket");
@@ -99,11 +114,15 @@ export class SocketIoBus {
                 fakeRes,
                 (err) => {
                     if (err) return next(err);
-                    const sess = (socket.request as unknown as { session?: { userId?: number } }).session;
-                    if (!sess?.userId) return next(new Error("unauthorized"));
-                    (socket.data as { userId: number }).userId = sess.userId;
-                    socket.join(`user:${sess.userId}`);
-                    next();
+                    const sess = (socket.request as unknown as { session?: { sid?: string } }).session;
+                    const sid = sess?.sid;
+                    if (!sid) return next(new Error("unauthorized"));
+                    void userIdForSession(sid).then((uid) => {
+                        if (!uid) return next(new Error("unauthorized"));
+                        (socket.data as { userId: number }).userId = uid;
+                        socket.join(`user:${uid}`);
+                        next();
+                    }, (err) => next(err as Error));
                 }
             );
         });
@@ -123,6 +142,7 @@ export class SocketIoBus {
 
     async tick(): Promise<void> {
         await this.pushPool();
+        await this.pollNewRows();
         // Push per-user updates only to rooms with at least one subscriber.
         const me = this.io.of("/me");
         const rooms = me.adapter.rooms;
@@ -134,13 +154,89 @@ export class SocketIoBus {
     }
 
     async pushPool(): Promise<void> {
-        const stats = await fetchStratumStats();
+        const [stats, diffRows, blockRows] = await Promise.all([
+            fetchStratumStats(),
+            query<{ d: string }>(
+                `SELECT COALESCE(SUM(diff), 0)::float8::text AS d
+                   FROM shares
+                  WHERE submitted_at >= NOW() - interval '5 minutes'`
+            ),
+            query<{ n: string }>("SELECT COUNT(*)::text AS n FROM blocks"),
+        ]);
+        const totalDiff = parseFloat(diffRows[0]?.d ?? "0");
         this.io.emit("hashrate:update", {
-            hashrate: stats.hashrate,
+            hashrate: shareHashrateHps(totalDiff, SHARE_HASHRATE_WINDOW_SECONDS),
             miners: stats.miners,
             height: stats.lastJobHeight,
+            blocksFound: parseInt(blockRows[0]?.n ?? "0", 10) || 0,
             t: Date.now(),
         });
+    }
+
+    async pollNewRows(): Promise<void> {
+        if (this.blockCursor === null || this.payoutCursor === null) {
+            const [b, p] = await Promise.all([
+                query<{ n: string }>("SELECT COALESCE(MAX(id), 0)::text AS n FROM blocks"),
+                query<{ n: string }>("SELECT COALESCE(MAX(id), 0)::text AS n FROM payouts"),
+            ]);
+            this.blockCursor = parseInt(b[0]?.n ?? "0", 10) || 0;
+            this.payoutCursor = parseInt(p[0]?.n ?? "0", 10) || 0;
+            return;
+        }
+        const blocks = await query<{
+            id: string;
+            height: string;
+            hash: string;
+            reward_b3c: string;
+            finder_user_id: string | null;
+            found_at: string;
+        }>(
+            `SELECT id, height, hash, reward_b3c, finder_user_id, found_at
+               FROM blocks WHERE id > $1 ORDER BY id ASC`,
+            [this.blockCursor]
+        );
+        const blockStep = consumeNew(
+            this.blockCursor,
+            blocks.map((row) => ({
+                id: parseInt(row.id, 10),
+                height: parseInt(row.height, 10),
+                hash: row.hash,
+                reward: row.reward_b3c,
+                finderUserId: row.finder_user_id ? parseInt(row.finder_user_id, 10) : null,
+                foundAt: row.found_at,
+            }))
+        );
+        this.blockCursor = blockStep.cursor;
+        for (const row of blockStep.fresh) {
+            this.notifyBlockFound(row.height, row.hash, row.finderUserId, row.reward, row.foundAt);
+        }
+
+        const payouts = await query<{
+            id: string;
+            txid: string | null;
+            user_id: string;
+            amount_b3c: string;
+        }>(
+            `SELECT p.id, p.txid, pr.user_id, pr.amount_b3c
+               FROM payouts p
+               JOIN payout_recipients pr ON pr.payout_id = p.id
+              WHERE p.id > $1
+              ORDER BY p.id ASC`,
+            [this.payoutCursor]
+        );
+        const payStep = consumeNew(
+            this.payoutCursor,
+            payouts.map((row) => ({
+                id: parseInt(row.id, 10),
+                userId: parseInt(row.user_id, 10),
+                amount: parseFloat(row.amount_b3c),
+                txid: row.txid ?? "",
+            }))
+        );
+        this.payoutCursor = payStep.cursor;
+        for (const row of payStep.fresh) {
+            this.notifyPayout(row.userId, row.amount, row.txid);
+        }
     }
 
     async pushUser(userId: number): Promise<void> {
@@ -151,9 +247,15 @@ export class SocketIoBus {
         });
     }
 
-    notifyBlockFound(height: number, hash: string, finderUserId: number | null): void {
+    notifyBlockFound(
+        height: number,
+        hash: string,
+        finderUserId: number | null,
+        reward?: string,
+        foundAt?: string
+    ): void {
         this.lastBlock = { height, hash };
-        this.io.emit("block:found", { height, hash, t: Date.now() });
+        this.io.emit("block:found", { height, hash, reward: reward ?? null, foundAt: foundAt ?? null, t: Date.now() });
         if (finderUserId !== null) {
             this.io.of("/me").to(`user:${finderUserId}`).emit("block:found", { height, hash, t: Date.now() });
         }

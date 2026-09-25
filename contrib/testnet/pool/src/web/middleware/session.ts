@@ -14,7 +14,7 @@ export function sessionMiddleware() {
 }
 
 export interface PoolSession {
-    userId?: number;
+    sid?: string;
     pendingTotpUserId?: number;
     flashSuccess?: string;
     flashError?: string;

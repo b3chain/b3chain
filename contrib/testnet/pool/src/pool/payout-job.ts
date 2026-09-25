@@ -7,6 +7,7 @@ import { config } from "../config";
 import { sendMany, getWalletBalance } from "../lib/rpc";
 import { Logger } from "../lib/logger";
 import { isValidB3AddressForNetwork } from "../lib/address";
+import { sendEmail } from "../email/send";
 
 export class PayoutJob {
     private timer: NodeJS.Timeout | null = null;
@@ -55,7 +56,7 @@ export class PayoutJob {
         );
 
         const targets: Record<string, number> = {};
-        const debitPlan: { userId: number; amount: number; address: string }[] = [];
+        const debitPlan: { userId: number; amount: number; address: string; email: string }[] = [];
         let total = 0;
         for (const c of candidates) {
             const balance = parseFloat(c.balance);
@@ -68,7 +69,7 @@ export class PayoutJob {
             const amount = Number(balance.toFixed(8));
             // sendmany aggregates duplicate addresses — be safe.
             targets[c.payout_address] = (targets[c.payout_address] ?? 0) + amount;
-            debitPlan.push({ userId: parseInt(c.id, 10), amount, address: c.payout_address });
+            debitPlan.push({ userId: parseInt(c.id, 10), amount, address: c.payout_address, email: c.email });
             total += amount;
         }
 
@@ -126,5 +127,17 @@ export class PayoutJob {
             }
         });
         this.log.info({ txid, total, recipients: debitPlan.length }, "payout sent");
+        for (const d of debitPlan) {
+            try {
+                await sendEmail(
+                    d.email,
+                    "B3Chain pool payout",
+                    `A payout of ${d.amount.toFixed(8)} B3C was sent to ${d.address}.\nTransaction: ${txid}\n`,
+                    this.log
+                );
+            } catch (e) {
+                this.log.error({ err: (e as Error).message, userId: d.userId }, "payout email failed");
+            }
+        }
     }
 }

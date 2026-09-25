@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><%= title %> · B3Chain Pool</title>
-<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/style.css?v=20260926">
 </head>
 <body>
 <header class="site-nav">
@@ -16,6 +16,9 @@
       <a href="/getting-started" class="<%= path === '/getting-started' ? 'active' : '' %>">Getting started</a>
       <% if (user) { %>
         <a href="/dashboard" class="<%= path.startsWith('/dashboard') ? 'active' : '' %>">Dashboard</a>
+        <% if (user.isAdmin) { %>
+          <a href="/admin" class="<%= path.startsWith('/admin') ? 'active' : '' %>">Admin</a>
+        <% } %>
         <form method="post" action="/auth/logout" class="inline-form">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <button class="link-button" type="submit">Log out</button>

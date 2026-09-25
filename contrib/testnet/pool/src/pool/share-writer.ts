@@ -5,9 +5,10 @@
 // users.email — are still counted in pool_hashrate_buckets so the public
 // landing page is meaningful, but skipped from per-user tables.
 
-import { ShareEvent } from "../lib/ipc";
+import { RejectEvent, ShareEvent } from "../lib/ipc";
 import { query, tx } from "../lib/db";
 import { hashrateFromShares } from "../lib/difficulty-math";
+import { rejectColumn } from "../lib/reject-reason";
 import { Logger } from "../lib/logger";
 
 interface BufferedShare extends ShareEvent {
@@ -24,6 +25,9 @@ export class ShareWriter {
     private userIdCache = new Map<string, number>();
     private workerIdCache = new Map<string, number>();
     public lastBucketAt: Date | null = null;
+    /** Accepted shares with no user row, keyed by minute start (ms). */
+    private anonByMinute = new Map<number, { diff: number; count: number }>();
+    private rejectBuf: Array<RejectEvent & { userId: number; workerId: number }> = [];
 
     constructor(private log: Logger) {}
 
@@ -47,6 +51,14 @@ export class ShareWriter {
         const workerId = userId !== null ? await this.resolveWorkerId(userId, s.workerName) : null;
         this.buf.push({ ...s, userId, workerId });
         if (this.buf.length > 500) await this.flush();
+    }
+
+    async acceptReject(s: RejectEvent): Promise<void> {
+        const userId = await this.resolveUserId(s.user);
+        if (userId === null) return;
+        const workerId = await this.resolveWorkerId(userId, s.workerName);
+        this.rejectBuf.push({ ...s, userId, workerId });
+        if (this.rejectBuf.length > 500) await this.flush();
     }
 
     private async resolveUserId(email: string): Promise<number | null> {
@@ -80,8 +92,9 @@ export class ShareWriter {
     }
 
     private async flush(): Promise<void> {
-        if (this.buf.length === 0) return;
+        if (this.buf.length === 0 && this.rejectBuf.length === 0) return;
         const batch = this.buf.splice(0);
+        const rejects = this.rejectBuf.splice(0);
         try {
             await tx(async (c) => {
                 for (const s of batch) {
@@ -91,12 +104,42 @@ export class ShareWriter {
                          VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))`,
                         [s.userId, s.workerId, s.diff, s.isBlock, s.blockHash ?? null, s.timestampMs]
                     );
+                    await c.query(
+                        `UPDATE workers SET last_difficulty = $2, last_seen_at = to_timestamp($3 / 1000.0)
+                          WHERE id = $1`,
+                        [s.workerId, s.diff, s.timestampMs]
+                    );
+                }
+                for (const r of rejects) {
+                    const column = rejectColumn(r.reason);
+                    await c.query(
+                        `UPDATE workers
+                            SET ${column} = ${column} + 1,
+                                last_reject_reason = $2,
+                                last_reject_at = to_timestamp($3 / 1000.0),
+                                last_seen_at = to_timestamp($3 / 1000.0)
+                          WHERE id = $1`,
+                        [r.workerId, r.reason, r.timestampMs]
+                    );
                 }
             });
+            for (const s of batch) {
+                if (s.userId !== null) continue;
+                this.addAnon(s.timestampMs, s.diff);
+            }
         } catch (e) {
             this.log.error({ err: (e as Error).message }, "share flush failed (re-queueing)");
             this.buf.unshift(...batch);
+            this.rejectBuf.unshift(...rejects);
         }
+    }
+
+    private addAnon(timestampMs: number, diff: number): void {
+        const key = minuteStartMs(timestampMs);
+        const cur = this.anonByMinute.get(key) ?? { diff: 0, count: 0 };
+        cur.diff += diff;
+        cur.count += 1;
+        this.anonByMinute.set(key, cur);
     }
 
     private async rollBucket(): Promise<void> {
@@ -142,7 +185,18 @@ export class ShareWriter {
                             miners_online = EXCLUDED.miners_online`,
                     [target.toISOString()]
                 );
+                const anon = this.anonByMinute.get(target.getTime());
+                if (anon && anon.count > 0) {
+                    await c.query(
+                        `UPDATE pool_hashrate_buckets
+                            SET hashrate_hps = hashrate_hps + $2,
+                                shares_count = shares_count + $3
+                          WHERE bucket_at = $1::timestamptz`,
+                        [target.toISOString(), hashrateFromShares(anon.diff, 60), anon.count]
+                    );
+                }
             });
+            this.anonByMinute.delete(target.getTime());
         } catch (e) {
             this.log.error({ err: (e as Error).message }, "bucket roll failed");
         }
@@ -151,4 +205,10 @@ export class ShareWriter {
 
 export function estimateHashrate(totalDiff: number, windowSeconds: number): number {
     return hashrateFromShares(totalDiff, windowSeconds);
+}
+
+function minuteStartMs(timestampMs: number): number {
+    const d = new Date(timestampMs);
+    d.setSeconds(0, 0);
+    return d.getTime();
 }

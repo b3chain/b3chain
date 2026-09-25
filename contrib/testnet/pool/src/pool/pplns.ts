@@ -5,6 +5,9 @@
 import { query, tx } from "../lib/db";
 import { config } from "../config";
 import { Logger } from "../lib/logger";
+import { userCreditFromShares } from "../lib/pplns-math";
+
+export { userCreditFromShares } from "../lib/pplns-math";
 
 export async function creditPplns(blockId: number, log: Logger): Promise<void> {
     const blocks = await query<{
@@ -96,6 +99,34 @@ export async function creditPplns(blockId: number, log: Logger): Promise<void> {
         },
         "PPLNS credited"
     );
+}
+
+export async function previewImmatureB3c(userId: number): Promise<number> {
+    const blocks = await query<{ id: string; reward_b3c: string; found_at: string }>(
+        `SELECT id, reward_b3c, found_at
+           FROM blocks
+          WHERE NOT is_confirmed AND NOT is_orphan
+          ORDER BY id ASC`
+    );
+    let total = 0;
+    const N = config.pool.pplnsNShares;
+    for (const b of blocks) {
+        const shares = await query<{ user_id: string; diff: string }>(
+            `SELECT user_id, diff
+               FROM shares
+              WHERE submitted_at <= $1::timestamptz
+              ORDER BY submitted_at DESC, id DESC
+              LIMIT $2`,
+            [b.found_at, N]
+        );
+        total += userCreditFromShares(
+            shares.map((s) => ({ userId: parseInt(s.user_id, 10), diff: parseFloat(s.diff) })),
+            userId,
+            parseFloat(b.reward_b3c),
+            config.pool.feePercent
+        );
+    }
+    return Number(total.toFixed(8));
 }
 
 // Return the per-user share contribution and projected payout if a block

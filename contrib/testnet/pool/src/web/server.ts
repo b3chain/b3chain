@@ -6,6 +6,7 @@ import { loadCurrentUser } from "./middleware/auth";
 import { publicRoutes } from "./routes/public";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
+import { adminRoutes } from "./routes/admin";
 import { metricsRoutes } from "./routes/metrics";
 import { apiLimiter } from "./middleware/ratelimit";
 import { config } from "../config";
@@ -46,6 +47,7 @@ export function buildApp(): Application {
     app.use("/", publicRoutes());
     app.use("/auth", authRoutes());
     app.use("/dashboard", dashboardRoutes());
+    app.use("/admin", adminRoutes());
 
     app.use((_req, res) => {
         res.status(404).render("error", { title: "Not found", message: "Page not found." });

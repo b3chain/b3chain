@@ -10,7 +10,8 @@ import { JobManager, StratumJob } from "./job-manager";
 import { validateShare } from "./share-validator";
 import { Logger, makeLogger } from "../lib/logger";
 import { config } from "../config";
-import { IpcClient, ShareEvent } from "../lib/ipc";
+import { IpcClient, RejectEvent, ShareEvent } from "../lib/ipc";
+import { normalizeRejectReason } from "../lib/reject-reason";
 import { submitBlock } from "../lib/rpc";
 import { networkDifficultyFromBits } from "../lib/difficulty-math";
 
@@ -52,6 +53,44 @@ export class StratumServer {
         return this.clients.size;
     }
 
+    public connectionStats(): Array<{
+        user: string;
+        worker: string;
+        difficulty: number;
+        accepted: number;
+        rejected: number;
+        lastShareAt: number | null;
+    }> {
+        const out = [];
+        for (const c of this.clients.values()) {
+            if (c.state !== "authorized" || !c.username) continue;
+            const [user, worker] = splitUserName(c.username);
+            out.push({
+                user,
+                worker,
+                difficulty: c.vardiff.diff,
+                accepted: c.sharesAccepted,
+                rejected: c.sharesRejected,
+                lastShareAt: c.lastShareAt > 0 ? c.lastShareAt : null,
+            });
+        }
+        return out;
+    }
+
+    private sendReject(c: StratumClient, reason: string): void {
+        if (!c.username) return;
+        const [user, worker] = splitUserName(c.username);
+        const evt: RejectEvent = {
+            type: "reject",
+            user,
+            workerName: worker,
+            reason: normalizeRejectReason(reason),
+            diff: c.vardiff.diff,
+            timestampMs: Date.now(),
+        };
+        this.ipc.send(evt);
+    }
+
     public estimatedHashrate(): number {
         // Sum of (currentDiff / vardiff.targetSeconds) * 2^32 across connections.
         let totalDiffPerSecond = 0;
@@ -69,10 +108,12 @@ export class StratumServer {
         this.retuneTimer = setInterval(() => {
             const now = Date.now();
             for (const c of this.clients.values()) {
+                if (!config.stratum.vardiffEnabled) continue;
                 const next = c.vardiff.maybeRetune(now);
                 if (next !== null) {
                     c.pushDifficulty(next);
-                    if (c.lastJob) c.pushJob({ ...c.lastJob, cleanJobs: false });
+                    // New difficulty applies to the next notify, not shares
+                    // already stamped on the current job id.
                 }
             }
         }, 5_000);
@@ -118,15 +159,13 @@ export class StratumServer {
                     break;
                 case "mining.suggest_difficulty": {
                     const want = Number((msg.params as unknown[])[0] ?? 0);
-                    if (want > 0) {
-                        const clamped = Math.min(
-                            Math.max(want, c.vardiff.params.minDiff),
-                            c.vardiff.params.maxDiff
-                        );
-                        c.pushDifficulty(clamped);
-                        // No retune for explicit suggestion; vardiff still adapts.
+                    try {
+                        const applied = c.vardiff.setDiff(want);
+                        c.pushDifficulty(applied);
+                        c.sendResult(msg.id ?? null, true);
+                    } catch (e) {
+                        c.sendError(msg.id ?? null, 23, (e as Error).message);
                     }
-                    c.sendResult(msg.id ?? null, true);
                     break;
                 }
                 case "mining.suggest_target":
@@ -166,6 +205,10 @@ export class StratumServer {
         }
         c.username = username;
         c.state = "authorized";
+        const pinned = config.stratum.workerDifficulty.get(username);
+        if (pinned !== undefined) {
+            c.vardiff.setDiff(pinned);
+        }
         c.sendResult(msg.id ?? null, true);
 
         // Push initial difficulty + current job.
@@ -177,6 +220,8 @@ export class StratumServer {
 
     private async onSubmit(c: StratumClient, msg: RpcCall): Promise<void> {
         if (c.state !== "authorized") {
+            c.sharesRejected++;
+            this.sendReject(c, "other");
             c.sendError(msg.id ?? null, 24, "Unauthorized worker");
             return;
         }
@@ -187,16 +232,22 @@ export class StratumServer {
         const ntime = parseInt(String(ntimeAny ?? ""), 16);
         const nonce = parseInt(String(nonceAny ?? ""), 16);
         if (!jobId || en2.length !== c.extranonce2Size * 2 || !Number.isFinite(ntime) || !Number.isFinite(nonce)) {
+            c.sharesRejected++;
+            this.sendReject(c, "other");
             c.sendError(msg.id ?? null, 23, "Invalid params");
             return;
         }
         const job = this.jobs.getById(jobId);
         if (!job) {
+            c.sharesRejected++;
+            this.sendReject(c, "other");
             c.sendResult(msg.id ?? null, false);
             return;
         }
         const dedupKey = `${jobId}:${en2}:${ntime}:${nonce}`;
         if (c.seenShares.has(dedupKey)) {
+            c.sharesRejected++;
+            this.sendReject(c, "duplicate");
             c.sendError(msg.id ?? null, 22, "Duplicate share");
             return;
         }
@@ -210,23 +261,27 @@ export class StratumServer {
             }
         }
 
+        const assigned = c.jobShareDiff.get(jobId) ?? c.vardiff.diff;
         const check = validateShare({
             job,
             extranonce1Hex: c.extranonce1Hex,
             extranonce2Hex: en2,
             ntime,
             nonce,
-            shareDifficulty: c.vardiff.diff,
+            shareDifficulty: assigned,
         });
         if (!check.ok) {
             c.sharesRejected++;
+            this.sendReject(c, check.reason);
             c.sendError(msg.id ?? null, 23, `low difficulty: ${check.reason}`);
             return;
         }
 
-        c.sharesAccepted++;
+        if (check.meetsShare) {
+            c.sharesAccepted++;
+            c.vardiff.onShareAccepted();
+        }
         c.lastShareAt = Date.now();
-        c.vardiff.onShareAccepted();
         c.sendResult(msg.id ?? null, true);
 
         const [emailPart, workerPart] = splitUserName(c.username);
@@ -256,7 +311,7 @@ export class StratumServer {
             type: "share",
             user: emailPart,
             workerName: workerPart,
-            diff: c.vardiff.diff,
+            diff: check.meetsShare ? assigned : networkDifficulty,
             isBlock: !!blockHash,
             blockHash,
             blockHeight,
@@ -267,8 +322,8 @@ export class StratumServer {
     }
 }
 
-function splitUserName(s: string): [string, string] {
-    const dot = s.indexOf(".");
-    if (dot < 0) return [s, "default"];
+export function splitUserName(s: string): [string, string] {
+    const dot = s.lastIndexOf(".");
+    if (dot <= 0 || dot === s.length - 1) return [s, "default"];
     return [s.slice(0, dot), s.slice(dot + 1)];
 }

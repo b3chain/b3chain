@@ -43,6 +43,7 @@ async function main(): Promise<void> {
                 miners: server.clientCount(),
                 hashrate: server.estimatedHashrate(),
                 lastJobHeight: jobs.getCurrent()?.height ?? null,
+                connections: server.connectionStats(),
             });
             res.writeHead(200, { "content-type": "application/json" });
             res.end(body);

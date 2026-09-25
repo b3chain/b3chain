@@ -1,0 +1,76 @@
+<%- include('partials/header') %>
+
+<section>
+  <h1>Admin</h1>
+  <p class="muted">Read only. Chain tip <%= chainTip == null ? "—" : chainTip %>.</p>
+  <h2>Connected miners</h2>
+  <% if (connections.length === 0) { %>
+    <p class="muted">No authorized connections.</p>
+  <% } else { %>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>User</th><th>Worker</th><th>Difficulty</th><th>Accepted</th><th>Rejected</th><th>Last share</th></tr></thead>
+      <tbody>
+      <% connections.forEach(c => { %>
+        <tr>
+          <td><%= c.user %></td>
+          <td class="mono"><%= c.worker %></td>
+          <td><%= c.difficulty %></td>
+          <td><%= c.accepted %></td>
+          <td><%= c.rejected %></td>
+          <td class="muted"><% if (c.lastShareAt) { %><time data-ts="<%= new Date(c.lastShareAt).toISOString() %>"><%= c.lastShareAt %></time><% } else { %>—<% } %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+  <% } %>
+</section>
+
+<section>
+  <h2>Payout queue</h2>
+  <p class="muted">Accounts that match the hourly payout job: verified, valid address, balance at or above their minimum.</p>
+  <% if (ready.length === 0) { %>
+    <p class="muted">None.</p>
+  <% } else { %>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Email</th><th>Balance</th><th>Minimum</th><th>Address</th></tr></thead>
+      <tbody>
+      <% ready.forEach(u => { %>
+        <tr>
+          <td><%= u.email %></td>
+          <td><%= Number(u.balance).toFixed(8) %> B3C</td>
+          <td><%= Number(u.minimum_payout_b3c).toFixed(2) %> B3C</td>
+          <td class="mono"><%= u.payout_address %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+  <% } %>
+</section>
+
+<section>
+  <h2>Recent orphans</h2>
+  <% if (orphans.length === 0) { %>
+    <p class="muted">None.</p>
+  <% } else { %>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Height</th><th>Hash</th><th>Found</th></tr></thead>
+      <tbody>
+      <% orphans.forEach(b => { %>
+        <tr>
+          <td><%= b.height %></td>
+          <td class="mono"><a href="/blocks/<%= b.hash %>"><%= String(b.hash).slice(0, 16) %>…</a></td>
+          <td class="muted"><time data-ts="<%= b.found_at %>"><%= b.found_at %></time></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

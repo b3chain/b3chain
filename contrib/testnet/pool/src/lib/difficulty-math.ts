@@ -39,13 +39,25 @@ export function bigIntFromBytesBE(b: Uint8Array): bigint {
     return n;
 }
 
+/** Smallest share difficulty the 1e6 fixed-point conversion can represent. */
+export const MIN_SHARE_DIFFICULTY = 0.000001;
+
 export function targetFromShareDifficulty(shareDiff: number): bigint {
-    if (shareDiff <= 0) throw new Error("share diff must be > 0");
-    // shareTarget = floor(POOL_DIFF1_TARGET / shareDiff)
-    // Use string conversion to keep precision for fractional difficulties.
+    if (!Number.isFinite(shareDiff) || shareDiff <= 0) {
+        throw new Error("share diff must be a finite number > 0");
+    }
+    if (shareDiff < MIN_SHARE_DIFFICULTY) {
+        throw new Error(
+            `share diff ${shareDiff} is below ${MIN_SHARE_DIFFICULTY}; ` +
+            "the 1e6 scale would collapse it to an all-accepting target"
+        );
+    }
+    // shareTarget = floor(POOL_DIFF1_TARGET * scale / round(shareDiff * scale))
     const scale = 1_000_000n;
-    const scaledDiff = BigInt(Math.floor(shareDiff * Number(scale)));
-    if (scaledDiff === 0n) return MAX_UINT256;
+    const scaledDiff = BigInt(Math.round(shareDiff * Number(scale)));
+    if (scaledDiff <= 0n) {
+        throw new Error(`share diff ${shareDiff} failed fixed-point conversion`);
+    }
     return (POOL_DIFF1_TARGET * scale) / scaledDiff;
 }
 

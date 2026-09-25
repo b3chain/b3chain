@@ -22,6 +22,10 @@ async function main(): Promise<void> {
     const payouts = new PayoutJob(makeLogger("payout-job"));
 
     ipc.on("message", (msg: IpcMessage) => {
+        if (msg.type === "reject") {
+            void writer.acceptReject(msg);
+            return;
+        }
         if (msg.type !== "share") return;
         void writer.accept(msg);
         if (msg.isBlock) void recordFoundBlock(msg, log);

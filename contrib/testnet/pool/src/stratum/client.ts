@@ -6,6 +6,7 @@ import { Vardiff, VardiffParams } from "./difficulty";
 import { Logger } from "../lib/logger";
 import { config } from "../config";
 import { StratumJob } from "./job-manager";
+import { networkDifficultyFromBits, MIN_SHARE_DIFFICULTY } from "../lib/difficulty-math";
 
 export interface RpcCall {
     id: number | string | null;
@@ -35,6 +36,8 @@ export class StratumClient extends EventEmitter {
     public sharesRejected = 0;
     public connectedAt = Date.now();
     public lastJob: StratumJob | null = null;
+    /** Share difficulty stamped when that job id was last sent. */
+    public readonly jobShareDiff = new Map<string, number>();
     public ip: string;
     public seenShares = new Set<string>();
     private buf = "";
@@ -47,8 +50,8 @@ export class StratumClient extends EventEmitter {
         const params: VardiffParams = {
             targetSeconds: config.stratum.vardiffTargetSeconds,
             retuneSeconds: config.stratum.vardiffRetuneSeconds,
-            minDiff: 64,
-            maxDiff: 16_000_000,
+            minDiff: config.stratum.minDifficulty,
+            maxDiff: config.stratum.maxDifficulty,
             initialDiff: config.stratum.defaultDifficulty,
             maxStep: 4,
         };
@@ -107,8 +110,23 @@ export class StratumClient extends EventEmitter {
         this.sendNotify("mining.set_difficulty", [d]);
     }
 
+    /** Cap the connection difficulty so it is never harder than this job's network target. */
+    stampJob(job: StratumJob): number {
+        const network = networkDifficultyFromBits(job.bits);
+        let d = this.vardiff.diff;
+        if (Number.isFinite(network) && network > 0 && d > network) d = network;
+        const existing = this.jobShareDiff.get(job.jobId);
+        if (existing !== undefined) return existing;
+        if (!Number.isFinite(d) || d < MIN_SHARE_DIFFICULTY) {
+            throw new Error(`job ${job.jobId} share difficulty ${d} is below ${MIN_SHARE_DIFFICULTY}`);
+        }
+        this.jobShareDiff.set(job.jobId, d);
+        return d;
+    }
+
     pushJob(job: StratumJob): void {
         this.lastJob = job;
+        this.stampJob(job);
         this.sendNotify("mining.notify", [
             job.jobId,
             job.prevHashHexBE,
