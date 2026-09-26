@@ -290,6 +290,11 @@ path.write_text(text)
 PY
 fi
 
+LABELS_PATCH="$(cd "$(dirname "$0")" && pwd)/patch-script-labels.py"
+if [ -f "$LABELS_PATCH" ]; then
+    EXP_DIR="$EXP_DIR" python3 "$LABELS_PATCH"
+fi
+
 systemctl restart b3chain-explorer.service
 sleep 5
 if ! systemctl is-active --quiet b3chain-explorer.service; then

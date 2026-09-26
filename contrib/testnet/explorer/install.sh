@@ -493,6 +493,7 @@ if [ -d "$OVERLAY_SRC" ]; then
     cp -f "$OVERLAY_SRC/app/services/b3-pool-identifier.js"   "$OVERLAY_DST/app/services/b3-pool-identifier.js"
     cp -f "$OVERLAY_SRC/app/services/b3-daily-aggregator.js"  "$OVERLAY_DST/app/services/b3-daily-aggregator.js"
     cp -f "$OVERLAY_SRC/app/services/b3-mempool-feed.js"      "$OVERLAY_DST/app/services/b3-mempool-feed.js"
+    cp -f "$OVERLAY_SRC/app/services/b3-script-labels.js"     "$OVERLAY_DST/app/services/b3-script-labels.js"
     cp -f "$OVERLAY_SRC/views/b3-charts/index.pug"            "$OVERLAY_DST/views/b3-charts/index.pug"
     cp -f "$OVERLAY_SRC/views/b3-charts/chart-detail.pug"     "$OVERLAY_DST/views/b3-charts/chart-detail.pug"
     cp -f "$OVERLAY_SRC/views/b3-mempool/live.pug"            "$OVERLAY_DST/views/b3-mempool/live.pug"
@@ -511,6 +512,7 @@ if [ -d "$OVERLAY_SRC" ]; then
         "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
         "$OVERLAY_DST/app/services/b3-mempool-feed.js" \
+        "$OVERLAY_DST/app/services/b3-script-labels.js" \
         "$OVERLAY_DST/routes/b3-charts-router.js" \
         "$OVERLAY_DST/routes/b3-mempool-router.js" \
         "$OVERLAY_DST/b3-bootstrap.js" \
@@ -527,6 +529,7 @@ if [ -d "$OVERLAY_SRC" ]; then
         "$OVERLAY_DST/app/services/b3-pool-identifier.js" \
         "$OVERLAY_DST/app/services/b3-daily-aggregator.js" \
         "$OVERLAY_DST/app/services/b3-mempool-feed.js" \
+        "$OVERLAY_DST/app/services/b3-script-labels.js" \
         "$OVERLAY_DST/views/b3-charts/index.pug" \
         "$OVERLAY_DST/views/b3-charts/chart-detail.pug" \
         "$OVERLAY_DST/views/b3-mempool/live.pug" \

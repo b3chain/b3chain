@@ -179,9 +179,15 @@ block content
 						.b3-tx-io__row
 							.b3-tx-io__cell-main
 								if (txVin.coinbase)
+									- var b3Coinbase = (typeof utils.coinbaseScriptSummary === "function") ? utils.coinbaseScriptSummary(txVin.coinbase, blockHeight) : null;
 									.b3-tx-io__addr
 										span.b3-tag.b3-tag--accent.me-2 Coinbase
-										span Newly Generated Coins
+										if (b3Coinbase)
+											span Block height #{b3Coinbase.height.toLocaleString()}
+										else
+											span Newly Generated Coins
+									if (b3Coinbase && b3Coinbase.tag)
+										.b3-tx-io__sub.mt-1.font-monospace.text-break= b3Coinbase.tag
 									.b3-tx-io__sub.mt-1
 										span.text-muted.me-2 Script:
 										span.font-monospace.text-break= utils.ellipsizeMiddle(txVin.coinbase, 40)
@@ -221,11 +227,18 @@ block content
 						.b3-tx-io__row(id=`output-${voutIndex}`)
 							.b3-tx-io__cell-main
 								if (isOpReturn)
+									- var dataHex = vout.scriptPubKey.asm.substring("OP_RETURN ".length);
+									- var b3Commit = (typeof utils.witnessCommitmentHash === "function") ? utils.witnessCommitmentHash(dataHex) : null;
 									.b3-tx-io__addr
 										span.b3-tag.me-2 OP_RETURN
-										span.text-muted Provably unspendable
-									- var dataHex = vout.scriptPubKey.asm.substring("OP_RETURN ".length);
-									.b3-tx-io__sub.mt-1.font-monospace.text-break= utils.ellipsizeMiddle(dataHex, 64)
+										if (b3Commit)
+											span SegWit witness commitment
+										else
+											span.text-muted Provably unspendable
+									if (b3Commit)
+										.b3-tx-io__sub.mt-1.font-monospace.text-break= b3Commit
+									else
+										.b3-tx-io__sub.mt-1.font-monospace.text-break= utils.ellipsizeMiddle(dataHex, 64)
 
 								else if (voutAddresses.length > 0)
 									+b3IoAddrLink(voutAddresses[0])
@@ -287,8 +300,18 @@ block content
 										span.font-monospace ##{vinIndex}
 									td.word-wrap.text-break
 										if (vin.coinbase)
+											- var b3CoinbaseScript = (typeof utils.coinbaseScriptSummary === "function") ? utils.coinbaseScriptSummary(vin.coinbase, blockHeight) : null;
 											div
 												span.b3-tag.b3-tag--accent.me-2 coinbase
+												if (b3CoinbaseScript)
+													span.ms-1 Block height #{b3CoinbaseScript.height.toLocaleString()}
+											if (b3CoinbaseScript)
+												if (b3CoinbaseScript.tag)
+													.font-monospace.text-break.mt-1= b3CoinbaseScript.tag
+												.small.mt-1
+													span.text-muted.me-1 hex
+													span.font-monospace.text-break= vin.coinbase
+											else
 												+hexDataDisplay(vin.coinbase)
 										if (vin.scriptSig && vin.scriptSig.asm)
 											div.mt-2
@@ -303,6 +326,9 @@ block content
 															span.text-muted.me-2 ##{witnessIndex}
 															if (witnessItem.length == 0)
 																span.text-muted (empty)
+															else if (/^0{64}$/.test(witnessItem))
+																span.text-muted.me-2 witness reserved value
+																span.font-monospace.text-break= witnessItem
 															else
 																+hexDataDisplay(witnessItem)
 												if (vin.txinwitness.length > 100)
@@ -319,10 +345,17 @@ block content
 										if (vout.scriptPubKey && vout.scriptPubKey.asm)
 											- var chunks = vout.scriptPubKey.asm.split(" ");
 											if (chunks[0] == "OP_RETURN")
-												div
-													span.b3-tag.b3-tag--accent.me-2 OP_RETURN
 												- var asm = vout.scriptPubKey.asm.substring("OP_RETURN ".length);
-												+hexDataDisplay(asm)
+												- var b3CommitScript = (typeof utils.witnessCommitmentHash === "function") ? utils.witnessCommitmentHash(asm) : null;
+												if (b3CommitScript)
+													div
+														span.b3-tag.b3-tag--accent.me-2 OP_RETURN
+														span.ms-1 SegWit witness commitment
+													.font-monospace.text-break.mt-1= b3CommitScript
+												else
+													div
+														span.b3-tag.b3-tag--accent.me-2 OP_RETURN
+													+hexDataDisplay(asm)
 											else
 												each chunk, chunkIndex in chunks
 													div.mt-1

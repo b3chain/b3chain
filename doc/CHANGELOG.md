@@ -1,5 +1,12 @@
 # B3Chain Project History
 
+## Explorer script labels (2026-09-26)
+
+- Block and transaction pages label a BIP34 coinbase with its block height
+  and any ASCII tag, and label a SegWit witness commitment by its 32-byte
+  hash. Those binary pushes are no longer printed as UTF-8. The coinbase
+  witness reserved value is shown as hex.
+
 ## Dark palette on the explorer and faucet (2026-09-26)
 
 - The block explorer overlay and the Live Explorer chrome use the same dark

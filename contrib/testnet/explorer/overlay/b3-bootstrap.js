@@ -11,6 +11,11 @@
 
 module.exports = function bootstrap(expressApp, config) {
 	try {
+		const utils = require("./app/utils.js");
+		const scriptLabels = require("./app/services/b3-script-labels.js");
+		utils.coinbaseScriptSummary = scriptLabels.coinbaseScriptSummary;
+		utils.witnessCommitmentHash = scriptLabels.witnessCommitmentHash;
+
 		const b3ChartsRouter = require("./routes/b3-charts-router.js");
 		const b3MempoolRouter = require("./routes/b3-mempool-router.js");
 		const baseUrl = config.baseUrl || "/";
