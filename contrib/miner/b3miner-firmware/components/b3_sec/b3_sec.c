@@ -19,8 +19,8 @@
 #include "cryptoauthlib.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/entropy.h"
+#include "esp_random.h"
+#include "mbedtls/private/ctr_drbg.h"
 #endif
 
 static const char *TAG = "b3_sec";
@@ -36,8 +36,14 @@ static int s_require_override = -1;
 #ifndef B3_SEC_HOST_TEST
 static i2c_master_bus_handle_t s_i2c_bus;
 static mbedtls_ctr_drbg_context s_drbg;
-static mbedtls_entropy_context s_entropy;
 static bool s_drbg_ready;
+
+static int hw_entropy(void *ctx, unsigned char *out, size_t len)
+{
+    (void)ctx;
+    esp_fill_random(out, len);
+    return 0;
+}
 #endif
 
 #ifdef B3_SEC_HOST_TEST
@@ -293,9 +299,8 @@ esp_err_t b3_sec_seed_drbg(void)
     if (s_drbg_ready) {
         return ESP_OK;
     }
-    mbedtls_entropy_init(&s_entropy);
     mbedtls_ctr_drbg_init(&s_drbg);
-    int rc = mbedtls_ctr_drbg_seed(&s_drbg, mbedtls_entropy_func, &s_entropy, seed, sizeof(seed));
+    int rc = mbedtls_ctr_drbg_seed(&s_drbg, hw_entropy, NULL, seed, sizeof(seed));
     if (rc != 0) {
         ESP_LOGW(TAG, "ctr_drbg seed failed (%d)", rc);
         return ESP_FAIL;
