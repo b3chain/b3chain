@@ -155,9 +155,9 @@ esp_err_t b3_sec_init(int sda_gpio, int scl_gpio)
 
     ATCAIfaceCfg cfg = cfg_ateccx08a_i2c_default;
     cfg.devtype = ATECC608;
-    cfg.atcai2c.bus = I2C_NUM_0;
-    cfg.atcai2c.baud = 400000;
-    cfg.atcai2c.slave_address = 0xC0;
+    ATCA_IFACECFG_VALUE(&cfg, atcai2c.bus) = I2C_NUM_0;
+    ATCA_IFACECFG_I2C_BAUD(&cfg) = 400000;
+    ATCA_IFACECFG_I2C_ADDRESS(&cfg) = 0xC0;
     ATCA_STATUS st = atcab_init(&cfg);
     if (st != ATCA_SUCCESS && s_i2c_bus) {
         i2c_del_master_bus(s_i2c_bus);
