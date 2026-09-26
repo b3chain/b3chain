@@ -30,6 +30,9 @@
 
 `include "params_pkg.sv"
 
+// Kept as a source-level reference while the active wrapper is split into
+// b3miner_core.sv and b3miner_top_refactored.sv.
+`ifdef B3MINER_LEGACY_TOP
 module b3miner_top
     import params_pkg::*;
 (
@@ -298,3 +301,4 @@ module reset_sync (
     end
     assign rst_n = sr[1];
 endmodule
+`endif

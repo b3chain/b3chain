@@ -8,25 +8,24 @@
 #include "b3_fpga.h"
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "b3_fpga";
-
-#define B3_FPGA_CTRL_START        (1u << 0)
-#define B3_FPGA_CTRL_ABORT        (1u << 1)
-#define B3_FPGA_CTRL_SCRATCH_INIT (1u << 2)
 
 static spi_device_handle_t s_spi;
 static SemaphoreHandle_t s_bus_mtx;
 static int s_irq_gpio = -1;
 
-/* Board SPI pins — B3Miner-1 rev A */
+/* XCKU5P-2FFVB676 page-4/page-8 SPI link. */
 #define PIN_SPI_MOSI  11
 #define PIN_SPI_MISO  13
 #define PIN_SPI_SCLK  12
@@ -166,13 +165,17 @@ esp_err_t b3_fpga_init(int irq_gpio)
     ESP_ERROR_CHECK(reg_read32(B3_FPGA_REG_ID, &id));
     if (id != B3_FPGA_MAGIC) {
         ESP_LOGW(TAG, "FPGA ID mismatch: 0x%08" PRIx32 " (expected 0x%08x)", id, B3_FPGA_MAGIC);
-        /* FILL IN: attempt bitstream load */
+#if CONFIG_B3_FPGA_CONFIG_JTAG_ONLY
+        ESP_LOGE(TAG, "FPGA must be configured over JTAG on this board profile");
+        return ESP_ERR_NOT_FOUND;
+#else
         ESP_ERROR_CHECK(b3_fpga_load_bitstream_from_flash());
         ESP_ERROR_CHECK(reg_read32(B3_FPGA_REG_ID, &id));
         if (id != B3_FPGA_MAGIC) {
             ESP_LOGE(TAG, "FPGA not responding after bitstream load");
             return ESP_ERR_NOT_FOUND;
         }
+#endif
     }
     ESP_LOGI(TAG, "FPGA ready, ID=0x%08" PRIx32, id);
     return ESP_OK;
@@ -180,25 +183,52 @@ esp_err_t b3_fpga_init(int irq_gpio)
 
 esp_err_t b3_fpga_load_bitstream_from_flash(void)
 {
-    /* FILL IN:
-     * 1. Read bitstream from SPI flash partition or embedded blob
-     * 2. Assert PROGRAM_B, pulse INIT, stream via SelectMAP or SPI slave
-     * 3. Wait DONE high
-     * See Xilinx UG470 "Configuration via SPI" for KU5P.
-     */
-    ESP_LOGW(TAG, "b3_fpga_load_bitstream_from_flash: STUB — no bitstream loaded");
+    ESP_LOGE(TAG, "ESP32 configuration interface is not wired on this PCB");
     return ESP_ERR_NOT_SUPPORTED;
+}
+
+/* Scratch init is accepted only in IDLE, and scratch_ready stays set from
+ * the previous pad. Wait until a busy engine has aborted, then require the
+ * ready flag to fall and rise so a sticky 1 is not treated as a new pad. */
+static esp_err_t fpga_wait_idle(void)
+{
+    ESP_RETURN_ON_ERROR(b3_fpga_abort_job(), TAG, "abort before scratch");
+    /* Abort busy is only a few cycles once the engines stop. Sample after
+     * that pulse has been consumed so a stale busy=0 cannot race a new init. */
+    vTaskDelay(pdMS_TO_TICKS(5));
+    for (int i = 0; i < 3000; ++i) {
+        uint32_t st = 0;
+        ESP_RETURN_ON_ERROR(
+            reg_read32(B3_FPGA_REG_STATUS, &st), TAG, "status during idle");
+        if (st & B3_FPGA_STATUS_SHARE) {
+            ESP_RETURN_ON_ERROR(b3_fpga_ack_share(), TAG, "ack stale share");
+            continue;
+        }
+        if ((st & B3_FPGA_STATUS_BUSY) == 0) {
+            return ESP_OK;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    return ESP_ERR_TIMEOUT;
 }
 
 esp_err_t b3_fpga_init_scratchpad(const uint8_t prev_hash[32])
 {
-    ESP_ERROR_CHECK(reg_write_block(B3_FPGA_REG_PREV_HASH, prev_hash, 32));
-    ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_SCRATCH_INIT));
-    /* Poll until scratch_ready */
+    ESP_RETURN_ON_ERROR(fpga_wait_idle(), TAG, "idle before scratch");
+    ESP_RETURN_ON_ERROR(
+        reg_write_block(B3_FPGA_REG_PREV_HASH, prev_hash, 32),
+        TAG, "write prev hash");
+    ESP_RETURN_ON_ERROR(
+        reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_SCRATCH_INIT),
+        TAG, "scratch init");
+    bool saw_clear = false;
     for (int i = 0; i < 5000; ++i) {
         uint32_t st = 0;
-        ESP_ERROR_CHECK(reg_read32(B3_FPGA_REG_STATUS, &st));
-        if (st & B3_FPGA_STATUS_SCRATCH) {
+        ESP_RETURN_ON_ERROR(
+            reg_read32(B3_FPGA_REG_STATUS, &st), TAG, "status during scratch");
+        if ((st & B3_FPGA_STATUS_SCRATCH) == 0) {
+            saw_clear = true;
+        } else if (saw_clear) {
             return ESP_OK;
         }
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -211,11 +241,82 @@ esp_err_t b3_fpga_submit_job(const b3_fpga_job_t *job)
     if (!job) {
         return ESP_ERR_INVALID_ARG;
     }
-    ESP_ERROR_CHECK(reg_write_block(B3_FPGA_REG_SEED, job->seed, 32));
+    ESP_ERROR_CHECK(reg_write_block(B3_FPGA_REG_HEADER_PREFIX, job->header_prefix, 76));
+    ESP_ERROR_CHECK(reg_write_block(B3_FPGA_REG_SHARE_TARGET, job->share_target_le, 32));
     ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_JOB_EPOCH, job->job_epoch));
     ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_NONCE_START, job->nonce_start));
     ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_NONCE_END, job->nonce_end));
+    ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_NONCE_COUNT, job->nonce_count));
     ESP_ERROR_CHECK(reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_START));
+    return ESP_OK;
+}
+
+esp_err_t b3_fpga_abort_job(void)
+{
+    return reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_ABORT);
+}
+
+esp_err_t b3_fpga_run_selftest(void)
+{
+    static const uint8_t expected[2][32] = {
+        {0xe3,0xc5,0xe7,0x5b,0x47,0xb0,0x4b,0x6a,0x74,0xce,0xbf,0x09,0x89,0x11,0x69,0xe6,
+         0x3e,0xb5,0x0d,0x1c,0x13,0xa2,0x0f,0x1b,0xdb,0x73,0xdf,0x51,0xcc,0x34,0xb4,0x62},
+        {0xa3,0x35,0x5c,0x6f,0x65,0x2e,0xac,0xdc,0x42,0xbd,0xc2,0xe9,0xda,0x94,0x86,0x54,
+         0x7b,0x55,0x01,0xb7,0x88,0x91,0xe8,0x62,0x93,0x2f,0x3d,0x41,0x4f,0xc1,0xfc,0x64},
+    };
+    const uint8_t zero_prev[32] = {0};
+    ESP_RETURN_ON_ERROR(
+        b3_fpga_init_scratchpad(zero_prev), TAG, "selftest scratch init");
+    ESP_LOGI(TAG, "selftest scratchpad ready");
+
+    b3_fpga_job_t job = {0};
+    memset(job.share_target_le, 0xFF, sizeof(job.share_target_le));
+    job.job_epoch = 0xB3000003u;
+
+    for (uint32_t want_nonce = 0; want_nonce < 2; ++want_nonce) {
+        job.nonce_start = want_nonce;
+        job.nonce_end = want_nonce + 1;
+        job.nonce_count = 1;
+        ESP_RETURN_ON_ERROR(b3_fpga_submit_job(&job), TAG, "selftest submit");
+        ESP_LOGI(TAG, "selftest job submitted nonce=%" PRIu32, want_nonce);
+        bool found = false;
+        for (int poll = 0; poll < 2000; ++poll) {
+            b3_fpga_share_t share;
+            if (b3_fpga_poll_share(&share)) {
+                if (share.nonce != want_nonce ||
+                    memcmp(share.pow_hash_le, expected[want_nonce], 32) != 0) {
+                    char got_hex[65];
+                    for (int b = 0; b < 32; ++b) {
+                        snprintf(got_hex + (b * 2), 3, "%02x",
+                                 share.pow_hash_le[b]);
+                    }
+                    b3_fpga_ack_share();
+                    b3_fpga_abort_job();
+                    ESP_LOGE(TAG,
+                             "selftest nonce/hash mismatch want=%" PRIu32
+                             " got=%" PRIu32 " hash=%s",
+                             want_nonce, share.nonce, got_hex);
+                    return ESP_ERR_INVALID_CRC;
+                }
+                ESP_RETURN_ON_ERROR(
+                    b3_fpga_ack_share(), TAG, "selftest share ack");
+                found = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+        if (!found) {
+            uint32_t status = 0, hashes = 0;
+            reg_read32(B3_FPGA_REG_STATUS, &status);
+            reg_read32(B3_FPGA_REG_HASH_COUNT, &hashes);
+            ESP_LOGE(TAG, "selftest timeout want_nonce=%" PRIu32
+                          " status=0x%08" PRIx32 " hashes=%" PRIu32,
+                     want_nonce, status, hashes);
+            b3_fpga_abort_job();
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    ESP_LOGI(TAG, "B3PoW selftest PASS (fresh pad, nonce 0 and 1)");
     return ESP_OK;
 }
 
@@ -229,14 +330,19 @@ bool b3_fpga_poll_share(b3_fpga_share_t *out)
         return false;
     }
     if (out) {
-        reg_read32(B3_FPGA_REG_NONCE_LO, &out->nonce);
-        reg_read32(B3_FPGA_REG_NTIME, &out->ntime);
-        reg_read32(B3_FPGA_REG_JOB_EPOCH, &out->job_epoch);
-        reg_read_block(B3_FPGA_REG_POW_HASH, out->pow_hash_le, 32);
+        if (reg_read32(B3_FPGA_REG_NONCE_LO, &out->nonce) != ESP_OK ||
+            reg_read32(B3_FPGA_REG_NTIME, &out->ntime) != ESP_OK ||
+            reg_read32(B3_FPGA_REG_JOB_EPOCH, &out->job_epoch) != ESP_OK ||
+            reg_read_block(B3_FPGA_REG_POW_HASH, out->pow_hash_le, 32) != ESP_OK) {
+            return false;
+        }
     }
-    /* ACK share */
-    reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_ABORT); /* bit clears share_valid in FPGA */
     return true;
+}
+
+esp_err_t b3_fpga_ack_share(void)
+{
+    return reg_write32(B3_FPGA_REG_CTRL, B3_FPGA_CTRL_SHARE_ACK);
 }
 
 uint32_t b3_fpga_read_hash_count(void)
@@ -250,6 +356,6 @@ float b3_fpga_read_die_celsius(void)
 {
     uint32_t raw = 0;
     reg_read32(B3_FPGA_REG_TEMP_RAW, &raw);
-    /* FILL IN: convert XADC raw to °C per UG480 */
-    return (float)raw * 0.1f;
+    const uint16_t raw16 = (uint16_t)raw;
+    return ((float)raw16 * 503.975f / 65536.0f) - 273.15f;
 }

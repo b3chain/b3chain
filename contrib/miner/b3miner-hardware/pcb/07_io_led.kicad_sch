@@ -1,0 +1,150 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "cfb78de8-fe8b-48b5-953b-fc56f9b77885")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "07_io_led — §10")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V3V3_SYS"
+    (shape input)
+    (at 20.32 30.48 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "65565b2f-f133-47b0-93bc-6eba4026f086")
+  )
+
+  (hierarchical_label "LED_POWER"
+    (shape input)
+    (at 20.32 38.1 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "bcbf0856-c8e4-4b78-979f-86018690dc4e")
+  )
+
+  (hierarchical_label "LED_LINK"
+    (shape input)
+    (at 20.32 45.72 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "4d771f23-89f9-451e-883e-f1fee863816f")
+  )
+
+  (hierarchical_label "LED_MINING"
+    (shape input)
+    (at 20.32 53.339999999999996 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "fa9ed64b-1762-4334-9fe7-4325b5a0a902")
+  )
+
+  (hierarchical_label "FPGA_DONE"
+    (shape input)
+    (at 20.32 60.959999999999994 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "7eafe10d-7c4d-4054-990a-ae12a0a61129")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "7a97c5c3-df11-4265-b8cd-f5271aabbd40")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000007-0007-4000-8000-000000000007"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 07_io_led\nSCHEMATIC.md §10: Front-panel PWR/LINK/MINE LEDs, reset/boot switches, FPGA-DONE indicator\nKey parts: APT3216 LEDs, Omron B3U-1100P switches\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "0c3d7213-a057-4d82-9f13-3894adf05d65")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000007-0007-4000-8000-000000000007"
+      (page "8")
+    )
+  )
+)

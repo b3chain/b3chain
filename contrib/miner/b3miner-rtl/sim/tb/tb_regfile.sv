@@ -26,8 +26,10 @@ module tb_regfile;
     logic [31:0]       spi_req_wdata;
     logic [31:0]       spi_req_rdata;
     logic              ctrl_start_pulse, ctrl_abort_pulse, ctrl_scratch_init_pulse;
-    logic [31:0]       irq_mask, job_epoch, nonce_start, nonce_end;
-    logic [255:0]      seed, prev_hash;
+    logic              ctrl_share_ack_pulse;
+    logic [31:0]       irq_mask, job_epoch, nonce_start, nonce_end, nonce_count;
+    logic [255:0]      seed, prev_hash, share_target;
+    logic [607:0]      header_prefix;
     logic              status_busy = 0;
     logic              status_share = 0;
     logic              status_scratch_ready = 0;
@@ -50,12 +52,16 @@ module tb_regfile;
         .ctrl_start_pulse        (ctrl_start_pulse),
         .ctrl_abort_pulse        (ctrl_abort_pulse),
         .ctrl_scratch_init_pulse (ctrl_scratch_init_pulse),
+        .ctrl_share_ack_pulse    (ctrl_share_ack_pulse),
         .irq_mask                (irq_mask),
         .job_epoch               (job_epoch),
         .nonce_start             (nonce_start),
         .nonce_end               (nonce_end),
+        .nonce_count             (nonce_count),
         .seed                    (seed),
         .prev_hash               (prev_hash),
+        .share_target            (share_target),
+        .header_prefix           (header_prefix),
         .status_busy             (status_busy),
         .status_share            (status_share),
         .status_scratch_ready    (status_scratch_ready),
@@ -113,10 +119,18 @@ module tb_regfile;
 
         // ---- Write CTRL.start -> see ctrl_start_pulse ----
         do_write(REG_CTRL, 32'h1);
-        if (!ctrl_start_pulse_seen) begin
+        @(negedge clk_sys);
+        if (!ctrl_start_pulse) begin
             $error("ctrl_start_pulse did not fire");
             n_fail++;
         end else $display("[PASS] ctrl_start_pulse fired");
+
+        do_write(REG_CTRL, 32'h8);
+        @(negedge clk_sys);
+        if (!ctrl_share_ack_pulse) begin
+            $error("ctrl_share_ack_pulse did not fire");
+            n_fail++;
+        end else $display("[PASS] ctrl_share_ack_pulse fired");
 
         // ---- Write SEED[0..7] then read back ----
         for (int i = 0; i < 8; i++) begin
@@ -131,6 +145,30 @@ module tb_regfile;
             end
         end
         $display("[PASS] SEED[0..7] write+read");
+
+        for (int i = 0; i < 8; i++)
+            do_write(7'(REG_TARGET_BASE + i), 32'hA5A5_0000 | i);
+        for (int i = 0; i < 8; i++) begin
+            logic [31:0] r;
+            do_read(7'(REG_TARGET_BASE + i), r);
+            if (r !== (32'hA5A5_0000 | i)) begin
+                $error("TARGET[%0d] readback = 0x%08x", i, r);
+                n_fail++;
+            end
+        end
+        $display("[PASS] SHARE_TARGET[0..7] write+read");
+
+        for (int i = 0; i < 19; i++)
+            do_write(7'(REG_HEADER_BASE + i), 32'h5A5A_0000 | i);
+        for (int i = 0; i < 19; i++) begin
+            logic [31:0] r;
+            do_read(7'(REG_HEADER_BASE + i), r);
+            if (r !== (32'h5A5A_0000 | i)) begin
+                $error("HEADER_PREFIX[%0d] readback = 0x%08x", i, r);
+                n_fail++;
+            end
+        end
+        $display("[PASS] HEADER_PREFIX[0..18] write+read");
 
         // ---- temp_raw passthrough ----
         begin

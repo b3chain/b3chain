@@ -23,7 +23,7 @@ menu "B3Miner firmware"
         int "Time between simulated shares (ms)"
         depends on B3_FPGA_SIM
         range 100 600000
-        default 10000
+        default 100
 
     config B3_FPGA_SPI_HOST
         int "SPI host (SPI2_HOST=1, SPI3_HOST=2)"
@@ -32,8 +32,35 @@ menu "B3Miner firmware"
 
     config B3_FPGA_SPI_MHZ
         int "SPI clock MHz to FPGA"
-        range 1 40
-        default 25
+        range 1 5
+        default 5
+
+    config B3_FPGA_CONFIG_JTAG_ONLY
+        bool "FPGA is configured externally over JTAG"
+        default y
+        help
+            The XCKU5P-2FFVB676 PCB does not wire ESP32 GPIOs to
+            PROGRAM_B/INIT_B/DONE. Keep this enabled unless a board
+            revision provides a reviewed configuration interface.
+
+    config B3_FPGA_BOOT_SELFTEST
+        bool "Run nonce 0/1 B3PoW parity test at boot"
+        depends on !B3_FPGA_SIM
+        default y
+
+    config B3_NETWORK_WIFI
+        bool
+        default y
+
+    config B3_WIFI_SSID
+        string "Wi-Fi SSID"
+        depends on B3_NETWORK_WIFI
+        default ""
+
+    config B3_WIFI_PASSWORD
+        string "Wi-Fi password"
+        depends on B3_NETWORK_WIFI
+        default ""
 
     config B3_STRATUM_DEFAULT_URL
         string "Default pool URL (stratum+tcp://...)"

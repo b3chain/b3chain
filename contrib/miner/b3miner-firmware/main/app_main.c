@@ -13,8 +13,11 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#if CONFIG_B3_NETWORK_ETHERNET
 #include "esp_eth.h"
 #include "esp_mac.h"
+#endif
+#include "esp_wifi.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
@@ -31,40 +34,33 @@
 
 static const char *TAG = "b3_main";
 
-/* Board pins — adjust for B3Miner-1 PCB rev A */
+/* XCKU5P-2FFVB676 board contract: page 4/page 8. */
+#define PIN_FPGA_IRQ        18   /* ESP32_RX1 <- FPGA AD14 */
+#define PIN_LED_STATUS      4    /* ESP32_LED */
+
+#if CONFIG_B3_NETWORK_ETHERNET
 #define PIN_ETH_PHY_ADDR    0
-#define PIN_ETH_PHY_RST     -1   /* tied high on some designs */
+#define PIN_ETH_PHY_RST     -1
 #define PIN_ETH_MDC         23
 #define PIN_ETH_MDIO        18
-#define PIN_FPGA_IRQ        4    /* active-high share-found from KU5P */
-#define PIN_LED_POWER       48
-#define PIN_LED_LINK        47
-#define PIN_LED_MINING      21
-
 static esp_eth_handle_t s_eth_handle;
+#endif
 
 static void led_task(void *arg)
 {
     (void)arg;
-    gpio_set_direction(PIN_LED_POWER, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_LED_LINK, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_LED_MINING, GPIO_MODE_OUTPUT);
-    gpio_set_level(PIN_LED_POWER, 1);
-
-    bool link = false;
-    bool mining = false;
+    gpio_set_direction(PIN_LED_STATUS, GPIO_MODE_OUTPUT);
     for (;;) {
         b3_metrics_snapshot_t snap;
         b3_metrics_get_snapshot(&snap);
-        mining = snap.hashrate_khs > 0.1f;
-
-        /* TODO: read link from esp_eth_ioctl */
-        gpio_set_level(PIN_LED_LINK, link ? 1 : 0);
-        gpio_set_level(PIN_LED_MINING, mining ? !gpio_get_level(PIN_LED_MINING) : 0);
+        const bool mining = snap.hashrate_khs > 0.1f;
+        gpio_set_level(PIN_LED_STATUS,
+                       mining ? !gpio_get_level(PIN_LED_STATUS) : 1);
         vTaskDelay(pdMS_TO_TICKS(mining ? 200 : 1000));
     }
 }
 
+#if CONFIG_B3_NETWORK_ETHERNET
 static void eth_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
@@ -89,11 +85,49 @@ static void eth_event_handler(void *arg, esp_event_base_t base, int32_t id, void
         }
     }
 }
+#endif
 
-static esp_err_t init_ethernet(void)
+#if CONFIG_B3_NETWORK_WIFI
+static void wifi_event_handler(void *arg, esp_event_base_t base,
+                               int32_t id, void *data)
+{
+    (void)arg;
+    (void)data;
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        b3_events_post(B3_EVT_ETH_DOWN);
+        esp_wifi_connect();
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        b3_events_post(B3_EVT_ETH_UP);
+        b3_web_on_got_ip(arg, base, id, data);
+    }
+}
+#endif
+
+static esp_err_t init_network(void)
 {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+#if CONFIG_B3_NETWORK_WIFI
+    esp_netif_create_default_wifi_sta();
+    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&init));
+    ESP_ERROR_CHECK(esp_event_handler_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL));
+    wifi_config_t wifi = {0};
+    strlcpy((char *)wifi.sta.ssid, CONFIG_B3_WIFI_SSID,
+            sizeof(wifi.sta.ssid));
+    strlcpy((char *)wifi.sta.password, CONFIG_B3_WIFI_PASSWORD,
+            sizeof(wifi.sta.password));
+    wifi.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    return ESP_OK;
+#else
     esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
     esp_netif_t *netif = esp_netif_new(&cfg);
 
@@ -120,6 +154,7 @@ static esp_err_t init_ethernet(void)
 
     ESP_ERROR_CHECK(esp_eth_start(s_eth_handle));
     return ESP_OK;
+#endif
 }
 
 void app_main(void)
@@ -135,7 +170,10 @@ void app_main(void)
     b3_events_init();
     b3_metrics_init();
     ESP_ERROR_CHECK(b3_fpga_init(PIN_FPGA_IRQ));
-    ESP_ERROR_CHECK(init_ethernet());
+#if CONFIG_B3_FPGA_BOOT_SELFTEST
+    ESP_ERROR_CHECK(b3_fpga_run_selftest());
+#endif
+    ESP_ERROR_CHECK(init_network());
 
     /* Stratum: prefer V2 URL scheme if configured, else V1 */
     b3_runtime_config_t rcfg;

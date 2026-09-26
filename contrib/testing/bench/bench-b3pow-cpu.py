@@ -216,6 +216,35 @@ def main() -> int:
         print(f"             {hps:>8.2f} H/s  "
               f"(p50={row.p50_ms:.0f}ms, p95={row.p95_ms:.0f}ms, p99={row.p99_ms:.0f}ms)")
 
+    # ----- reduced-memory checkpoint replay (one header, three caps) --
+    print("  [reduced] checkpoint-replay mix-step ratio vs honest path ...")
+    import b3pow_reduced  # noqa: E402
+    prev = deterministic_prev_hash()
+    hdr = make_header(prev_hash=prev, nonce=0)
+    for memory, floor in b3pow_reduced.SPEC_FLOORS_MIB.items():
+        t0 = time.perf_counter()
+        reduced = b3pow_reduced.b3pow_scratch_reduced(hdr, prev, memory)
+        wall = time.perf_counter() - t0
+        label = f"reduced-{memory // 1024}KiB"
+        note = (
+            f"mix_ratio={reduced.ratio:.3f};floor={floor:.0f};"
+            f"dirty_misses={reduced.dirty_misses};"
+            f"mix_steps={reduced.mix_steps};"
+            f"peak_bytes={reduced.peak_resident_bytes}"
+        )
+        row = BenchRow(
+            bench="bench-b3pow-cpu", label=label,
+            backend="python-ref-reduced", threads=1, iterations=1,
+            wall_s=wall, hashes_per_s=(1.0 / wall) if wall else 0,
+            ns_per_hash=(wall * 1e9) if wall else 0,
+            p50_ms=wall * 1000.0, p95_ms=wall * 1000.0, p99_ms=wall * 1000.0,
+            j_per_hash=nan,
+            note=note,
+        )
+        result.add(row)
+        print(f"             {label}  ratio={reduced.ratio:.1f}  "
+              f"(floor {floor:.0f}, misses={reduced.dirty_misses})")
+
     # ----- emit ------------------------------------------------------------
     csv_path = write_csv(result, args.run_id)
     json_path = write_json(result, args.run_id)

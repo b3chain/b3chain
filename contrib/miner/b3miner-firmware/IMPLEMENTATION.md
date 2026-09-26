@@ -126,10 +126,9 @@ mining any real blocks on the testnet.
 
 | File | Marker |
 |------|--------|
-| `b3_work.c` | `b3_work_build_header`, `b3_work_build_pow_seed`, merkle/coinbase |
 | `b3_stratum_v1.c` | TLS (`stratum+ssl://`), submit response correlation |
 | `b3_stratum_v2.c` | entire Noise/SV2 stack; replace mbedTLS sign with `b3_sec_sign_p256(0,…)` |
-| `b3_fpga.c` | `b3_fpga_load_bitstream_from_flash` (SelectMAP) |
+| `b3_fpga.c` | persistent loader is board-specific; XCKU5P-2FFVB676 is JTAG-only |
 | `b3_web.c` | WebSocket frames, auth on POST /config |
 | `b3_ota.c` | manifest fetch + sha256 verify + `b3_sec_verify_p256` against slot 2 |
 | `b3_sec.c` | **NEW** — entire component (Phase 4.6); wraps cryptoauthlib |

@@ -49,13 +49,17 @@ static esp_err_t handle_status(httpd_req_t *req)
 {
     b3_metrics_snapshot_t m;
     b3_metrics_get_snapshot(&m);
-    char body[512];
+    char body[768];
     snprintf(body, sizeof(body),
-             "{\"hashrate_khs\":%.3f,\"shares_accepted\":%" PRIu32 ","
-             "\"shares_rejected\":%" PRIu32 ",\"uptime_s\":%" PRIu32 ","
+             "{\"hashrate_khs\":%.3f,\"last_completed_khs\":%.3f,"
+             "\"shares_accepted\":%" PRIu32 ",\"shares_rejected\":%" PRIu32 ","
+             "\"uptime_s\":%" PRIu32 ",\"measurement_age_s\":%" PRIu32 ","
+             "\"job_epoch\":%" PRIu32 ",\"stratum_connected\":%u,"
              "\"fpga_temp_c\":%.1f,\"hashes_total\":%llu}",
-             m.hashrate_khs, m.shares_accepted, m.shares_rejected,
-             m.uptime_s, b3_fpga_read_die_celsius(),
+             m.hashrate_khs, m.last_completed_khs,
+             m.shares_accepted, m.shares_rejected,
+             m.uptime_s, m.measurement_age_s, m.job_epoch,
+             (unsigned)m.stratum_connected, b3_fpga_read_die_celsius(),
              (unsigned long long)m.hashes_total);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);

@@ -1,36 +1,25 @@
-# b3chain-gpuminer (deprecated, retained for reference)
+# b3chain-gpuminer
 
-> **Status: deprecated. Does not produce valid B3Chain mainnet or
-> testnet shares.**
->
-> This GPU miner targets the retired double-BLAKE3 PoW
-> (`BLAKE3(BLAKE3(80-byte header))`) that B3Chain ran in early
-> development. The live consensus algorithm is **B3PoW-Scratch v1.1**
-> (see [`contrib/miner/b3miner-rtl/SPEC.md`](../b3miner-rtl/SPEC.md)).
-> B3PoW-Scratch is **GPU-hostile by design** — its 1 MiB sequential
-> data-dependent scratchpad destroys GPU throughput — so this tree is
-> not being ported. It is kept as a complete reference for the
-> previous algorithm and as a worked example of the Stratum V1 +
-> JSONL pipeline.
->
-> If you want a working B3Chain miner today, use the FPGA reference at
-> [`contrib/miner/b3miner-firmware/`](../b3miner-firmware/) or the
-> Python reference at
-> [`contrib/miner/b3chain-cpuminer.py`](../b3chain-cpuminer.py)
-> (correctness reference only, not competitive on mainnet).
->
-> See [`doc/b3chain-pow-design.md`](../../../doc/b3chain-pow-design.md)
-> § "Not 'GPU-proof', but GPU-hostile" for the rationale, and
-> [`doc/analysis/FPGA-FEASIBILITY.md`](../../../doc/analysis/FPGA-FEASIBILITY.md)
-> for the quantitative argument.
+CUDA miner for **B3PoW-Scratch v1.1.1** (1 MiB pad, 8 lanes, 2048
+iterations). The Stratum V1 client, header builder, and JSONL log are
+the same pipeline as before. The hash is `kernels/b3pow_scratch.cu`.
+The retired `double_blake3_*` kernels stay in the tree and are not
+called by the miner.
 
-NVIDIA CUDA GPU miner for the **retired** double-BLAKE3 B3Chain PoW.
+Each thread owns one nonce and copies the parent pad into a 1 MiB
+working buffer before the mix. The host rebuilds that pad when
+`prev_block_hash` changes and recomputes every candidate before
+`mining.submit`. A mismatch is logged as `share_dropped` and is not
+submitted.
 
-Computes `BLAKE3(BLAKE3(80-byte header))` directly on the GPU and submits
-shares over Stratum V1, with a JSONL log format that is byte-compatible
-with [`b3chain-cpuminer.py`](../b3chain-cpuminer.py) so the live
-[mining dashboard](../tests/mining_dashboard.py) can ingest it without
-modification.
+Connect:
+
+```
+b3chain-gpuminer --stratum stratum+tcp://pool.b3chain.org:3333 --user you@example.com.gpu0 --pass x
+```
+
+Default batch is 128 nonces. A share at difficulty 1024 may not appear
+in a short run; that is expected at scratch rates.
 
 ## Status
 

@@ -46,6 +46,7 @@ module tb_blake3_xof;
     endfunction
 
     int fd, n_pass, n_fail, n_total;
+    int in_len_bytes, out_len_bytes;
     vector_record_t rec;
 
     initial begin
@@ -59,8 +60,8 @@ module tb_blake3_xof;
         while (vr_read(fd, rec)) begin
             n_total++;
 
-            int in_len_bytes = rec.field_lens[0];
-            int out_len_bytes = le_word(rec.fields[1], 0);
+            in_len_bytes = le_word(rec.fields[0], 0);
+            out_len_bytes = le_word(rec.fields[2], 0);
 
             // Only verify 64-byte requests in this TB -- bigger ones need
             // multi-block driving handled by the caller of blake3_xof.
@@ -72,7 +73,7 @@ module tb_blake3_xof;
             // Pack input bytes -> 16 words LE, zero-pad rest.
             for (int i = 0; i < 16; i++) input_words[i] = '0;
             for (int i = 0; i < in_len_bytes; i++)
-                input_words[i/4][8*(i%4) +: 8] = rec.fields[0][i];
+                input_words[i/4][8*(i%4) +: 8] = rec.fields[1][i];
 
             input_len = in_len_bytes;
 
@@ -80,22 +81,23 @@ module tb_blake3_xof;
             start = 1;
             @(posedge clk);
             start = 0;
-            for (int t = 0; t < 50; t++) begin
+            for (int t = 0; t < 100; t++) begin
                 @(posedge clk);
                 if (done) break;
             end
             @(posedge clk);
 
-            // Compare 64 bytes vs field[2]
+            // Compare 64 bytes vs field[3]
             begin
-                int ok = 1;
+                int ok;
+                ok = 1;
                 for (int b = 0; b < 64; b++) begin
                     byte unsigned dut_b;
                     dut_b = out_words[b/4][8*(b%4) +: 8];
-                    if (dut_b !== rec.fields[2][b]) begin
+                    if (dut_b !== rec.fields[3][b]) begin
                         ok = 0;
                         $error("[%s] byte %0d: dut=%02h expected=%02h",
-                            rec.label, b, dut_b, rec.fields[2][b]);
+                            rec.label, b, dut_b, rec.fields[3][b]);
                     end
                 end
                 if (ok) begin

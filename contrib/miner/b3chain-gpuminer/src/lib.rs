@@ -16,6 +16,7 @@
 // Public surface is intentionally small; the binary in src/main.rs
 // is the supported entry point.
 
+pub mod b3pow;
 pub mod util;
 pub mod work;
 pub mod stratum;

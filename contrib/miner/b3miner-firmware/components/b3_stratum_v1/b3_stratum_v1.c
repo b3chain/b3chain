@@ -20,6 +20,7 @@
  */
 
 #include "b3_stratum_v1.h"
+#include "b3_metrics.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -59,8 +60,11 @@ typedef struct {
     /* Per-worker rolling extranonce2 counter (host-side nonce-space slice) */
     uint32_t extranonce2_counter;
 
-    float    share_diff;
+    double   share_diff;
     uint32_t clean_epoch;
+    char     last_job_id[64];
+    uint8_t  last_prev[32];
+    bool     have_job;
 
     SemaphoreHandle_t submit_mtx;
 } stratum_v1_ctx_t;
@@ -127,8 +131,11 @@ static void on_set_difficulty(stratum_v1_ctx_t *ctx, const b3_json_value_t *para
 {
     if (b3_json_array_size(params) < 1) return;
     double d = b3_json_as_number(b3_json_array_get(params, 0));
-    if (d <= 0.0) return;
-    ctx->share_diff = (float)d;
+    if (d <= 0.0 || d < 0.000001) return;
+    ctx->share_diff = d;
+    /* Difficulty applies to the next job stamp. Do not abort the batch
+     * already hashing against the previous assignment. */
+    b3_work_update_difficulty(d, ctx->clean_epoch);
     ESP_LOGI(TAG, "set_difficulty -> %.3f", d);
 }
 
@@ -137,7 +144,7 @@ static void on_set_extranonce(stratum_v1_ctx_t *ctx, const b3_json_value_t *para
     if (b3_json_array_size(params) < 2) return;
     const char *en1_hex = b3_json_as_string(b3_json_array_get(params, 0));
     int en2_size = (int)b3_json_as_number(b3_json_array_get(params, 1));
-    if (!en1_hex || en2_size <= 0) return;
+    if (!en1_hex || en2_size <= 0 || en2_size > 32) return;
 
     size_t produced = 0;
     if (b3_hex_decode_var(en1_hex, ctx->extranonce1, sizeof(ctx->extranonce1),
@@ -148,6 +155,7 @@ static void on_set_extranonce(stratum_v1_ctx_t *ctx, const b3_json_value_t *para
     ctx->extranonce1_len = produced;
     ctx->extranonce2_size = (size_t)en2_size;
     ctx->clean_epoch++;
+    b3_work_invalidate();
     ESP_LOGI(TAG, "set_extranonce en1=%s en2_size=%d", en1_hex, en2_size);
 }
 
@@ -189,11 +197,12 @@ static void on_mining_notify(stratum_v1_ctx_t *ctx, const b3_json_value_t *param
         return;
     }
 
-    b3_work_job_t job = {0};
+    /* One Stratum task. Keep the ~3.4 KB job off the 12 KB stack. */
+    static b3_work_job_t job;
+    memset(&job, 0, sizeof(job));
 
     /* IDs and toggles */
     strncpy(job.job_id, job_id_s, sizeof(job.job_id) - 1);
-    job.epoch = ++ctx->clean_epoch;
     job.share_diff = ctx->share_diff;
     job.extranonce2_size = ctx->extranonce2_size ? ctx->extranonce2_size : 4;
     job.nonce_batch_size = 0x100000; /* 1M nonces per FPGA batch */
@@ -204,6 +213,16 @@ static void on_mining_notify(stratum_v1_ctx_t *ctx, const b3_json_value_t *param
         ESP_LOGW(TAG, "notify: bad prev_hash hex");
         return;
     }
+    bool same_job = ctx->have_job
+        && strncmp(ctx->last_job_id, job.job_id, sizeof(ctx->last_job_id)) == 0
+        && memcmp(ctx->last_prev, job.prev_block_hash, 32) == 0;
+    if (clean_jobs || !same_job) {
+        ctx->clean_epoch++;
+    }
+    job.epoch = ctx->clean_epoch;
+    strncpy(ctx->last_job_id, job.job_id, sizeof(ctx->last_job_id) - 1);
+    memcpy(ctx->last_prev, job.prev_block_hash, 32);
+    ctx->have_job = true;
 
     /* Coinbase halves — kept as hex strings; combined with extranonce in
      * b3_work_build_header. */
@@ -253,8 +272,10 @@ static void on_mining_notify(stratum_v1_ctx_t *ctx, const b3_json_value_t *param
         ctx->extranonce2_counter = 0;
     }
 
-    /* TODO (b3_work): derive share_target_be from share_diff,
-     * network_target_be from nbits, pow_seed from header template. */
+    if (b3_work_derive_targets(&job) != ESP_OK) {
+        ESP_LOGW(TAG, "notify: invalid target parameters");
+        return;
+    }
 
     b3_work_publish_job(&job);
     b3_events_post(B3_EVT_JOB_NEW);
@@ -280,7 +301,7 @@ static esp_err_t parse_subscribe_result(stratum_v1_ctx_t *ctx, const b3_json_t *
     }
     const char *en1_hex = b3_json_as_string(b3_json_array_get(result, 1));
     double en2_size_d   = b3_json_as_number(b3_json_array_get(result, 2));
-    if (!en1_hex || en2_size_d <= 0) {
+    if (!en1_hex || en2_size_d <= 0 || en2_size_d > 32) {
         ESP_LOGW(TAG, "subscribe: missing en1/en2_size");
         return ESP_ERR_INVALID_RESPONSE;
     }
@@ -327,6 +348,7 @@ static esp_err_t handshake(stratum_v1_ctx_t *ctx)
         ESP_LOGE(TAG, "authorize rejected: %s", errbuf);
     } else {
         ESP_LOGI(TAG, "authorized as %s", ctx->cfg.worker_user);
+        b3_metrics_set_connected(1);
     }
     b3_json_free(resp);
     return ok ? ESP_OK : ESP_FAIL;
@@ -411,8 +433,12 @@ static esp_err_t submit_share(stratum_v1_ctx_t *ctx, const b3_work_job_t *job,
 
     /* extranonce2 hex string — variable length per pool */
     char en2_hex[32 * 2 + 1] = {0};
-    size_t en2_size = ctx->extranonce2_size > 4 ? 4 : ctx->extranonce2_size;
-    if (en2_size == 0) en2_size = 4;
+    size_t en2_size = ev->extranonce2_len;
+    if (en2_size == 0 || en2_size > sizeof(ev->extranonce2) ||
+        en2_size != ctx->extranonce2_size) {
+        xSemaphoreGive(ctx->submit_mtx);
+        return ESP_ERR_INVALID_SIZE;
+    }
     b3_hex_encode(ev->extranonce2, en2_size, en2_hex);
 
     char params[256];
@@ -473,7 +499,7 @@ static esp_err_t connect_tcp(stratum_v1_ctx_t *ctx)
     if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
         close(sock);
         freeaddrinfo(res);
-        return ESP_ERR_HTTP_CONNECT;
+        return ESP_FAIL;
     }
     freeaddrinfo(res);
     ctx->sock = sock;
@@ -506,15 +532,31 @@ static void stratum_v1_task(void *arg)
         }
         backoff_ms = 5000;
 
-        /* THE READ LOOP — process messages until disconnect or timeout */
-        char line[4096];
+        /* THE READ LOOP — process messages until disconnect or timeout.
+         * line and job are static: together they are ~7.5 KB and previously
+         * overflowed the Stratum task during the first TCP connect. */
+        static char line[4096];
+        static b3_work_job_t job;
         for (;;) {
             /* Drain FPGA share queue and forward to pool. Non-blocking. */
             b3_share_event_t share;
-            while (xQueueReceive(b3_events_share_queue(), &share, 0) == pdTRUE) {
-                b3_work_job_t job;
+            while (xQueuePeek(b3_events_share_queue(), &share, 0) == pdTRUE) {
+                /* Do not block the Stratum reader. A missing job leaves the
+                 * share at the queue head until the next notify or reconnect. */
                 if (b3_work_wait_job(&job, 0)) {
-                    submit_share(ctx, &job, &share);
+                    if (job.epoch == share.job_epoch) {
+                        if (submit_share(ctx, &job, &share) != ESP_OK) {
+                            ESP_LOGW(TAG, "share send failed; retaining queue head");
+                            break;
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "discard stale share epoch=%" PRIu32
+                                      " current=%" PRIu32,
+                                 share.job_epoch, job.epoch);
+                    }
+                    xQueueReceive(b3_events_share_queue(), &share, 0);
+                } else {
+                    break;
                 }
             }
 
@@ -552,6 +594,9 @@ static void stratum_v1_task(void *arg)
             b3_json_free(msg);
         }
 
+        b3_metrics_set_connected(0);
+        ctx->have_job = false;
+        ctx->clean_epoch++;
         ESP_LOGW(TAG, "disconnected, reconnecting in %" PRIu32 " ms", backoff_ms);
         close(ctx->sock);
         vTaskDelay(pdMS_TO_TICKS(backoff_ms));
@@ -580,5 +625,5 @@ void b3_stratum_v1_start(const b3_runtime_config_t *cfg)
     (void)tls; /* FILL IN: esp_tls_conn for stratum+ssl */
 
     b3_work_init();
-    xTaskCreate(stratum_v1_task, "stratum_v1", 12288, &s_ctx, 8, NULL);
+    xTaskCreate(stratum_v1_task, "stratum_v1", 20480, &s_ctx, 8, NULL);
 }

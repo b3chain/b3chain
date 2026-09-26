@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="6010", ATTR{serial}=="1234-tul", MODE="0660", GROUP="plugdev", TAG+="systemd", ENV{SYSTEMD_WANTS}+="b3miner-jtag-autoload.service"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", ATTRS{serial}=="1234-tul", ATTR{bInterfaceNumber}=="00", PROGRAM="/bin/sh -c 'echo -n $id > /sys/bus/usb/drivers/ftdi_sio/unbind'"

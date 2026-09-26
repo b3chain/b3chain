@@ -450,10 +450,13 @@ impl Client {
             .get(0)
             .and_then(|v| v.as_f64())
             .unwrap_or(self.default_diff);
-        if new_diff <= 0.0 {
+        let Ok(new_target) = target::target_from_share_difficulty(new_diff) else {
+            self.logger.emit(
+                "set_difficulty_rejected",
+                &json!({"share_difficulty": new_diff}),
+            );
             return;
-        }
-        let new_target = target::target_from_share_difficulty(new_diff);
+        };
         let be_hex = target::to_be_hex_64(&new_target);
         {
             let mut s = self.state.lock().await;

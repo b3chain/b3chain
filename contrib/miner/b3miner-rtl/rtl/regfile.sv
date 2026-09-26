@@ -5,9 +5,9 @@
 // by 7-bit word address (= byte offset / 4):
 //
 //   word  byte  R/W  name             notes
-//   0x00  0x00  R    ID               returns REG_ID_MAGIC (0xB3110002 in v1.1.1 build 0002)
+//   0x00  0x00  R    ID               returns REG_ID_MAGIC (0xB3110003)
 //   0x01  0x04  R    STATUS           bit0 busy, bit1 share, bit2 scratch_ready
-//   0x02  0x08  W1   CTRL             bit0 start, bit1 abort, bit2 scratch_init
+//   0x02  0x08  W1   CTRL             bit0 start, bit1 abort, bit2 scratch_init, bit3 share_ack
 //   0x03  0x0C  RW   IRQ_MASK
 //   0x04  0x10  R    NONCE_LO
 //   0x05  0x14  R    NONCE_HI
@@ -19,7 +19,10 @@
 //   0x18..0x1F  W    PREV_HASH[0..7]
 //   0x20  0x80  W    NONCE_START
 //   0x21  0x84  W    NONCE_END
+//   0x22  0x88  W    NONCE_COUNT
+//   0x28..0x2F  RW   SHARE_TARGET[0..7]
 //   0x40..0x47  R    POW_HASH[0..7]
+//   0x48..0x5A  RW   HEADER_PREFIX[0..18] (first 76 header bytes)
 //
 // rev-B (post-verify fix): spi_slave now runs on clk_sys with oversampled
 // SPI inputs, so the SPI<->regfile path is single-clock.  rdata is purely
@@ -47,12 +50,16 @@ module regfile
     output logic              ctrl_start_pulse,
     output logic              ctrl_abort_pulse,
     output logic              ctrl_scratch_init_pulse,
+    output logic              ctrl_share_ack_pulse,
     output logic [31:0]       irq_mask,
     output logic [31:0]       job_epoch,
     output logic [31:0]       nonce_start,
     output logic [31:0]       nonce_end,
+    output logic [31:0]       nonce_count,
     output logic [255:0]      seed,
     output logic [255:0]      prev_hash,
+    output logic [255:0]      share_target,
+    output logic [607:0]      header_prefix,
 
     // ---- From pow_top FSM (sys domain) ----
     input  logic              status_busy,
@@ -76,14 +83,21 @@ module regfile
     // -----------------------------------------------------------------------
     logic [31:0] seed_words      [0:7];
     logic [31:0] prev_hash_words [0:7];
+    logic [31:0] target_words    [0:7];
+    logic [31:0] header_words    [0:18];
     logic [31:0] pow_hash_words  [0:7];
 
     always_comb begin
         for (int i = 0; i < 8; i++) begin
             seed[32*i +: 32]      = seed_words[i];
             prev_hash[32*i +: 32] = prev_hash_words[i];
+            share_target[32*i +: 32] = target_words[i];
             pow_hash_words[i]     = latched_pow_hash[32*i +: 32];
         end
+    end
+    always_comb begin
+        for (int i = 0; i < 19; i++)
+            header_prefix[32*i +: 32] = header_words[i];
     end
 
     // -----------------------------------------------------------------------
@@ -95,18 +109,23 @@ module regfile
             job_epoch                 <= 32'h0;
             nonce_start               <= 32'h0;
             nonce_end                 <= 32'h0;
+            nonce_count               <= 32'h0;
             ctrl_start_pulse          <= 1'b0;
             ctrl_abort_pulse          <= 1'b0;
             ctrl_scratch_init_pulse   <= 1'b0;
+            ctrl_share_ack_pulse      <= 1'b0;
             for (int i = 0; i < 8; i++) begin
                 seed_words[i]      <= 32'h0;
                 prev_hash_words[i] <= 32'h0;
+                target_words[i]    <= (i == 7) ? 32'h0000_FFFF : 32'hFFFF_FFFF;
             end
+            for (int i = 0; i < 19; i++) header_words[i] <= '0;
         end else begin
             // Auto-clear CTRL pulses every cycle.
             ctrl_start_pulse        <= 1'b0;
             ctrl_abort_pulse        <= 1'b0;
             ctrl_scratch_init_pulse <= 1'b0;
+            ctrl_share_ack_pulse    <= 1'b0;
 
             if (spi_req_valid && spi_req_write) begin
                 unique case (spi_req_addr)
@@ -114,11 +133,13 @@ module regfile
                         if (spi_req_wdata[CTRL_START_JOB])    ctrl_start_pulse        <= 1'b1;
                         if (spi_req_wdata[CTRL_ABORT])        ctrl_abort_pulse        <= 1'b1;
                         if (spi_req_wdata[CTRL_SCRATCH_INIT]) ctrl_scratch_init_pulse <= 1'b1;
+                        if (spi_req_wdata[CTRL_SHARE_ACK])    ctrl_share_ack_pulse    <= 1'b1;
                     end
                     REG_IRQ_MASK:    irq_mask     <= spi_req_wdata;
                     REG_JOB_EPOCH:   job_epoch    <= spi_req_wdata;
                     REG_NONCE_START: nonce_start  <= spi_req_wdata;
                     REG_NONCE_END:   nonce_end    <= spi_req_wdata;
+                    REG_NONCE_COUNT: nonce_count  <= spi_req_wdata;
                     REG_STATUS: begin
                         // Firmware acks share/scratch via CTRL.abort or CTRL.start;
                         // explicit W1C of STATUS bits is a no-op for now.
@@ -128,6 +149,10 @@ module regfile
                             seed_words[spi_req_addr - REG_SEED_BASE] <= spi_req_wdata;
                         end else if (spi_req_addr >= REG_PREV_BASE && spi_req_addr < REG_PREV_BASE + 8) begin
                             prev_hash_words[spi_req_addr - REG_PREV_BASE] <= spi_req_wdata;
+                        end else if (spi_req_addr >= REG_TARGET_BASE && spi_req_addr < REG_TARGET_BASE + 8) begin
+                            target_words[spi_req_addr - REG_TARGET_BASE] <= spi_req_wdata;
+                        end else if (spi_req_addr >= REG_HEADER_BASE && spi_req_addr < REG_HEADER_BASE + 19) begin
+                            header_words[spi_req_addr - REG_HEADER_BASE] <= spi_req_wdata;
                         end
                         // All other writes silently ignored.
                     end
@@ -158,11 +183,16 @@ module regfile
             REG_TEMP_RAW:    spi_req_rdata = temp_raw;
             REG_NONCE_START: spi_req_rdata = nonce_start;
             REG_NONCE_END:   spi_req_rdata = nonce_end;
+            REG_NONCE_COUNT: spi_req_rdata = nonce_count;
             default: begin
                 if (spi_req_addr >= REG_SEED_BASE && spi_req_addr < REG_SEED_BASE + 8) begin
                     spi_req_rdata = seed_words[spi_req_addr - REG_SEED_BASE];
                 end else if (spi_req_addr >= REG_PREV_BASE && spi_req_addr < REG_PREV_BASE + 8) begin
                     spi_req_rdata = prev_hash_words[spi_req_addr - REG_PREV_BASE];
+                end else if (spi_req_addr >= REG_TARGET_BASE && spi_req_addr < REG_TARGET_BASE + 8) begin
+                    spi_req_rdata = target_words[spi_req_addr - REG_TARGET_BASE];
+                end else if (spi_req_addr >= REG_HEADER_BASE && spi_req_addr < REG_HEADER_BASE + 19) begin
+                    spi_req_rdata = header_words[spi_req_addr - REG_HEADER_BASE];
                 end else if (spi_req_addr >= REG_POW_HASH_BASE && spi_req_addr < REG_POW_HASH_BASE + 8) begin
                     spi_req_rdata = pow_hash_words[spi_req_addr - REG_POW_HASH_BASE];
                 end else begin

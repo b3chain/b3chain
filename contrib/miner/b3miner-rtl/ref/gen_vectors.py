@@ -103,13 +103,19 @@ def gen_blake3_xof(out_dir: Path) -> None:
     lines = []
     cases = [
         ("empty", b"", 64),
-        ("ascii_abc", b"abc", 32),
-        ("64_bytes_ramp", bytes(range(64)), 128),
+        ("ascii_abc", b"abc", 64),
+        ("64_bytes_ramp", bytes(range(64)), 64),
         ("prev_hash_zero", bytes(32) + struct.pack("<I", 0), 64),
     ]
     for label, inp, olen in cases:
         out = ref.blake3_xof(inp, olen)
-        lines.append(_hexline(label, inp, struct.pack("<I", olen), out))
+        lines.append(_hexline(
+            label,
+            struct.pack("<I", len(inp)),
+            inp.ljust(64, b"\x00"),
+            struct.pack("<I", olen),
+            out,
+        ))
     _write(out_dir / "blake3_xof.hex", lines)
 
 
@@ -162,11 +168,14 @@ def gen_full_hash(out_dir: Path) -> None:
     """End-to-end vectors for rtl/b3miner_top.sv.
 
     Format per line:
-        label: header(80) prev_hash(32) pow_hash(32) lanes_final(256)
+        label: header(80) prev_hash(32) pow_seed(32) pow_hash(32) lanes_final(256)
     """
     lines = []
     cases = [
         ("zero_header_zero_prev", bytes(80), bytes(32)),
+        ("zero_header_nonce_one",
+         ref.header_with_nonce(bytes(80), 1),
+         bytes(32)),
         ("ones_header_zero_prev", bytes([0xFF]) * 80, bytes(32)),
         ("ramp_header_random_prev",
          bytes(range(80)),
@@ -182,6 +191,7 @@ def gen_full_hash(out_dir: Path) -> None:
             label,
             header,
             prev,
+            ref.blake3_hash(header),
             result.pow_hash,
             ref.serialise_lanes(result.lanes_final),
         ))

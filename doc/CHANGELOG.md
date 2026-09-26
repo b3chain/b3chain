@@ -1,5 +1,18 @@
 # B3Chain Project History
 
+## XCKU5P B3PoW-Scratch miner ABI build 0003 (2026-09-24)
+
+- Added the XCKU5P-2FFVB676 board profile, reviewed pin contract, 100 MHz
+  wrapper, Vivado build flow, manifests, and SHA-verified JTAG autoload.
+- Fixed per-nonce consensus behavior: each nonce derives BLAKE3 from its full
+  80-byte header and restores a pristine parent scratchpad before mixing.
+- Added programmable targets, exact nonce counts, full extranonce2 handling,
+  abort quiescence, acknowledged share delivery, and safe 100/250 MHz CDC.
+- Closed 250 MHz timing at WNS +0.015 ns / WHS +0.009 ns. Final bitstream
+  SHA-256: `ad7f897dc406c53c9a84718db72252d71bb7f5a07e5845b17c2d846340f9e1ea`.
+- Completed ESP32 real/sim builds and mock Stratum verification. Physical
+  ESP32 SPI self-test and pool soak remain blocked until USB1 is available.
+
 ## Explorer-ng footer logo + About page rebrand (2026-05-23)
 
 - **Fix:** Footer on `/v2/about` (and all pages) still showed upstream

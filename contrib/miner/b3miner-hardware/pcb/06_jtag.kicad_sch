@@ -1,0 +1,162 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "b7800430-063d-41f0-b875-1ac3d767d9d7")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "06_jtag — §9")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V3V3_SYS"
+    (shape input)
+    (at 20.32 30.48 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "a23ec02b-3553-4695-b9a2-64e29aa461d7")
+  )
+
+  (hierarchical_label "JTAG_TCK"
+    (shape output)
+    (at 200.66 30.48 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "df8420a4-169e-4476-85a4-e8c705916db9")
+  )
+
+  (hierarchical_label "JTAG_TDI"
+    (shape output)
+    (at 200.66 38.1 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "516c4b0b-eede-4825-a500-25dec10df1e1")
+  )
+
+  (hierarchical_label "JTAG_TDO"
+    (shape output)
+    (at 200.66 45.72 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "609a0aea-75b3-4aba-affc-4a3605c7e7f2")
+  )
+
+  (hierarchical_label "JTAG_TMS"
+    (shape output)
+    (at 200.66 53.339999999999996 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "dcd46ef9-2c1f-49ee-985c-7e6a1df18a8e")
+  )
+
+  (hierarchical_label "JTAG_VREF"
+    (shape output)
+    (at 200.66 60.959999999999994 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "ed770a1e-a5ad-4b48-9618-dfe1364d1299")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "98217b69-ffc4-4556-8f1f-eff4ecd8e2fb")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000006-0006-4000-8000-000000000006"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 06_jtag\nSCHEMATIC.md §9: 2x7 Xilinx JTAG header (FPGA only), 3.3V VREF\nKey parts: Wurth 61201421621 2×7 shrouded header\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "ecb6359a-0bd9-4e8c-b0b1-2a30e3df85e6")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000006-0006-4000-8000-000000000006"
+      (page "7")
+    )
+  )
+)

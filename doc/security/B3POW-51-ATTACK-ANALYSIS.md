@@ -178,32 +178,37 @@ estimate below. Numbers extend [SPEC §8.D](../../contrib/miner/b3miner-rtl/SPEC
 |---|---|---|---|---|---|
 | CPU Ryzen 9 7950X (1 core) | ~80 ns × 8 = ~640 ns | ~1.3 ms | 770 H/s | ~6 W/core | n/a (existing) |
 | CPU Ryzen 9 7950X (16-core) | parallel | — | ~12 KH/s | 230 W | $700 |
-| GPU RTX 4090 (memory-stalled) | ~150 ns × 8 = ~1.2 µs | ~2.5 ms | ~400 H/s effective | 450 W | $1,800 |
-| FPGA KU5P (B3Miner-1) | ~24 ns @ 250 MHz, 6 cycles | ~49 µs | 20.4 KH/s/board | ~75 W | $1,500–2,500 |
+| GPU RTX 4090 (single stalled pipeline, unmeasured) | ~150 ns × 8 = ~1.2 µs | ~2.5 ms | unmeasured (the ~400 H/s figure is one pipeline, not a device) | 450 W | $1,800 |
+| FPGA KU5P (B3Miner-1, routed model) | closed route, one pipeline | — | ~5.5 kH/s modeled, board timing unmeasured | ~75 W | $1,500–2,500 |
 | ASIC 7 nm (projected) | ~6 ns | ~12 µs | 83 KH/s/die | ~30 W | $5–20M NRE + $50/die at volume |
 
-CPUs and GPUs are not economic miners; FPGAs are; ASICs would dominate
-if anyone tapes out. The asymmetry between FPGA and GPU is the
-intended outcome: 1 MB > GPU L1 (128 KB on RTX 4090) and the 8-way
-sequential read-modify-write breaks GPU warp parallelism.
+CPUs and GPUs are not economic miners on the published single-pipeline
+estimates. Those GPU and pre-route FPGA rates are classified in
+[`contrib/testing/bench/MEASUREMENT.md`](../../contrib/testing/bench/MEASUREMENT.md).
+The routed KU5P model is about 5.5 kH/s for one pipeline. The 20.4 kH/s
+row this table used to publish was the SPEC §8.D 49 µs model and is
+superseded. 1 MB exceeds a GPU SM's L1 (128 KB on RTX 4090) and the
+8-way sequential read-modify-write is the sequential dependency the
+design relies on. Full-device GPU throughput is unmeasured.
 
 ### 3.2 Memory-hardness fallback
 
-Per [SPEC §8.C](../../contrib/miner/b3miner-rtl/SPEC.md), reduced-memory
-attackers pay a recompute penalty on every miss. Reproduced (per the
-Phase 1 simulators, where applicable):
+SPEC §8.C floors, enforced by
+[`ref/tests/test_reduced_memory.py`](../../contrib/miner/b3miner-rtl/ref/tests/test_reduced_memory.py).
+A checkpoint-replay run that beats a floor has to lower the floor.
+The reference-header measurement is above every floor; the charges are
+in [`MEASUREMENT.md`](../../contrib/testing/bench/MEASUREMENT.md).
 
-| Attacker memory | Expected miss penalty | Effective hashrate (vs 1 MB) |
-|---|---|---|
-| 1 MB (honest) | 0× | 1.0× |
-| 512 KB | ~2× | ~0.5× |
-| 256 KB | ~4× | ~0.25× |
-| 128 KB | ~8× | ~0.125× |
+| Attacker memory | Minimum mix-step ratio vs 1 MiB honest path |
+|---|---|
+| 1 MiB (honest) | 1× |
+| 512 KiB | 2× |
+| 256 KiB | 4× |
+| 128 KiB | 8× |
 
-This is **not** Argon2-strength memory hardness. It is sufficient to
-make full-pad mining strictly more profitable than reduced-pad
-mining, not sufficient to deny a determined attacker a workable cost
-floor.
+This is **not** Argon2-strength memory hardness. XOF rebuild of a
+written block is not a valid shortcut. The floors are the claim the
+test holds, not a promise that every strategy is only 2× slower.
 
 ### 3.3 Network hashrate scenarios
 
@@ -453,14 +458,17 @@ FPGA inventory has parity hashrate and can reorg arbitrarily.
 | 10 000 | 1 MH/s   | 1.1 MH/s  | $150K cap-ex + ~$10K op-ex |
 
 Numbers assume B3Miner-1 KU5P at ~$1.5k/board and 20 KH/s/board.
+That 20 KH/s figure is the superseded SPEC §8.D 49 µs model. The routed
+single-pipeline model is about 5.5 kH/s
+([`MEASUREMENT.md`](../../contrib/testing/bench/MEASUREMENT.md)).
 
 **Finding (F-6).** Pre-fix the b3chain `powLimit = 0x1e01ffff` was
 ≈ 10× wider than Bitcoin's `0x1d00ffff`. A single B3Miner-1 board
-(20.4 KH/s) solves a *minimum-difficulty* block in ≈ 411 s; a 16-board
-cluster solves it in ≈ 25 s. That is a "floor", not a steady-state
-spacing, but any momentary hashrate dip during retarget that landed the
-DAA at the floor would expose a window an attacker could amplify into a
-private fork.
+at the superseded 20.4 kH/s model solves a *minimum-difficulty* block
+in ≈ 411 s; a 16-board cluster solves it in ≈ 25 s. That is a "floor",
+not a steady-state spacing, but any momentary hashrate dip during
+retarget that landed the DAA at the floor would expose a window an
+attacker could amplify into a private fork.
 
 **Mitigations.**
 - **M-13 (`powLimit` 4× tighter + post-bootstrap operating floor)** —
@@ -589,16 +597,23 @@ validation pays a 5 ms penalty — a ~100× amplification.
 
 ### V-10 Memory-hardness shortcut
 
-**Mechanism.** SPEC §8.C explicitly acknowledges B3PoW-Scratch is
-"not Argon2-strength". A mining rig that economises on memory (e.g.
-256 KB instead of 1 MB scratchpad) pays a ~4× recompute penalty per
-the SPEC table. If recompute is implemented in custom silicon, the
-penalty can be amortised by clock rate, and a small-memory ASIC may
-beat a large-memory FPGA on $-per-hash.
+**Mechanism.** SPEC §8.C acknowledges B3PoW-Scratch is not
+Argon2-strength. A miner that keeps only part of the scratchpad must
+still produce the honest `pow_hash`. Regenerating a block from
+`BLAKE3-XOF(prev || i)` after a read-modify-write does not. The
+in-tree checkpoint-replay evaluator
+([`b3pow_reduced.py`](../../contrib/miner/b3miner-rtl/ref/b3pow_reduced.py))
+stays within the resident cap and matches the honest hash. On the
+reference header its mix-step charges were about 1.2×10³ (512 KiB),
+2.4×10³ (256 KiB), and 3.1×10³ (128 KiB), all above the SPEC floors
+of 2× / 4× / 8×. Those charges are one strategy and one header.
 
-**Cost model.** Open. SPEC §8.E lists this as an open audit item.
-This document does not produce numbers; the Phase 3 external audit
-(SECURITY-ROADMAP §4) is the appropriate venue.
+**Cost model.** Recorded in
+[`contrib/testing/bench/MEASUREMENT.md`](../../contrib/testing/bench/MEASUREMENT.md)
+and gated by
+[`test_reduced_memory.py`](../../contrib/miner/b3miner-rtl/ref/tests/test_reduced_memory.py).
+A cheaper hash-equivalent strategy that lands under a floor fails that
+test until SPEC §8.C is lowered to the measurement.
 
 **Mitigations.**
 - **M-11 (uniformity gate)**: `test_address_uniformity.py` (Phase 2.2)
@@ -606,7 +621,8 @@ This document does not produce numbers; the Phase 3 external audit
   the recompute-penalty argument.
 - **Limit:** no in-tree defence against an actually-cheaper-than-FPGA
   ASIC implementation exists. If one is built, **M-4** still caps the
-  blast radius.
+  blast radius. The external audit in SECURITY-ROADMAP §4 stays
+  `proposed`.
 
 ### V-11 Eclipse + minority hashrate
 

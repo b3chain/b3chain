@@ -4,7 +4,8 @@ Drop zone for EDA project files and fabrication outputs produced by the
 contract PCB design house. The hardware specification they implement
 against lives one level up in [`../SCHEMATIC.md`](../SCHEMATIC.md);
 nothing in this folder may diverge from that spec without a paired
-update there.
+update there. Pin-by-pin wiring for the PCB house is in
+[`../CONNECTION-GUIDE.md`](../CONNECTION-GUIDE.md).
 
 ## Expected contents
 
@@ -69,10 +70,12 @@ matching schematic / layout source files are tagged in git with
 | [`README.md`](README.md) | This file |
 | [`b3miner1.kicad_pro`](b3miner1.kicad_pro) | KiCad 8 project skeleton — pre-encodes the 9 net classes from [`../SCHEMATIC.md`](../SCHEMATIC.md) §13 (USB 90 Ω diff, Ethernet 100 Ω diff, LVDS clock 100 Ω diff, GTH future, SPI bus, three power-rail classes), DRC rules at 8L / 4 mil fab class, BOM export format, and project text variables. Opens in KiCad 8.0+ without further setup. |
 | [`kicad-bringup.md`](kicad-bringup.md) | Paste-ready GUI checklist to take the project from skeleton to a working capture + layout starter — layer stack-up dialog values, board outline coordinates, mounting-hole positions, hierarchical sheet structure for the schematic, inter-sheet net list, symbol-library prerequisites, and the explicit "what still needs the engineer" boundary. |
+| [`gen_b3miner_sch.py`](gen_b3miner_sch.py) | Regenerates the hierarchical `.kicad_sch` skeleton from `SCHEMATIC.md` / `kicad-bringup.md` §2 |
+| `b3miner1.kicad_sch` + `01_power` … `08_thermal` `.kicad_sch` | Hierarchical schematic **skeleton** (sheet hierarchy + inter-sheet nets + spec notes). Open in KiCad 8, then place symbols per subsheet. |
 
 **Not yet in this folder (contract-house deliverables):**
 
-- `b3miner1.kicad_sch` + per-subsystem sheet files (`01_power.kicad_sch` etc.) — schematic capture per `kicad-bringup.md` Step 2
+- Full schematic capture (parts, passives, wiring inside each subsheet)
 - `b3miner1.kicad_pcb` — board layout per `kicad-bringup.md` Step 1
 - `lib/b3chain.kicad_sym` + `lib/b3chain.pretty/` — custom symbols/footprints (KU5P BGA-676, ESP32-S3 module, W5500, etc.)
 - `pinplan/b3miner_r0.csv` — KU5P FFVB676 pin assignment from Vivado pin-planner

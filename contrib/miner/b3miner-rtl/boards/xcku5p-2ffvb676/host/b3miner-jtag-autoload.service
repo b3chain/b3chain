@@ -1,0 +1,15 @@
+[Unit]
+Description=Verify and volatile-load B3PoW miner FPGA image
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=assistant
+Group=assistant
+Environment=HOME=/home/assistant
+WorkingDirectory=/data/projects/b3pow-implementation/b3miner-rtl
+ExecStart=/bin/bash /data/projects/b3pow-implementation/b3miner-rtl/boards/xcku5p-2ffvb676/host/verified_jtag_autoload.sh
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

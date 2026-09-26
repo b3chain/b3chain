@@ -94,3 +94,5 @@ void double_blake3_search(const uint8_t        *header_template, // 80 bytes
     #pragma unroll
     for (int i = 0; i < 32; ++i) results[slot].hash_le[i] = hash[i];
 }
+
+#include "b3pow_scratch.cu"

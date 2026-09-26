@@ -37,7 +37,7 @@ def test_constants_match_spec():
     assert ref.ITERATIONS == 2048
     assert ref.INNER_ROUNDS == 2
     assert ref.SPEC_VERSION == 0x00010101
-    assert ref.REG_ID_MAGIC == 0xB3110002
+    assert ref.REG_ID_MAGIC == 0xB3110003
 
 
 def test_iter_mul_table_is_eight_nontrivial_64bit():

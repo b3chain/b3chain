@@ -1,0 +1,306 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "17eff908-1b18-4384-b117-912be35f29ee")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "02_fpga — §5")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V12_BUS"
+    (shape input)
+    (at 20.32 30.48 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "17eb29b2-52fa-4a51-98bb-e54af76406c2")
+  )
+
+  (hierarchical_label "V3V3_SYS"
+    (shape input)
+    (at 20.32 38.1 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "c8a776b0-f7c8-4809-902f-21029eaa5217")
+  )
+
+  (hierarchical_label "V1V8_AUX"
+    (shape input)
+    (at 20.32 45.72 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "143389fb-51af-4ae0-b7c2-517a0a8def88")
+  )
+
+  (hierarchical_label "VCCINT"
+    (shape input)
+    (at 20.32 53.339999999999996 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "b685834c-15ee-4656-9a4d-3d3c8453b5d7")
+  )
+
+  (hierarchical_label "PG_ALL"
+    (shape input)
+    (at 20.32 60.959999999999994 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "6bd3a4ad-72e8-44c9-a665-e32f53a94acf")
+  )
+
+  (hierarchical_label "FPGA_PROG_B"
+    (shape input)
+    (at 20.32 68.58 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "2b3dd4b8-f5f7-4f0f-a881-be2015259b20")
+  )
+
+  (hierarchical_label "FPGA_SPI_CLK"
+    (shape input)
+    (at 20.32 76.2 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "5045252e-b403-4802-9b59-c4e336cf73ce")
+  )
+
+  (hierarchical_label "FPGA_SPI_MOSI"
+    (shape input)
+    (at 20.32 83.82000000000001 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "83a33b45-e32a-47fa-b99e-c643903309f6")
+  )
+
+  (hierarchical_label "FPGA_SPI_CS"
+    (shape input)
+    (at 20.32 91.44000000000001 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "010e5356-4f48-4f8b-a250-b3d4bc84678b")
+  )
+
+  (hierarchical_label "JTAG_TCK"
+    (shape input)
+    (at 20.32 99.06000000000002 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "41a0c6c4-f339-4fa1-8a10-677b54b09d4f")
+  )
+
+  (hierarchical_label "JTAG_TDI"
+    (shape input)
+    (at 20.32 106.68000000000002 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "e6ac930f-d8d8-4a25-a1af-7e5d2d1995f4")
+  )
+
+  (hierarchical_label "JTAG_TDO"
+    (shape input)
+    (at 20.32 114.30000000000003 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "38a7da22-99ab-4dd7-8b12-5e861d0fd6dc")
+  )
+
+  (hierarchical_label "JTAG_TMS"
+    (shape input)
+    (at 20.32 121.92000000000003 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "07a5f459-4f12-4914-84fa-b2c90cc2950e")
+  )
+
+  (hierarchical_label "JTAG_VREF"
+    (shape input)
+    (at 20.32 129.54000000000002 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "60b48e68-4dca-4e9a-a487-c7da38e18cf7")
+  )
+
+  (hierarchical_label "FPGA_SPI_MISO"
+    (shape output)
+    (at 200.66 30.48 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "a827f582-1cb6-4c7a-964f-8554ecf88671")
+  )
+
+  (hierarchical_label "FPGA_SHARE_IRQ"
+    (shape output)
+    (at 200.66 38.1 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "6f765c3a-7dd4-4690-8abe-32ccb20a2ad8")
+  )
+
+  (hierarchical_label "FPGA_INIT_B"
+    (shape output)
+    (at 200.66 45.72 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "4eebd4b5-76ea-4060-a0f8-b8c4a0c9f1aa")
+  )
+
+  (hierarchical_label "FPGA_DONE"
+    (shape output)
+    (at 200.66 53.339999999999996 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "9a5cdc19-25da-4d7f-a37b-04a8250bc9f2")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "b9e92a0c-8ec1-49f5-a23d-28003306e3b3")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000002-0002-4000-8000-000000000002"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 02_fpga\nSCHEMATIC.md §5: XCKU5P-2FFVB676E, decoupling, slave-serial config straps, 200MHz LVDS XO\nKey parts: XCKU5P-2FFVB676E, SiT9501 200MHz LVDS, config straps M0-M2=1\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "fba89dfb-4c81-4527-964e-681ce6b0ead2")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000002-0002-4000-8000-000000000002"
+      (page "3")
+    )
+  )
+)

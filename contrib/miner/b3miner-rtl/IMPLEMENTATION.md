@@ -8,7 +8,8 @@ RTL** rather than line counts.
 > `params_pkg.sv::ITER_MUL[7]` changed from `0xE7037ED1A0B428DB`
 > (duplicate of `ITER_MUL[1]`) to `0x6E5C6F88AA5BDA77` (pairwise
 > distinct).  `SPEC_VERSION` bumped to `0x00010101` and the firmware
-> magic `REG_ID_MAGIC` bumped to `0xB3110002`.  Any synthesised
+> magic `REG_ID_MAGIC` is now `0xB3110003` after the miner ABI build-0003
+> per-nonce header, target, and CDC fixes. Any synthesised
 > bitstream older than this commit **will not match** the consensus
 > vectors and must be rebuilt.  Quick path:
 >
@@ -20,7 +21,7 @@ RTL** rather than line counts.
 > python build/verify_bin.py                    # confirms MD5
 > ```
 >
-> Firmware boot expects `FPGA ID = 0xB3110002` after this rebuild.
+> Firmware boot expects `FPGA ID = 0xB3110003` after this rebuild.
 > See [`doc/security/B3POW-51-ATTACK-ANALYSIS.md`](../../../doc/security/B3POW-51-ATTACK-ANALYSIS.md)
 > F-1 for the rationale.
 
@@ -47,7 +48,7 @@ derived from it, not the other way around.
 
 ## Phase 2 — SPI + regfile (weeks 6–7)
 
-- [x] `rtl/spi_slave.sv` — 40-bit mode-0 slave at 25 MHz
+- [x] `rtl/spi_slave.sv` — 40-bit mode-0 oversampled slave at 5 MHz
 - [x] `rtl/regfile.sv` — every offset in
   [`b3_fpga_regs.h`](../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h)
 
@@ -127,7 +128,7 @@ idf.py flash monitor
 
 # 3) Verify
 # Expect within ~10 s of boot:
-#   I (xxxx) b3_fpga: FPGA ID = 0xB3110002 (OK, v1.1.1)
+#   I (xxxx) b3_fpga: FPGA ID = 0xB3110003 (OK, v1.1.1 ABI build 0003)
 #   I (xxxx) b3_fpga: SCRATCH ready
 #   I (xxxx) b3_stratum_v1: subscribed, job=...
 #   I (xxxx) b3_fpga_worker: share submitted nonce=0x... ntime=0x...

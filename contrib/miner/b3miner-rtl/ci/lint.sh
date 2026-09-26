@@ -29,6 +29,8 @@ fi
 # step covers them in the synth flow.
 SKIP_FILES=(
     "b3miner_top"   # instantiates IBUFGDS, MMCME4_ADV, BUFG (Xilinx PLL)
+    "b3miner_top_refactored" # active generic Xilinx clock wrapper
+    "b3miner_core"  # structural integration includes xadc_monitor
     "xadc_monitor"  # instantiates SYSMONE4 (Xilinx XADC)
 )
 

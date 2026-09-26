@@ -7,5 +7,6 @@ endif()
 idf_component_register(
     SRCS ${b3_fpga_backend} "b3_fpga_worker.c"
     INCLUDE_DIRS "include"
-    REQUIRES driver esp_timer mbedtls b3_events b3_work b3_metrics
+    REQUIRES esp_driver_gpio esp_driver_spi esp_timer
+             b3_events b3_work b3_metrics
 )

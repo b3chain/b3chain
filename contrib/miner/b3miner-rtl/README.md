@@ -10,25 +10,26 @@ B3PoW-Scratch is to keep the per-hash advantage of such an ASIC over
 this FPGA card small enough that hobbyists and small operators stay
 competitive.
 
-- **Target:** Xilinx Kintex UltraScale+ **XCKU5P-2FFVB676E** (industrial grade)
+- **Target:** Xilinx Kintex UltraScale+ **XCKU5P-2FFVB676E**
 - **Algorithm:** B3PoW-Scratch v1.1 (see [`SPEC.md`](SPEC.md))
-- **Host interface:** SPI mode-0 slave at 25 MHz (driven by ESP32-S3, see
+- **Host interface:** SPI mode-0 slave at up to 5 MHz (driven by ESP32-S3, see
   [`../b3miner-firmware/`](../b3miner-firmware/))
-- **Performance target:** ≥ 20 kH/s single pipeline @ 250 MHz, ≤ 8 W
+- **Current model:** ~5.5 kH/s single pipeline @ 250 MHz after timing-safe
+  quarter-round pipelining; silicon rate and power require measurement
 - **Tooling:** Vivado ML Standard (free edition supports KU5P), Verilator for sim
 
 This is the **sibling** of:
 
-- [`../b3miner-firmware/`](../b3miner-firmware/) — ESP32-S3 firmware that loads
-  this bitstream over SelectMAP-Serial and drives it via SPI
+- [`../b3miner-firmware/`](../b3miner-firmware/) — ESP32-S3 Stratum and SPI
+  control firmware; configuration transport is board-specific
 - [`../b3miner-hardware/`](../b3miner-hardware/) — PCB schematics and BOM for
   the production card
 
 The host **register map is locked** in
 [`../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h`](../b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h)
-— RTL must reply with magic `0xB3110002` to a read of `REG_ID = 0x00`
-(v1.1.1 build 0002; the F-1 fix bumped this from the original
-`0xB3110001` build 0001 — see [`CHANGELOG.md`](CHANGELOG.md) v1.1.2).
+— RTL must reply with magic `0xB3110003` to a read of `REG_ID = 0x00`.
+Build 0003 adds per-nonce header hashing, programmable share targets,
+safe 100/250 MHz CDC, and explicit share acknowledgement.
 
 ---
 
@@ -74,6 +75,7 @@ b3miner-rtl/
 ├── ref/                     Python reference + vector generator
 ├── sim/                     Testbenches + Verilator/XSIM harness
 ├── build/                   Vivado TCL + XDC + reports
+├── boards/                  board wrappers, contracts, XDC and build scripts
 ├── ci/                      lint + sim + synth shell scripts
 └── docs/                    diagrams and protocol notes
 ```
@@ -96,13 +98,14 @@ b3miner-rtl/
 | `regfile.sv` | Done | every offset in `b3_fpga_regs.h` covered |
 | `scratchpad_mem.sv` | Done | 8 × 128 KB BRAM-banked, true-dual-port |
 | `scratch_init.sv` | Done | TB green vs `vectors/scratch_init.hex` |
-| `mixing_core.sv` | Done | TB green vs `vectors/full_hash.hex` |
+| `mixing_core.sv` | Done | quarter-pipelined; full-chip hash parity green |
 | `target_compare.sv` | Done | int-LE comparator |
 | `pow_top.sv` | Done | IDLE → SCRATCH_INIT → MINING → SHARE FSM |
-| `b3miner_top.sv` | Done | MMCM + reset sync + SelectMAP gating |
-| `xadc_monitor.sv` | Done | die-temp → `REG_TEMP_RAW` |
-| Timing closure | Open | requires actual Vivado run on host |
-| HW-in-loop bring-up | Open | requires Avnet AES-XCKU5P eval board |
+| `b3miner_core.sv` / CDC | Done | command mailbox, Gray counter, share FIFO |
+| board wrappers | Done | generic 200 MHz and XCKU5P-2FFVB676 100 MHz |
+| `xadc_monitor.sv` | Done | DRP die-temp → `REG_TEMP_RAW` |
+| Timing closure | In progress | licensed Vivado 2026.1 board build |
+| HW-in-loop bring-up | In progress | physical XCKU5P board/JTAG available |
 
 ---
 

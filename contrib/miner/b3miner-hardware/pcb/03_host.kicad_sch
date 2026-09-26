@@ -1,0 +1,366 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "ffa147d5-eb65-4f3e-b377-6d38d51f6b63")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "03_host — §6")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V3V3_SYS"
+    (shape input)
+    (at 20.32 30.48 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "e1e940e5-c384-4e4b-8de3-e4b44a9da700")
+  )
+
+  (hierarchical_label "PG_ALL"
+    (shape input)
+    (at 20.32 38.1 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "ba8545ba-87d0-445e-92e0-955471ca4dc1")
+  )
+
+  (hierarchical_label "FPGA_SPI_MISO"
+    (shape input)
+    (at 20.32 45.72 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "6a52fb65-ca1c-424d-af57-501ec9dbcb36")
+  )
+
+  (hierarchical_label "FPGA_SHARE_IRQ"
+    (shape input)
+    (at 20.32 53.339999999999996 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "9367b298-b6af-41cb-b450-f51c8e2a55f8")
+  )
+
+  (hierarchical_label "FPGA_INIT_B"
+    (shape input)
+    (at 20.32 60.959999999999994 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "f39ce80b-0da3-4ae1-812b-b0e250ba49f4")
+  )
+
+  (hierarchical_label "FPGA_DONE"
+    (shape input)
+    (at 20.32 68.58 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "d2f8e0ca-35fd-4e0f-a89b-24adddace081")
+  )
+
+  (hierarchical_label "FAN_TACH"
+    (shape input)
+    (at 20.32 76.2 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "671a49c0-30c2-4409-9013-e11d8f5db92e")
+  )
+
+  (hierarchical_label "FPGA_PROG_B"
+    (shape output)
+    (at 200.66 30.48 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "6938fc44-8b67-4185-9f76-53d8dc412fbd")
+  )
+
+  (hierarchical_label "FPGA_SPI_CLK"
+    (shape output)
+    (at 200.66 38.1 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "ff10f593-e086-4cea-8a9f-06d51df990f4")
+  )
+
+  (hierarchical_label "FPGA_SPI_MOSI"
+    (shape output)
+    (at 200.66 45.72 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "d9a5e131-a765-4b6d-816f-584b27751acf")
+  )
+
+  (hierarchical_label "FPGA_SPI_CS"
+    (shape output)
+    (at 200.66 53.339999999999996 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "f30e066a-cd4b-4d46-8d17-2288439d65d5")
+  )
+
+  (hierarchical_label "W5500_SCK"
+    (shape output)
+    (at 200.66 60.959999999999994 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "1f63a44c-ebbc-4f8b-8d99-85bc53cc4bbb")
+  )
+
+  (hierarchical_label "W5500_MOSI"
+    (shape output)
+    (at 200.66 68.58 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "7b6ffb76-4161-4da1-b1b4-978c4f3410e2")
+  )
+
+  (hierarchical_label "W5500_MISO"
+    (shape output)
+    (at 200.66 76.2 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "ec8f0b55-a04c-48ea-ae98-0643a58bb68d")
+  )
+
+  (hierarchical_label "W5500_CS"
+    (shape output)
+    (at 200.66 83.82000000000001 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "0d48f206-8a0e-44aa-a385-1cf8f60d4aa1")
+  )
+
+  (hierarchical_label "W5500_INT"
+    (shape output)
+    (at 200.66 91.44000000000001 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "aa52e938-5129-4b56-9908-600bd867bedb")
+  )
+
+  (hierarchical_label "W5500_RST"
+    (shape output)
+    (at 200.66 99.06000000000002 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "25335d7d-8a15-4359-a477-be83961795e0")
+  )
+
+  (hierarchical_label "USB_DP"
+    (shape output)
+    (at 200.66 106.68000000000002 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "8798f8af-6fea-4350-8870-8170425fe9c3")
+  )
+
+  (hierarchical_label "USB_DM"
+    (shape output)
+    (at 200.66 114.30000000000003 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "dbd7bf65-2d65-4aeb-a439-845f31751f6c")
+  )
+
+  (hierarchical_label "LED_POWER"
+    (shape output)
+    (at 200.66 121.92000000000003 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "6514fb85-9861-4a76-a90a-9726db921d44")
+  )
+
+  (hierarchical_label "LED_LINK"
+    (shape output)
+    (at 200.66 129.54000000000002 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "8ceeeeed-393f-4657-ad88-b9342b0a796d")
+  )
+
+  (hierarchical_label "LED_MINING"
+    (shape output)
+    (at 200.66 137.16000000000003 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "c8e5a321-d482-4422-87d1-9902f907cf21")
+  )
+
+  (hierarchical_label "FAN_PWM"
+    (shape output)
+    (at 200.66 144.78000000000003 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "277497e7-615b-490d-baa1-6e3762d4a1ad")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "a128dced-9deb-4bea-bde6-fe3feb6b1e1c")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000003-0003-4000-8000-000000000003"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 03_host\nSCHEMATIC.md §6: ESP32-S3-WROOM-1-N16R8, reset/boot, ATECC608B I2C (GPIO1/2)\nKey parts: ESP32-S3-WROOM-1-N16R8, ATECC608B-MAHDA-T\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "c0369303-623b-4e52-8ce5-1d34e35fbebc")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000003-0003-4000-8000-000000000003"
+      (page "4")
+    )
+  )
+)

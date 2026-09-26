@@ -17,6 +17,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=kernels/miner.cu");
     println!("cargo:rerun-if-changed=kernels/blake3.cuh");
+    println!("cargo:rerun-if-changed=kernels/b3pow_scratch.cu");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
 

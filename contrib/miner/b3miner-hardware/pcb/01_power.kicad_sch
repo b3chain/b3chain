@@ -1,0 +1,162 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "c31b4ba9-d268-4c1d-9b28-35ee85d544cf")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "01_power — §3")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V12_BUS"
+    (shape output)
+    (at 200.66 30.48 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "b853731f-bfbd-4b26-814b-63501734eb0d")
+  )
+
+  (hierarchical_label "V5V0"
+    (shape output)
+    (at 200.66 38.1 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "423a9def-16e6-4f50-af73-990ea21a10c1")
+  )
+
+  (hierarchical_label "V3V3_SYS"
+    (shape output)
+    (at 200.66 45.72 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "7b9141ad-c2d5-4f69-b6e0-46e1cd2b56c1")
+  )
+
+  (hierarchical_label "V1V8_AUX"
+    (shape output)
+    (at 200.66 53.339999999999996 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "809ca263-7e85-4337-81e1-87b5cb9c4709")
+  )
+
+  (hierarchical_label "VCCINT"
+    (shape output)
+    (at 200.66 60.959999999999994 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "2948355c-a13d-438c-b377-6bb1147973b1")
+  )
+
+  (hierarchical_label "PG_ALL"
+    (shape output)
+    (at 200.66 68.58 0)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "bb8c5c87-034c-4a71-ad4f-36c6a4c49ae9")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "e1016a11-e58c-430f-b914-07a6ea2fae81")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000001-0001-4000-8000-000000000001"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 01_power\nSCHEMATIC.md §3: Power tree: 12V OR/eFuse, 5V/3.3V/1.8V/VCCINT bucks, TPS386596 supervisor\nKey parts: TPS25940A, LM74700×2, TPS54360, TPS62933, TLV62568, 2×TPS546B24A, TPS386596\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "4d2b60f4-ed5b-4ae7-9a62-3864880faff8")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000001-0001-4000-8000-000000000001"
+      (page "2")
+    )
+  )
+)

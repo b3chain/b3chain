@@ -56,16 +56,20 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     gpu: usize,
 
-    /// Nonces per kernel launch (host -> device round-trip).
-    /// Default 2^24 = 16,777,216, which is ~50-200 ms on midrange
-    /// GPUs and balances launch overhead vs. clean-job latency.
-    #[arg(long, default_value_t = 1u32 << 24)]
+    /// Nonces per kernel launch. Scratch keeps a 1 MiB pad per slot,
+    /// so a huge batch blocks clean-job switches. 128 is the default.
+    #[arg(long, default_value_t = 128)]
     batch_size: u32,
 
-    /// CUDA threads per block. 128 / 256 / 512 are the usual sweet
-    /// spots for compute-bound kernels.
-    #[arg(long, default_value_t = 256)]
+    /// CUDA threads per block. The launch uses several blocks when
+    /// --slots is larger than this.
+    #[arg(long, default_value_t = 32)]
     block_size: u32,
+
+    /// Independent 1 MiB working pads. Each slot hashes a different nonce.
+    /// Values outside 1..=8192 are clamped.
+    #[arg(long, default_value_t = 32)]
+    slots: u32,
 
     /// Default share-difficulty target before the pool sends
     /// mining.set_difficulty (mirrors the Python miner).
@@ -90,8 +94,8 @@ async fn main() -> Result<()> {
     );
 
     println!(
-        "b3chain GPU miner -- pool mode\n  Pool:    stratum+tcp://{}:{}\n  User:    {}\n  GPU:     {}\n  Batch:   {} nonces/launch\n  PoW:     BLAKE3(BLAKE3(80-byte header))",
-        endpoint.host, endpoint.port, args.user, args.gpu, args.batch_size
+        "b3chain GPU miner -- pool mode\n  Pool:    stratum+tcp://{}:{}\n  User:    {}\n  GPU:     {}\n  Slots:   {}\n  Block:   {}\n  Batch:   {} nonces/launch\n  PoW:     B3PoW-Scratch v1.1.1 (1 MiB pad, 2048 iterations)",
+        endpoint.host, endpoint.port, args.user, args.gpu, args.slots, args.block_size, args.batch_size
     );
 
     if let Some(p) = args.json_log.as_ref() {
@@ -119,7 +123,7 @@ async fn main() -> Result<()> {
     // Spawn the GPU driver.
     #[cfg(feature = "cuda")]
     let gpu_task = {
-        let kernel = MinerKernel::new(args.gpu).context("opening CUDA device")?;
+        let kernel = MinerKernel::new(args.gpu, args.slots).context("opening CUDA device")?;
         let driver = Driver::new(
             kernel,
             handle,

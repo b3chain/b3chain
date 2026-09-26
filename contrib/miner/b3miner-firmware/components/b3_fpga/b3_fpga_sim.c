@@ -33,7 +33,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "mbedtls/sha256.h"
 #include "sdkconfig.h"
 
 static const char *TAG = "b3_fpga_sim";
@@ -56,11 +55,13 @@ typedef struct {
     sim_state_t       state;
 
     /* Current job */
-    uint8_t  seed[32];
+    uint8_t  header_prefix[76];
     uint8_t  prev_block_hash[32];
+    uint8_t  share_target_le[32];
     uint32_t job_epoch;
     uint32_t nonce_start;
     uint32_t nonce_end;
+    uint32_t nonce_count;
     uint32_t nonce_cursor;
 
     /* Counters */
@@ -84,28 +85,6 @@ static sim_ctx_t s_sim;
 static void sim_lock(void)   { xSemaphoreTake(s_sim.mtx, portMAX_DELAY); }
 static void sim_unlock(void) { xSemaphoreGive(s_sim.mtx); }
 
-/* Produce a believable-looking hash for share dumps: SHA256(seed || nonce).
- * This is NOT consensus-valid — `meets_network_target` is always false for
- * sim shares. The pool will reject them (or treat as invalid), which is
- * exactly what we want during bring-up so we don't accidentally claim
- * real block credit. */
-static void sim_fake_hash(const uint8_t seed[32], uint32_t nonce, uint8_t out[32])
-{
-    mbedtls_sha256_context c;
-    mbedtls_sha256_init(&c);
-    mbedtls_sha256_starts(&c, 0);
-    mbedtls_sha256_update(&c, seed, 32);
-    uint8_t nb[4] = {
-        (uint8_t)(nonce       ),
-        (uint8_t)(nonce >>  8 ),
-        (uint8_t)(nonce >> 16 ),
-        (uint8_t)(nonce >> 24 ),
-    };
-    mbedtls_sha256_update(&c, nb, 4);
-    mbedtls_sha256_finish(&c, out);
-    mbedtls_sha256_free(&c);
-}
-
 /* ---- Periodic tick task ---------------------------------------------- *
  * THE LOOP: advances hash_count, latches a share at the configured cadence.
  */
@@ -125,36 +104,34 @@ static void sim_tick_task(void *arg)
             continue;
         }
 
-        /* Advance hashes */
-        s_sim.hash_count += (uint32_t)hashes_per_tick;
-        s_sim.hashes_total += hashes_per_tick;
-        s_sim.nonce_cursor += (uint32_t)hashes_per_tick;
-        if (s_sim.nonce_cursor >= s_sim.nonce_end) {
-            /* Batch complete — fpga_worker will issue a new submit_job */
-            s_sim.state = SIM_IDLE;
-            sim_unlock();
-            continue;
-        }
+        const uint32_t remaining = s_sim.nonce_count - s_sim.hash_count;
+        const uint32_t advance =
+            hashes_per_tick < remaining ? (uint32_t)hashes_per_tick : remaining;
+        s_sim.hash_count += advance;
+        s_sim.hashes_total += advance;
+        s_sim.nonce_cursor += advance;
 
         /* Time-based share generation */
         int64_t now = esp_timer_get_time();
-        if (!s_sim.share_valid &&
+        if (!s_sim.share_valid && s_sim.hash_count != 0 &&
             (now - s_sim.last_share_us) >= (int64_t)SIM_SHARE_INTERVAL_MS * 1000) {
 
             uint32_t nonce = s_sim.nonce_start +
                              (uint32_t)(esp_random() %
-                                        (s_sim.nonce_cursor - s_sim.nonce_start + 1));
+                                        s_sim.hash_count);
 
             s_sim.pending_share.nonce = nonce;
             s_sim.pending_share.ntime = (uint32_t)(now / 1000000) + 1715000000u;
             s_sim.pending_share.job_epoch = s_sim.job_epoch;
-            sim_fake_hash(s_sim.seed, nonce, s_sim.pending_share.pow_hash_le);
+            memcpy(s_sim.pending_share.pow_hash_le, s_sim.share_target_le, 32);
 
             s_sim.share_valid = true;
             s_sim.state = SIM_SHARE_LATCHED;
             s_sim.last_share_us = now;
             ESP_LOGI(TAG, "share latched: nonce=0x%08" PRIx32 " epoch=%" PRIu32,
                      nonce, s_sim.job_epoch);
+        } else if (s_sim.hash_count >= s_sim.nonce_count) {
+            s_sim.state = SIM_IDLE;
         }
         sim_unlock();
     }
@@ -203,11 +180,13 @@ esp_err_t b3_fpga_submit_job(const b3_fpga_job_t *job)
 {
     if (!job) return ESP_ERR_INVALID_ARG;
     sim_lock();
-    memcpy(s_sim.seed, job->seed, 32);
+    memcpy(s_sim.header_prefix, job->header_prefix, sizeof(s_sim.header_prefix));
     memcpy(s_sim.prev_block_hash, job->prev_block_hash, 32);
+    memcpy(s_sim.share_target_le, job->share_target_le, 32);
     s_sim.job_epoch = job->job_epoch;
     s_sim.nonce_start = job->nonce_start;
     s_sim.nonce_end = job->nonce_end;
+    s_sim.nonce_count = job->nonce_count;
     s_sim.nonce_cursor = job->nonce_start;
     s_sim.hash_count = 0;
     s_sim.job_start_us = esp_timer_get_time();
@@ -219,20 +198,43 @@ esp_err_t b3_fpga_submit_job(const b3_fpga_job_t *job)
     return ESP_OK;
 }
 
+esp_err_t b3_fpga_abort_job(void)
+{
+    sim_lock();
+    s_sim.state = SIM_IDLE;
+    s_sim.share_valid = false;
+    sim_unlock();
+    return ESP_OK;
+}
+
+esp_err_t b3_fpga_run_selftest(void)
+{
+    ESP_LOGI(TAG, "simulated FPGA selftest bypass");
+    return ESP_OK;
+}
+
 bool b3_fpga_poll_share(b3_fpga_share_t *out)
 {
     bool got = false;
     sim_lock();
     if (s_sim.share_valid) {
         if (out) *out = s_sim.pending_share;
-        s_sim.share_valid = false;
-        if (s_sim.state == SIM_SHARE_LATCHED) {
-            s_sim.state = SIM_RUNNING;
-        }
         got = true;
     }
     sim_unlock();
     return got;
+}
+
+esp_err_t b3_fpga_ack_share(void)
+{
+    sim_lock();
+    s_sim.share_valid = false;
+    if (s_sim.hash_count >= s_sim.nonce_count)
+        s_sim.state = SIM_IDLE;
+    else if (s_sim.state == SIM_SHARE_LATCHED)
+        s_sim.state = SIM_RUNNING;
+    sim_unlock();
+    return ESP_OK;
 }
 
 uint32_t b3_fpga_read_hash_count(void)

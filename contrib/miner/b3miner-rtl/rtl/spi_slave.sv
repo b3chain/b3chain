@@ -53,9 +53,10 @@ module spi_slave
     // ------------------------------------------------------------------------
     // 2-FF synchronisers for async SPI pins
     // ------------------------------------------------------------------------
-    logic sck_s1, sck_s2, sck_q;
-    logic mosi_s1, mosi_s2;
-    logic csn_s1, csn_s2;
+    (* ASYNC_REG = "TRUE" *) logic sck_s1, sck_s2;
+    (* ASYNC_REG = "TRUE" *) logic mosi_s1, mosi_s2;
+    (* ASYNC_REG = "TRUE" *) logic csn_s1, csn_s2;
+    logic sck_q;
 
     always_ff @(posedge clk_sys or negedge rst_n) begin
         if (!rst_n) begin

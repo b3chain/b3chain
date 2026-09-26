@@ -34,7 +34,7 @@ fn host_double_blake3(input: &[u8]) -> [u8; 32] {
 }
 
 fn try_open_gpu() -> Option<MinerKernel> {
-    match MinerKernel::new(0) {
+    match MinerKernel::new(0, 32) {
         Ok(k) => Some(k),
         Err(e) => {
             eprintln!("kernel_correctness: skipping (no CUDA: {e:#})");
@@ -126,6 +126,27 @@ fn double_blake3_matches_host_at_block_boundaries() {
 }
 
 #[test]
+fn scratch_dump_matches_consensus_nonce_0_and_1() {
+    let Some(kernel) = try_open_gpu() else {
+        return;
+    };
+    let h0 = hex::decode("010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1d00000000").unwrap();
+    let h1 = hex::decode("010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000000000000000000000000000000000000000000000000000000000000000008041a967ffff7f1d01000000").unwrap();
+    let prev_v = hex::decode("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20").unwrap();
+    let mut header0 = [0u8; 80];
+    let mut header1 = [0u8; 80];
+    let mut prev = [0u8; 32];
+    header0.copy_from_slice(&h0);
+    header1.copy_from_slice(&h1);
+    prev.copy_from_slice(&prev_v);
+    let pad = b3chain_gpuminer::b3pow::init_scratchpad(&prev);
+    let g0 = kernel.scratch_dump(&header0, &pad).expect("dump nonce 0");
+    let g1 = kernel.scratch_dump(&header1, &pad).expect("dump nonce 1");
+    assert_eq!(hex::encode(g0), "c9b61079e2e50c4dacc51af107043d4a0b47c84945bc8d6d1df6b801b6430313");
+    assert_eq!(hex::encode(g1), "fa6993083b67ebb0a4876f65d94ded886fb75e46cab7f4283ca7c13abbf89e18");
+}
+
+#[test]
 fn search_kernel_finds_solution_under_loose_target() {
     // With the most-permissive 256-bit target (all 0xFF), the very first
     // nonce we try MUST produce a "candidate" (every hash is <= target).
@@ -141,25 +162,24 @@ fn search_kernel_finds_solution_under_loose_target() {
     for (i, b) in header.iter_mut().enumerate() {
         *b = (i as u8).wrapping_mul(13).wrapping_add(2);
     }
+    let prev = [0x11u8; 32];
     let target = [0xffu8; 32];
 
     let plan = b3chain_gpuminer::gpu::KernelLaunch {
         header_template_le: &header,
+        prev_block_hash_le: &prev,
         share_target_le: &target,
         nonce_start: 0,
-        nonce_count: 256,
-        block_size: 64,
+        nonce_count: 1,
+        block_size: 32,
     };
     let res = kernel.launch(plan).expect("kernel launch");
-    // Every nonce in [0, 256) hit the target -- but we cap at 64 results.
-    assert!(res.candidates.len() == 64, "expected 64 candidates, got {}", res.candidates.len());
-    assert!(res.overflow, "expected overflow with all-FF target");
+    assert_eq!(res.candidates.len(), 1, "expected one scratch candidate");
 
-    // Reconstruct one candidate's hash on the host and compare.
     let cand = &res.candidates[0];
     let mut h = header;
     h[76..80].copy_from_slice(&cand.nonce.to_le_bytes());
-    let want = host_double_blake3(&h);
+    let want = b3chain_gpuminer::b3pow::b3pow_scratch(&h, &prev);
     assert_eq!(
         want, cand.hash_le,
         "search kernel returned mismatched hash for nonce={}: host={} gpu={}",

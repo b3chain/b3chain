@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "board": "XCKU5P-2FFVB676",
+  "vivado_part": "xcku5p-ffvb676-2-e",
+  "schematic": {
+    "file": "XCKU5P-2FFVB676-260923.pdf",
+    "sha256": "d998cf69d8f473b555960a34d5135bc56c2b37aec62a1285ea7545d907f363b5"
+  },
+  "ports": [
+    {"port": "sys_clk_p", "net": "SYS_CLK_P", "ball": "H23", "bank": 66, "rail": "VDD1.2", "iostandard": "DIFF_SSTL12", "direction": "input"},
+    {"port": "sys_clk_n", "net": "SYS_CLK_N", "ball": "H24", "bank": 66, "rail": "VDD1.2", "iostandard": "DIFF_SSTL12", "direction": "input"},
+    {"port": "spi_sck", "net": "ESP32_SPI_CLK", "ball": "AF13", "bank": 84, "rail": "VDD_Bank84", "iostandard": "LVCMOS33", "direction": "input", "esp32_gpio": 12},
+    {"port": "spi_mosi", "net": "ESP32_SPI_MOSI", "ball": "AF15", "bank": 84, "rail": "VDD_Bank84", "iostandard": "LVCMOS33", "direction": "input", "esp32_gpio": 11},
+    {"port": "spi_miso", "net": "ESP32_SPI_MISO", "ball": "AF14", "bank": 84, "rail": "VDD_Bank84", "iostandard": "LVCMOS33", "direction": "output", "esp32_gpio": 13},
+    {"port": "spi_csn", "net": "ESP32_SPI_CS", "ball": "AE13", "bank": 84, "rail": "VDD_Bank84", "iostandard": "LVCMOS33", "direction": "input", "esp32_gpio": 10},
+    {"port": "share_irq", "net": "ESP32_RX1", "ball": "AD14", "bank": 84, "rail": "VDD_Bank84", "iostandard": "LVCMOS33", "direction": "output", "esp32_gpio": 18},
+    {"port": "user_key_n", "net": "USER_KEY", "ball": "C12", "bank": 87, "rail": "VDD3.3", "iostandard": "LVCMOS33", "direction": "input"},
+    {"port": "led_busy_n", "net": "LED2", "ball": "J11", "bank": 86, "rail": "VDD3.3", "iostandard": "LVCMOS33", "direction": "output", "active_low": true},
+    {"port": "led_share_n", "net": "LED3", "ball": "H12", "bank": 87, "rail": "VDD3.3", "iostandard": "LVCMOS33", "direction": "output", "active_low": true}
+  ],
+  "clock": {
+    "frequency_hz": 100000000,
+    "period_ns": 10.0,
+    "diff_term": false,
+    "selection_method": "user_accepted_hardware_assumption"
+  },
+  "spi": {
+    "mode": 0,
+    "max_frequency_hz": 5000000,
+    "implementation": "clk_sys_oversampled"
+  },
+  "configuration": {
+    "volatile_jtag": "verified",
+    "esp32_selectmap": "not_wired",
+    "onboard_qspi": "present_not_authorized",
+    "qspi_part": "MT25QU128ABA1ESE"
+  }
+}

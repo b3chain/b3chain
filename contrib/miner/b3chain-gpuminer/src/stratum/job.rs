@@ -66,7 +66,8 @@ impl MiningState {
             extranonce1: Vec::new(),
             extranonce2_size: 0,
             share_difficulty: default_difficulty,
-            share_target: target::target_from_share_difficulty(default_difficulty),
+            share_target: target::target_from_share_difficulty(default_difficulty)
+                .expect("default share difficulty"),
             current_job: None,
             clean_epoch: 0,
         }

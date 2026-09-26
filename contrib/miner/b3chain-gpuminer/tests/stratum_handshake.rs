@@ -110,7 +110,7 @@ async fn run_mock_server(listener: TcpListener) {
                             PREV_BE,
                             COINB1_HEX,
                             COINB2_HEX,
-                            [] as [Value; 0],
+                            Value::Array(vec![]),
                             format!("0x{:08x}", VERSION),
                             format!("0x{:08x}", BITS),
                             format!("0x{:08x}", ntime),

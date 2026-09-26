@@ -606,12 +606,14 @@ The reference target is the Xilinx Kintex UltraScale+ **XCKU5P-2FFVB676E**:
 | DSP48E2 | 1 824 | 8–16 (per-lane 64×64 multiplier for `derive_addresses`) |
 | GTH transceivers | 16 | 0 (USB-C is hosted by the ESP32-S3) |
 
-A single B3PoW-Scratch pipeline running at 250 MHz produces roughly
-**~1 MH/s** (1 iteration per cycle × 8 lanes × 250 MHz / 2 048
-iterations per hash). The BRAM budget allows 8 parallel pipelines for
-a target of **~8 MH/s** per KU5P card at **~10 W typical**. We will
-publish measured numbers in `contrib/testing/bench/results/r0/` once
-the first card is bench-tested.
+An early estimate of one iteration per cycle at 250 MHz (about 1 MH/s
+per pipeline, about 8 MH/s for eight pipelines) is **superseded**. The
+closed XCKU5P route keeps a pristine pad and a working pad, uses 456 of
+480 BRAM tiles, and models **one pipeline at about 5.5 kH/s**. That
+figure is modeled, not a measured board hashrate. The classification
+is in
+[`contrib/testing/bench/MEASUREMENT.md`](../../contrib/testing/bench/MEASUREMENT.md).
+On-card timing stays unmeasured until a pool soak.
 
 ### 6.2 The GPU bound
 
@@ -672,7 +674,7 @@ develops the per-card cost curves and the crossover analysis.
 | Tier | Hardware | Approx H/s/$ (relative) | Notes |
 |---|---|---|---|
 | 1 (best) | Custom B3PoW ASIC | 5–30× FPGA | Hypothetical. Bounded by SRAM cost. NRE > $1M; requires plausible-multi-year revenue to justify. |
-| **2 (launch)** | **B3Miner-1 (KU5P FPGA)** | **1×** (reference) | The launch miner. ~10 W, ~tens of MH/s, BOM low 3-digit USD at volume. |
+| **2 (launch)** | **B3Miner-1 (KU5P FPGA)** | **1×** (reference) | The launch miner. Routed model is one pipeline at about 5.5 kH/s, not tens of MH/s. Board timing is unmeasured. |
 | 3 | High-end CPU (AVX-512) | 0.001–0.01× FPGA | Roughly 50–150 H/s/core at ~5 W/core. Estimate; bench-pending. |
 | 4 (worst) | High-end GPU | < CPU per dollar | The sequential 1 MiB working set defeats GPU pipelining. |
 

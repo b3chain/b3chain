@@ -1,4 +1,4 @@
-# Timing closure runbook -- 250 MHz mining clock on KU5P-2I
+# Timing closure runbook -- 250 MHz mining clock on KU5P-2E
 
 This runbook documents the methodology for closing timing on `clk_mine`
 (250 MHz, 4 ns period) and `clk_sys` (100 MHz, 10 ns period). The
@@ -7,6 +7,18 @@ document is the troubleshooting tree when WNS comes back negative.
 
 The closure work is performed by the FPGA engineer on a Vivado-licensed
 host. This file lives in the repo so the procedure is reproducible.
+
+## Closed XCKU5P-2FFVB676 result (2026-09-24)
+
+The board profile closes at 250 MHz after:
+
+- splitting every BLAKE3 G function into four registered quarters;
+- splitting address multiply from rotate/XOR;
+- restoring a pristine BRAM-backed pad into the working pad per nonce.
+
+Final routed timing: WNS +0.015 ns, TNS 0, WHS +0.009 ns, THS 0.
+The implementation uses 456/480 BRAM tiles (95%). The modeled single-pipeline
+rate is approximately 5.5 kH/s; hardware measurement is a separate gate.
 
 ---
 

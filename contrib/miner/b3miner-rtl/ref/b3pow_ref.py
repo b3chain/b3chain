@@ -38,7 +38,7 @@ except ImportError as exc:  # pragma: no cover -- helpful failure
 # Locked constants (mirror of ../rtl/params_pkg.sv and ../SPEC.md §3)
 # ----------------------------------------------------------------------------
 SPEC_VERSION = 0x00010101  # 1.1.1 (F-1: ITER_MUL[7] distinct)
-REG_ID_MAGIC = 0xB3110002  # build 0002 (rebuild required for ITER_MUL[7])
+REG_ID_MAGIC = 0xB3110003  # build 0003 (per-nonce seed + target/share handshake)
 
 SCRATCH_BYTES = 1_048_576       # 1 MB
 LANES = 8

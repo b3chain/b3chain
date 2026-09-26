@@ -27,15 +27,14 @@ TBS := $(notdir $(basename $(wildcard $(TB_DIR)/tb_*.sv)))
 RTL := $(sort $(wildcard $(RTL_DIR)/*.sv))
 
 # Common Verilator flags.
-VFLAGS := -Wall -Wno-fatal --cc --exe --build \
+VFLAGS := -Wall -Wno-fatal --timing --cc --exe --build \
           -j 4 \
-          -CFLAGS -O2 \
           --top-module
 ifdef WAVES
 VFLAGS += --trace -CFLAGS -DWAVES
-SIM_CPP_DEFS := -DWAVES -DVTOP_INCLUDE='"V$(TB).h"' -DVTOP=V$(TB)
+SIM_CPP_DEFS := -DWAVES -DVTOP_HEADER=V$(TB).h -DVTOP=V$(TB)
 else
-SIM_CPP_DEFS := -DVTOP_INCLUDE='"V$(TB).h"' -DVTOP=V$(TB)
+SIM_CPP_DEFS := -DVTOP_HEADER=V$(TB).h -DVTOP=V$(TB)
 endif
 
 # Force Verilator to pass -DSIM into the SV source so TBs can use $fopen with
@@ -52,22 +51,25 @@ help:
 	@echo "  make all                      # build every TB binary"
 	@echo "  make clean                    # drop obj_dir/"
 
-# Build any single TB binary.
-$(OBJ_DIR)/V%/V%: $(RTL) $(TB_DIR)/%.sv sim_main.cpp
-	@mkdir -p $(OBJ_DIR)/V$*
-	$(VERILATOR) $(VFLAGS) $* \
+# Build the command-line-selected TB.  A repeated-% pattern target such as
+# obj_dir/V%/V% is not portable across GNU make versions.
+BIN := $(OBJ_DIR)/V$(TB)/V$(TB)
+
+$(BIN): $(RTL) $(TB_DIR)/$(TB).sv sim_main.cpp
+	@mkdir -p $(OBJ_DIR)/V$(TB)
+	$(VERILATOR) $(VFLAGS) $(TB) \
 	    $(VLT_DEFS) $(INC_DIRS) \
-	    --Mdir $(OBJ_DIR)/V$* \
-	    -o V$* \
-	    $(RTL) $(TB_DIR)/$*.sv \
+	    --Mdir $(OBJ_DIR)/V$(TB) \
+	    -o V$(TB) \
+	    $(RTL) $(TB_DIR)/$(TB).sv \
 	    sim_main.cpp \
-	    -CFLAGS "$(SIM_CPP_DEFS) -DVTOP_INCLUDE='\"V$*.h\"' -DVTOP=V$*"
+	    -CFLAGS "-O2 $(SIM_CPP_DEFS)"
 
 run:
 ifndef TB
 	$(error "set TB=<tb_name>, e.g. make run TB=tb_blake3_compress")
 endif
-	$(MAKE) $(OBJ_DIR)/V$(TB)/V$(TB)
+	$(MAKE) $(BIN)
 	cd $(VECT_DIR) && $(CURDIR)/$(OBJ_DIR)/V$(TB)/V$(TB)
 
 all:

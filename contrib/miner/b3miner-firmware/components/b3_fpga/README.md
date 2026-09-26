@@ -13,7 +13,7 @@
 | INIT_B | GPIO6 | INIT_B (input) |
 | DONE | GPIO7 | DONE (input) |
 
-Clock: 25 MHz, mode 0. Every transaction is exactly 40 bits (1 cmd + 4 data bytes),
+Clock: 5 MHz maximum, mode 0. Every transaction is exactly 40 bits (1 cmd + 4 data bytes),
 for both reads and writes.
 
 ## SPI wire format
@@ -36,9 +36,8 @@ the 32-bit register value, LSB first per byte.
 
 See `include/b3_fpga_regs.h`. The `#define`s are byte offsets; the SPI
 driver converts to word index by right-shift by 2. Magic ID after
-bitstream load: `0xB3110002` (B3PoW-Scratch v1.1.1, build 0002 — the
-F-1 fix bumped this from `0xB3110001`; old build-0001 bitstreams mine
-the v1.1.0 algorithm and are rejected by the v1.1.1 firmware).
+bitstream load: `0xB3110003` (B3PoW-Scratch v1.1.1, miner ABI build
+0003). Older builds lack per-nonce header hashing and are rejected.
 
 ## Job lifecycle
 
@@ -48,7 +47,8 @@ Host                          FPGA
   |-- scratch_init(prev_hash) -->|  (once per block, B3PoW-Scratch)
   |<-- STATUS.scratch_ready ----|
   |                             |
-  |-- write SEED[32] ----------->|
+  |-- write HEADER_PREFIX[76] -->|
+  |-- write SHARE_TARGET[32] --->|
   |-- write NONCE_START/END ---->|
   |-- CTRL.start -------------->|
   |                             | hash loop
@@ -59,8 +59,9 @@ Host                          FPGA
 
 ## Bitstream storage
 
-Store KU5P bitstream in external SPI flash at offset `0x800000` (8 MB) or embed
-as `b3_fpga_bitstream.bin` linked section. Typical size ~7 MB compressed.
+The generic B3Miner-1 design can store a compressed image in ESP32 flash.
+The XCKU5P-2FFVB676 PCB does not route ESP32 configuration signals, so that
+profile is JTAG-only unless FPGA QSPI receives separate authorization.
 
 ## Test without silicon
 

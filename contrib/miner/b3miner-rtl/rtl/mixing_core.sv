@@ -10,16 +10,17 @@
 //     parallel_write(pad, addrs, new_blks)
 //     lanes = new_lanes
 //
-// Pipeline (1 iteration = 4 mining cycles @ 250 MHz):
+// Pipeline (1 iteration = 21 mining cycles @ 250 MHz):
 //   ┌──────────┬──────────────────────────────────────────────────────┐
-//   │ Cycle 0  │ derive addresses + issue scratchpad read              │
-//   │ Cycle 1  │ BRAM read-latency wait                                │
-//   │ Cycle 2  │ data arrives -> run 2 mix rounds combinationally,     │
-//   │          │ register new lane state, issue writeback              │
-//   │ Cycle 3  │ housekeeping: increment iter_idx, decide loop/exit    │
+//   │ Cyc 0-1  │ multiply, rotate/xor addresses, issue scratch read     │
+//   │ Cycle 2  │ BRAM read-latency wait                                │
+//   │ Cycle 3  │ latch data and initialise the short-compress state     │
+//   │ Cyc 4-19 │ four registered G quarters × column/diagonal × 2 rnds │
+//   │ Cycle 20 │ writeback, shuffle, increment iter / decide loop       │
 //   └──────────┴──────────────────────────────────────────────────────┘
 //
-//   2048 iter × 4 cyc = 8192 cyc inner-loop @ 250 MHz = 32.8 µs/hash.
+//   2048 iter × 20 cyc = 40960 cyc inner-loop @ 250 MHz = 163.8 µs/hash
+//   (~6.1 kH/s). The address multiply overlaps the old iter-done cycle.
 //
 // Per-iteration the design reads 8 × 64 B (= 4 kbit) and writes 8 × 64 B
 // from/to scratchpad_mem -- exactly the parallel-RMW that GPUs serialise
@@ -34,9 +35,9 @@
 //
 // Total per-nonce: ~10 (seed = blake3(header) -- done upstream)
 //                + ~80 (lane init)
-//                + 8192 (mix loop)
+//                + 43008 (mix loop)
 //                + ~10 (final hash)
-//                ≈ 8290 cycles -> 33 µs -> ~30 kH/s per pipeline.
+//                ≈ 43120 cycles -> 172 µs -> ~5.8 kH/s per pipeline.
 // ============================================================================
 
 `include "params_pkg.sv"
@@ -49,6 +50,7 @@ module mixing_core
 
     // -------- Control --------
     input  logic              start,
+    input  logic              abort_i,
     input  logic [255:0]      seed,            // blake3(header), 32 bytes
     input  logic [31:0]       nonce,           // header[76..80]
     output logic              busy,
@@ -74,9 +76,11 @@ module mixing_core
         S_LANE_INIT_START,    // launch blake3(seed || L) for current lane
         S_LANE_INIT_WAIT,     // wait for blake3 done
         S_LANE_INIT_STORE,    // store result -> lanes[L], advance L
-        S_DERIVE,             // compute addrs, issue read
+        S_DERIVE,             // multiply stage of address derivation
+        S_DERIVE_ADDR,        // rotate/xor stage, issue read
         S_READ_LATENCY,       // 1 BRAM-clk
-        S_MIX_WRITE,          // 2 mix rounds + writeback issue
+        S_MIX_LOAD,           // initialise registered short-compress state
+        S_MIX_PHASE,          // 16 timing-safe G-quarter phases
         S_ITER_DONE,          // ++iter; loop or transition to S_FINAL
         S_FINAL_START,        // launch BLAKE3 block N of the final hash
         S_FINAL_WAIT,         // wait for compress done; update chain
@@ -97,6 +101,8 @@ module mixing_core
     // Derived addresses (registered after S_DERIVE for use in S_MIX_WRITE
     // writeback).
     logic [ADDR_BITS-1:0] addr_reg [0:LANES-1];
+    logic [63:0] addr_lo_pipe [0:LANES-1];
+    logic [63:0] addr_mul_pipe [0:LANES-1];
 
     // Shared BLAKE3 compressor (lane-init + final hash).
     logic              b3_start;
@@ -160,105 +166,45 @@ module mixing_core
         return (x >> n) | (x << (64 - n));
     endfunction
 
-    logic [ADDR_BITS-1:0] derived_addr [0:LANES-1];
-    always_comb begin
-        for (int L = 0; L < LANES; L++) begin
-            logic [63:0] lo, hi, mul, mixed;
-            // SPEC §6.7 serialisation: byte 0 = bits [7:0] of the lane.
-            // lanes[L][0:8] = lo, [8:16] = hi -- the natural little-endian
-            // packing inside the 256-bit vector.
-            lo    = lanes[L][63:0];
-            hi    = lanes[L][127:64];
-            mul   = (hi ^ {53'b0, iter_idx}) * ITER_MUL[L];
-            mixed = lo ^ rotr64(mul, 23);
-            derived_addr[L] = mixed[ADDR_BITS-1:0];
-        end
-    end
-
     // -----------------------------------------------------------------------
-    // Per-lane BLAKE3 short-compress (combinational across 2 inner rounds).
-    // Inputs:  cv = lanes[L][255:0]    (8 × 32-bit, byte-LE packed)
-    //          msg = read_blk[L][511:0] (16 × 32-bit)
-    // Outputs: new_cv  = lane state after 2 rounds
-    //          permuted_msg = msg after σ^2 (the message permutation applied
-    //                          INNER_ROUNDS times)
-    //          new_blk = msg XOR permuted_msg  (the writeback per SPEC §5)
+    // Per-lane BLAKE3 short-compress.  One G function is divided into four
+    // registered quarters.  Four Gs run in parallel for all eight lanes.
+    // Column and diagonal groups across two rounds therefore take 16 cycles.
     // -----------------------------------------------------------------------
     function automatic logic [31:0] rotr32(input logic [31:0] x, input int n);
         return (x >> n) | (x << (32 - n));
     endfunction
 
-    task automatic g_step(ref logic [31:0] sa, ref logic [31:0] sb,
-                          ref logic [31:0] sc, ref logic [31:0] sd,
-                          input logic [31:0] mx, input logic [31:0] my);
-        sa = sa + sb + mx;
-        sd = rotr32(sd ^ sa, 16);
-        sc = sc + sd;
-        sb = rotr32(sb ^ sc, 12);
-        sa = sa + sb + my;
-        sd = rotr32(sd ^ sa, 8);
-        sc = sc + sd;
-        sb = rotr32(sb ^ sc, 7);
-    endtask
-
-    task automatic do_round(ref logic [31:0] st [0:15],
-                            ref logic [31:0] mm [0:15]);
-        logic [31:0] nm [0:15];
-        g_step(st[ 0], st[ 4], st[ 8], st[12], mm[ 0], mm[ 1]);
-        g_step(st[ 1], st[ 5], st[ 9], st[13], mm[ 2], mm[ 3]);
-        g_step(st[ 2], st[ 6], st[10], st[14], mm[ 4], mm[ 5]);
-        g_step(st[ 3], st[ 7], st[11], st[15], mm[ 6], mm[ 7]);
-        g_step(st[ 0], st[ 5], st[10], st[15], mm[ 8], mm[ 9]);
-        g_step(st[ 1], st[ 6], st[11], st[12], mm[10], mm[11]);
-        g_step(st[ 2], st[ 7], st[ 8], st[13], mm[12], mm[13]);
-        g_step(st[ 3], st[ 4], st[ 9], st[14], mm[14], mm[15]);
-        for (int i = 0; i < 16; i++) nm[i] = mm[BLAKE3_PERM[i]];
-        mm = nm;
-    endtask
-
-    function automatic void short_compress(
-        input  logic [255:0] cv_in,
-        input  logic [511:0] msg_in,
-        output logic [255:0] new_cv,
-        output logic [511:0] new_blk
+    function automatic void g_quarter(
+        ref logic [31:0] sa, ref logic [31:0] sb,
+        ref logic [31:0] sc, ref logic [31:0] sd,
+        input logic [31:0] mx, input logic [31:0] my,
+        input logic [1:0] quarter
     );
-        logic [31:0] state [0:15];
-        logic [31:0] m     [0:15];
-        // Load state with cv || IV[0..3] || 0,0,64,0
-        for (int i = 0; i < 8; i++)  state[i]      = cv_in[32*i +: 32];
-        state[ 8] = BLAKE3_IV[0];
-        state[ 9] = BLAKE3_IV[1];
-        state[10] = BLAKE3_IV[2];
-        state[11] = BLAKE3_IV[3];
-        state[12] = 32'h0;
-        state[13] = 32'h0;
-        state[14] = BLOCK_BYTES;
-        state[15] = 32'h0;
-        for (int i = 0; i < 16; i++) m[i] = msg_in[32*i +: 32];
-        for (int r = 0; r < INNER_ROUNDS; r++) do_round(state, m);
-        // new_cv = state[0..7] XOR state[8..15]
-        for (int i = 0; i < 8; i++) new_cv[32*i +: 32] = state[i] ^ state[i + 8];
-        // new_blk = original msg XOR (16-word permuted m, serialised LE)
-        for (int i = 0; i < 16; i++)
-            new_blk[32*i +: 32] = msg_in[32*i +: 32] ^ m[i];
+        case (quarter)
+            2'd0: begin
+                sa = sa + sb + mx;
+                sd = rotr32(sd ^ sa, 16);
+            end
+            2'd1: begin
+                sc = sc + sd;
+                sb = rotr32(sb ^ sc, 12);
+            end
+            2'd2: begin
+                sa = sa + sb + my;
+                sd = rotr32(sd ^ sa, 8);
+            end
+            default: begin
+                sc = sc + sd;
+                sb = rotr32(sb ^ sc, 7);
+            end
+        endcase
     endfunction
 
-    // Compute next lane state + new block for all lanes combinationally.
-    logic [255:0] next_lanes [0:LANES-1];
-    logic [511:0] writeback  [0:LANES-1];
-    always_comb begin
-        for (int L = 0; L < LANES; L++) begin
-            logic [255:0] tmp_cv;
-            logic [511:0] tmp_blk;
-            short_compress(lanes[L], read_blk[L], tmp_cv, tmp_blk);
-            next_lanes[L] = tmp_cv;
-            writeback[L]  = tmp_blk;
-        end
-    end
-
-    // Lane shuffle (SPEC §6.5): permutation [1, 6, 3, 0, 5, 2, 7, 4].
-    // Imported from params_pkg::LANE_SHUFFLE (v1.1.4: promoted there so
-    // every consensus-locked constant lives in one place).
+    logic [31:0] mix_state [0:LANES-1][0:15];
+    logic [31:0] mix_msg [0:LANES-1][0:15];
+    logic [31:0] mix_original [0:LANES-1][0:15];
+    logic [3:0] mix_phase;
 
     // -----------------------------------------------------------------------
     // FSM body
@@ -267,6 +213,7 @@ module mixing_core
         if (!rst_n) begin
             state         <= S_IDLE;
             iter_idx      <= 11'd0;
+            mix_phase     <= 4'd0;
             init_lane_idx <= 4'd0;
             b3_start      <= 1'b0;
             pow_hash      <= 256'h0;
@@ -274,11 +221,20 @@ module mixing_core
                 lanes[L]   <= 256'h0;
                 read_blk[L]<= 512'h0;
                 addr_reg[L]<= '0;
+                addr_lo_pipe[L] <= '0;
+                addr_mul_pipe[L] <= '0;
                 ra_en[L]   <= 1'b0;
                 ra_addr[L] <= '0;
                 wb_en[L]   <= 1'b0;
                 wb_addr[L] <= '0;
                 wb_data[L] <= 512'h0;
+            end
+        end else if (abort_i) begin
+            state <= S_IDLE;
+            b3_start <= 1'b0;
+            for (int L = 0; L < LANES; L++) begin
+                ra_en[L] <= 1'b0;
+                wb_en[L] <= 1'b0;
             end
         end else begin
             // Default per-cycle: drop all strobes.
@@ -290,7 +246,7 @@ module mixing_core
 
             unique case (state)
 
-                S_IDLE: if (start) begin
+                S_IDLE: if (start && !b3_busy) begin
                     init_lane_idx <= 4'd0;
                     iter_idx      <= 11'd0;
                     state         <= S_LANE_INIT_START;
@@ -329,11 +285,21 @@ module mixing_core
 
                 // ---- Mining loop ----
                 S_DERIVE: begin
-                    // Issue read with derived addresses; latch addrs for writeback.
                     for (int L = 0; L < LANES; L++) begin
-                        ra_en[L]   <= 1'b1;
-                        ra_addr[L] <= derived_addr[L];
-                        addr_reg[L]<= derived_addr[L];
+                        addr_lo_pipe[L] <= lanes[L][63:0];
+                        addr_mul_pipe[L] <=
+                            (lanes[L][127:64] ^ {53'b0, iter_idx}) * ITER_MUL[L];
+                    end
+                    state <= S_DERIVE_ADDR;
+                end
+
+                S_DERIVE_ADDR: begin
+                    for (int L = 0; L < LANES; L++) begin
+                        logic [63:0] mixed;
+                        mixed = addr_lo_pipe[L] ^ rotr64(addr_mul_pipe[L], 23);
+                        ra_en[L] <= 1'b1;
+                        ra_addr[L] <= mixed[ADDR_BITS-1:0];
+                        addr_reg[L] <= mixed[ADDR_BITS-1:0];
                     end
                     state <= S_READ_LATENCY;
                 end
@@ -341,44 +307,95 @@ module mixing_core
                 S_READ_LATENCY: begin
                     // BRAM read takes one clock; nothing to do this cycle.
                     // ra_data[L] becomes valid this cycle (registered in BRAM).
-                    state <= S_MIX_WRITE;
+                    state <= S_MIX_LOAD;
                 end
 
-                S_MIX_WRITE: begin
-                    // Capture read data, run mix combinationally (via
-                    // next_lanes / writeback assigns above), issue writeback,
-                    // and update lane state with shuffle.
+                S_MIX_LOAD: begin
                     for (int L = 0; L < LANES; L++) begin
                         read_blk[L] <= ra_data[L];
-                    end
-                    // NB: writeback / next_lanes were computed against
-                    // current `lanes` and `read_blk`.  Because `read_blk`
-                    // is updated on this cycle (registered above) and the
-                    // combinational mix uses the new value, we get one
-                    // delta-cycle of correctness for free here.
-                    //
-                    // To be safe and explicit, we use the FRESH ra_data
-                    // directly (not read_blk) by re-evaluating the mix
-                    // inside this clause.
-                    begin
-                        logic [255:0] cv_fresh [0:LANES-1];
-                        logic [511:0] blk_fresh [0:LANES-1];
-                        logic [255:0] new_cv;
-                        logic [511:0] new_blk;
-                        for (int L = 0; L < LANES; L++) begin
-                            short_compress(lanes[L], ra_data[L], new_cv, new_blk);
-                            cv_fresh [L] = new_cv;
-                            blk_fresh[L] = new_blk;
-
-                            wb_en  [L] <= 1'b1;
-                            wb_addr[L] <= addr_reg[L];
-                            wb_data[L] <= new_blk;
+                        for (int i = 0; i < 8; i++)
+                            mix_state[L][i] <= lanes[L][32*i +: 32];
+                        mix_state[L][8] <= BLAKE3_IV[0];
+                        mix_state[L][9] <= BLAKE3_IV[1];
+                        mix_state[L][10] <= BLAKE3_IV[2];
+                        mix_state[L][11] <= BLAKE3_IV[3];
+                        mix_state[L][12] <= 32'h0;
+                        mix_state[L][13] <= 32'h0;
+                        mix_state[L][14] <= BLOCK_BYTES;
+                        mix_state[L][15] <= 32'h0;
+                        for (int i = 0; i < 16; i++) begin
+                            mix_msg[L][i] <= ra_data[L][32*i +: 32];
+                            mix_original[L][i] <= ra_data[L][32*i +: 32];
                         end
-                        // Apply lane shuffle (params_pkg::LANE_SHUFFLE).
-                        for (int L = 0; L < LANES; L++)
-                            lanes[L] <= cv_fresh[LANE_SHUFFLE[L]];
                     end
-                    state <= S_ITER_DONE;
+                    mix_phase <= 4'd0;
+                    state <= S_MIX_PHASE;
+                end
+
+                S_MIX_PHASE: begin
+                    logic [255:0] cv_fresh [0:LANES-1];
+                    logic [511:0] blk_fresh [0:LANES-1];
+                    for (int L = 0; L < LANES; L++) begin
+                        logic [31:0] st_tmp [0:15];
+                        logic [31:0] msg_tmp [0:15];
+                        logic [31:0] permuted [0:15];
+                        for (int i = 0; i < 16; i++) begin
+                            st_tmp[i] = mix_state[L][i];
+                            msg_tmp[i] = mix_msg[L][i];
+                            permuted[i] = mix_msg[L][i];
+                        end
+                        if (!mix_phase[2]) begin
+                            g_quarter(st_tmp[0], st_tmp[4], st_tmp[8], st_tmp[12],
+                                      msg_tmp[0], msg_tmp[1], mix_phase[1:0]);
+                            g_quarter(st_tmp[1], st_tmp[5], st_tmp[9], st_tmp[13],
+                                      msg_tmp[2], msg_tmp[3], mix_phase[1:0]);
+                            g_quarter(st_tmp[2], st_tmp[6], st_tmp[10], st_tmp[14],
+                                      msg_tmp[4], msg_tmp[5], mix_phase[1:0]);
+                            g_quarter(st_tmp[3], st_tmp[7], st_tmp[11], st_tmp[15],
+                                      msg_tmp[6], msg_tmp[7], mix_phase[1:0]);
+                        end else begin
+                            g_quarter(st_tmp[0], st_tmp[5], st_tmp[10], st_tmp[15],
+                                      msg_tmp[8], msg_tmp[9], mix_phase[1:0]);
+                            g_quarter(st_tmp[1], st_tmp[6], st_tmp[11], st_tmp[12],
+                                      msg_tmp[10], msg_tmp[11], mix_phase[1:0]);
+                            g_quarter(st_tmp[2], st_tmp[7], st_tmp[8], st_tmp[13],
+                                      msg_tmp[12], msg_tmp[13], mix_phase[1:0]);
+                            g_quarter(st_tmp[3], st_tmp[4], st_tmp[9], st_tmp[14],
+                                      msg_tmp[14], msg_tmp[15], mix_phase[1:0]);
+                        end
+
+                        if (mix_phase[2] && mix_phase[1:0] == 2'd3)
+                            for (int i = 0; i < 16; i++)
+                                permuted[i] = msg_tmp[BLAKE3_PERM[i]];
+                        else
+                            for (int i = 0; i < 16; i++)
+                                permuted[i] = msg_tmp[i];
+
+                        for (int i = 0; i < 16; i++) begin
+                            mix_state[L][i] <= st_tmp[i];
+                            mix_msg[L][i] <= permuted[i];
+                        end
+
+                        if (mix_phase == 4'd15) begin
+                            for (int i = 0; i < 8; i++)
+                                cv_fresh[L][32*i +: 32] = st_tmp[i] ^ st_tmp[i + 8];
+                            for (int i = 0; i < 16; i++)
+                                blk_fresh[L][32*i +: 32] =
+                                    mix_original[L][i] ^ permuted[i];
+                        end
+                    end
+
+                    if (mix_phase == 4'd15) begin
+                        for (int L = 0; L < LANES; L++) begin
+                            wb_en[L] <= 1'b1;
+                            wb_addr[L] <= addr_reg[L];
+                            wb_data[L] <= blk_fresh[L];
+                            lanes[L] <= cv_fresh[LANE_SHUFFLE[L]];
+                        end
+                        state <= S_ITER_DONE;
+                    end else begin
+                        mix_phase <= mix_phase + 1'b1;
+                    end
                 end
 
                 S_ITER_DONE: begin
@@ -388,8 +405,15 @@ module mixing_core
                         final_blk_idx <= 3'd0;
                         state         <= S_FINAL_START;
                     end else begin
+                        // New lanes are visible this cycle, so the next
+                        // address multiply runs here instead of in S_DERIVE.
+                        for (int L = 0; L < LANES; L++) begin
+                            addr_lo_pipe[L] <= lanes[L][63:0];
+                            addr_mul_pipe[L] <=
+                                (lanes[L][127:64] ^ {53'b0, iter_idx + 11'd1}) * ITER_MUL[L];
+                        end
                         iter_idx <= iter_idx + 11'd1;
-                        state    <= S_DERIVE;
+                        state    <= S_DERIVE_ADDR;
                     end
                 end
 
@@ -466,7 +490,7 @@ module mixing_core
         end
     end
 
-    assign busy = (state != S_IDLE);
+    assign busy = (state != S_IDLE) || b3_busy;
     assign done = (state == S_DONE);
 
 endmodule : mixing_core

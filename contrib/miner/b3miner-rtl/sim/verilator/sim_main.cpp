@@ -11,10 +11,13 @@
 
 #include <verilated.h>
 
-#if defined(VTOP_INCLUDE)
-#  include VTOP_INCLUDE
+#define STRINGIFY_IMPL(x) #x
+#define STRINGIFY(x) STRINGIFY_IMPL(x)
+
+#if defined(VTOP_HEADER)
+#  include STRINGIFY(VTOP_HEADER)
 #else
-#  error "VTOP_INCLUDE must be set (see ../verilator/Makefile)"
+#  error "VTOP_HEADER must be set (see ../verilator/Makefile)"
 #endif
 
 #if defined(WAVES)
@@ -38,16 +41,16 @@ int main(int argc, char** argv) {
     tfp->open("waves.vcd");
 #endif
 
-    // Time advances 1 unit per evaluation; the TB owns clock generation.
-    // Run until $finish or hard limit of 10 ms simulated time @ 250 MHz =
-    // 2.5e6 cycles -- enough for any single TB.
-    constexpr uint64_t kHardLimit = 250'000'000ULL;  // 1 second simulated
+    // With --timing the model exposes its next scheduled event.  Jumping to
+    // that slot avoids iterating over every 1 ps precision tick.
+    constexpr uint64_t kHardLimit = 1'000'000'000'000ULL;  // 1 second
     while (!ctx->gotFinish() && ctx->time() < kHardLimit) {
         top->eval();
 #if defined(WAVES)
         tfp->dump(ctx->time());
 #endif
-        ctx->timeInc(1);
+        if (!top->eventsPending()) break;
+        ctx->time(top->nextTimeSlot());
     }
 
     if (!ctx->gotFinish()) {

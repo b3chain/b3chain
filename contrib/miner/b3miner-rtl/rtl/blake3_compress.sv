@@ -6,11 +6,10 @@
 // (../b3chain-gpuminer/kernels/blake3.cuh::compress).
 //
 // Architecture
-//   - Iterative: one round per cycle.  7 cycles + 2 latency cycles
-//     = 9 cycles per compress.  At 250 MHz this is ~28 M compress/s.
-//   - Pipelinable to II=1 by replicating the round logic 7×; left as
-//     a future micro-architecture choice (mixing_core.sv only needs
-//     1/9 of the available BLAKE3 throughput).
+//   - Each G function is split into four registered quarters.
+//   - 8 phases/round × 7 rounds + load + done = 58 cycles/compress.
+//   - The longer latency is amortized by the memory-hard mixing loop and
+//     closes the 250 MHz KU5P timing target.
 //
 // Interface
 //   start         : pulse to begin a new compression
@@ -50,6 +49,7 @@ module blake3_compress
     typedef enum logic [1:0] { S_IDLE, S_RUN, S_DONE } state_e;
     state_e                   state, state_n;
     logic [2:0]               round_idx;   // 0..6
+    logic [2:0]               phase_idx;   // 0..7 within one round
     logic [31:0]              cv_lat        [0:7];
     logic [31:0]              s             [0:15];
     logic [31:0]              m             [0:15];
@@ -61,39 +61,31 @@ module blake3_compress
         return (x >> n) | (x << (32 - n));
     endfunction
 
-    // Quarter-round mixer g().
-    // Applies in-place to the 4 cells {sa, sb, sc, sd} of the state.
-    task automatic g(ref logic [31:0] sa, ref logic [31:0] sb,
-                     ref logic [31:0] sc, ref logic [31:0] sd,
-                     input logic [31:0] mx, input logic [31:0] my);
-        sa = sa + sb + mx;
-        sd = rotr32(sd ^ sa, 16);
-        sc = sc + sd;
-        sb = rotr32(sb ^ sc, 12);
-        sa = sa + sb + my;
-        sd = rotr32(sd ^ sa, 8);
-        sc = sc + sd;
-        sb = rotr32(sb ^ sc, 7);
-    endtask
-
-    // One full BLAKE3 round = 4 column-g + 4 diagonal-g, then permute msg.
-    task automatic do_round(ref logic [31:0] st [0:15],
-                            ref logic [31:0] mm [0:15]);
-        logic [31:0] new_mm [0:15];
-        // columns
-        g(st[ 0], st[ 4], st[ 8], st[12], mm[ 0], mm[ 1]);
-        g(st[ 1], st[ 5], st[ 9], st[13], mm[ 2], mm[ 3]);
-        g(st[ 2], st[ 6], st[10], st[14], mm[ 4], mm[ 5]);
-        g(st[ 3], st[ 7], st[11], st[15], mm[ 6], mm[ 7]);
-        // diagonals
-        g(st[ 0], st[ 5], st[10], st[15], mm[ 8], mm[ 9]);
-        g(st[ 1], st[ 6], st[11], st[12], mm[10], mm[11]);
-        g(st[ 2], st[ 7], st[ 8], st[13], mm[12], mm[13]);
-        g(st[ 3], st[ 4], st[ 9], st[14], mm[14], mm[15]);
-        // permute message in-place for next round (no-op for the 7th round)
-        for (int i = 0; i < 16; i++) new_mm[i] = mm[BLAKE3_PERM[i]];
-        mm = new_mm;
-    endtask
+    function automatic void g_quarter(
+        ref logic [31:0] sa, ref logic [31:0] sb,
+        ref logic [31:0] sc, ref logic [31:0] sd,
+        input logic [31:0] mx, input logic [31:0] my,
+        input logic [1:0] quarter
+    );
+        case (quarter)
+            2'd0: begin
+                sa = sa + sb + mx;
+                sd = rotr32(sd ^ sa, 16);
+            end
+            2'd1: begin
+                sc = sc + sd;
+                sb = rotr32(sb ^ sc, 12);
+            end
+            2'd2: begin
+                sa = sa + sb + my;
+                sd = rotr32(sd ^ sa, 8);
+            end
+            default: begin
+                sc = sc + sd;
+                sb = rotr32(sb ^ sc, 7);
+            end
+        endcase
+    endfunction
 
     // ------------------------------------------------------------------------
     // FSM
@@ -102,15 +94,13 @@ module blake3_compress
         state_n = state;
         unique case (state)
             S_IDLE: if (start) state_n = S_RUN;
-            S_RUN:  if (round_idx == 3'd6) state_n = S_DONE;
+            S_RUN:  if (round_idx == 3'd6 && phase_idx == 3'd7) state_n = S_DONE;
             S_DONE: state_n = S_IDLE;
             default: state_n = S_IDLE;
         endcase
     end
 
     assign busy = (state != S_IDLE);
-    assign done = (state == S_DONE);
-
     // ------------------------------------------------------------------------
     // Datapath
     // ------------------------------------------------------------------------
@@ -118,8 +108,11 @@ module blake3_compress
         if (!rst_n) begin
             state     <= S_IDLE;
             round_idx <= 3'd0;
+            phase_idx <= 3'd0;
+            done      <= 1'b0;
         end else begin
             state <= state_n;
+            done  <= 1'b0;
 
             unique case (state)
                 S_IDLE: if (start) begin
@@ -143,24 +136,52 @@ module blake3_compress
                     s[15] <= flags_i;
                     for (int i = 0; i < 16; i++) m[i] <= block_i[i];
                     round_idx <= 3'd0;
+                    phase_idx <= 3'd0;
                 end
 
                 S_RUN: begin
-                    // Run one round per cycle.  do_round() mutates s and m
-                    // via ref args; the assignment below latches the new
-                    // values back into the registers.
                     logic [31:0] s_next [0:15];
                     logic [31:0] m_next [0:15];
+                    logic [31:0] m_perm [0:15];
                     for (int i = 0; i < 16; i++) begin
                         s_next[i] = s[i];
                         m_next[i] = m[i];
+                        m_perm[i] = m[i];
                     end
-                    do_round(s_next, m_next);
+                    if (!phase_idx[2]) begin
+                        g_quarter(s_next[0], s_next[4], s_next[8], s_next[12],
+                                  m_next[0], m_next[1], phase_idx[1:0]);
+                        g_quarter(s_next[1], s_next[5], s_next[9], s_next[13],
+                                  m_next[2], m_next[3], phase_idx[1:0]);
+                        g_quarter(s_next[2], s_next[6], s_next[10], s_next[14],
+                                  m_next[4], m_next[5], phase_idx[1:0]);
+                        g_quarter(s_next[3], s_next[7], s_next[11], s_next[15],
+                                  m_next[6], m_next[7], phase_idx[1:0]);
+                    end else begin
+                        g_quarter(s_next[0], s_next[5], s_next[10], s_next[15],
+                                  m_next[8], m_next[9], phase_idx[1:0]);
+                        g_quarter(s_next[1], s_next[6], s_next[11], s_next[12],
+                                  m_next[10], m_next[11], phase_idx[1:0]);
+                        g_quarter(s_next[2], s_next[7], s_next[8], s_next[13],
+                                  m_next[12], m_next[13], phase_idx[1:0]);
+                        g_quarter(s_next[3], s_next[4], s_next[9], s_next[14],
+                                  m_next[14], m_next[15], phase_idx[1:0]);
+                    end
+                    if (phase_idx == 3'd7)
+                        for (int i = 0; i < 16; i++)
+                            m_perm[i] = m_next[BLAKE3_PERM[i]];
+                    else
+                        for (int i = 0; i < 16; i++) m_perm[i] = m_next[i];
                     for (int i = 0; i < 16; i++) begin
                         s[i] <= s_next[i];
-                        m[i] <= m_next[i];
+                        m[i] <= m_perm[i];
                     end
-                    round_idx <= round_idx + 3'd1;
+                    if (phase_idx == 3'd7) begin
+                        phase_idx <= 3'd0;
+                        round_idx <= round_idx + 3'd1;
+                    end else begin
+                        phase_idx <= phase_idx + 3'd1;
+                    end
                 end
 
                 S_DONE: begin
@@ -171,6 +192,7 @@ module blake3_compress
                         out_state[i]     <= s[i]     ^ s[i + 8];
                         out_state[i + 8] <= s[i + 8] ^ cv_lat[i];
                     end
+                    done <= 1'b1;
                 end
 
                 default: ;

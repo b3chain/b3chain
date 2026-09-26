@@ -281,10 +281,26 @@ across nonces beyond the initial 32-byte seed. There is no Bitcoin-style
 midstate optimisation.
 
 **C. Memory-hardness.** Adversaries using `M < SCRATCH_BYTES` memory pay
-a recompute cost on each miss. For `M = 512 KB` the expected miss
-penalty is ~2× honest path; for `M = 128 KB` it is ~8× honest path. Not
-Argon2-strength, but sufficient to make full-scratchpad mining strictly
-more profitable than reduced-memory variants.
+a recompute cost on each miss. Rebuilding a block with
+`BLAKE3-XOF(prev || i)` after that block has been read-modify-written
+does **not** restore the honest pad (`ref/b3pow_reduced.py`). The
+hash-equivalent checkpoint-replay evaluator in that module keeps a
+scratchpad resident set of at most `M` bytes and charges one replay per
+dirty miss. CI enforces these minimum mix-step ratios against the
+honest 2,048-step path (`ref/tests/test_reduced_memory.py`). A run that
+beats a floor has to lower this table in the same change:
+
+| Attacker resident set | Minimum mix-step ratio |
+|---|---|
+| 512 KiB | 2× |
+| 256 KiB | 4× |
+| 128 KiB | 8× |
+
+One reference header measured far above those floors (about 1.2×10³,
+2.4×10³, and 3.1×10³). That charge is one strategy and one header, not
+a universal constant. The numbers live in
+[`contrib/testing/bench/MEASUREMENT.md`](../../../contrib/testing/bench/MEASUREMENT.md).
+Not Argon2-strength. The floors are what the test holds.
 
 **D. Hardware ranking.** The 8-way parallel RMW per iteration is the
 key wedge:
@@ -295,6 +311,12 @@ key wedge:
 | GPU (RTX 4090, L2-spilled) | ~150 ns × 8 = ~1.2 µs | ~2.5 ms | ~0.02× |
 | CPU (Ryzen 9 7950X) | ~80 ns × 8 = ~640 ns | ~1.3 ms | ~0.04× |
 | ASIC (7 nm, on-die SRAM) | ~6 ns | ~12 µs | ~4× |
+
+The FPGA row is the pre-route 6-cycle model (about 20 kH/s). The closed
+XCKU5P route is one pipeline at about 5.5 kH/s
+([`docs/TIMING_CLOSURE.md`](docs/TIMING_CLOSURE.md)). Classification of
+every published rate is in
+[`MEASUREMENT.md`](../../../contrib/testing/bench/MEASUREMENT.md).
 
 **E. Open audit items.** The address-derivation function's uniformity
 is gated in CI at 2²⁰ samples per lane per PR and 2²⁸ samples per lane
@@ -365,7 +387,7 @@ The version constant lives in:
 - `ref/b3pow_ref.py::SPEC_VERSION`
 - `rtl/params_pkg.sv::SPEC_VERSION`
 - `b3miner-firmware/components/b3_fpga/include/b3_fpga_regs.h::B3_FPGA_MAGIC`
-  (currently `0xB3110002` = v1.1.1 build 0002 -- bumped by F-1 fix)
+  (currently `0xB3110003` = v1.1.1 miner ABI build 0003)
 
 Implementations MUST refuse to mine if the configured version does
 not match the chain's expected version.

@@ -85,7 +85,7 @@ module tb_blake3_compress;
             start = 0;
 
             // Wait for `done` (max ~50 cycles).
-            for (int t = 0; t < 50; t++) begin
+            for (int t = 0; t < 100; t++) begin
                 @(posedge clk);
                 if (done) break;
             end

@@ -27,7 +27,7 @@ typedef struct {
     char     coinb2_hex[B3_WORK_COINB2_MAX];
     char     merkle_branch_hex[B3_WORK_MERKLE_MAX][66];
     size_t   merkle_branch_count;
-    float    share_diff;
+    double   share_diff;
     uint8_t  share_target_be[32];
     uint8_t  network_target_be[32];
     uint8_t  pow_seed[32];          /* BLAKE3(header template) or scratch seed */
@@ -38,8 +38,15 @@ void b3_work_init(void);
 void b3_work_publish_job(const b3_work_job_t *job);
 bool b3_work_wait_job(b3_work_job_t *out, TickType_t timeout);
 bool b3_work_job_stale(uint32_t epoch);
-esp_err_t b3_work_build_header(const b3_work_job_t *job, uint32_t extranonce2,
+void b3_work_invalidate(void);
+void b3_work_update_difficulty(double share_diff, uint32_t epoch);
+esp_err_t b3_work_build_header(const b3_work_job_t *job,
+                               const uint8_t *extranonce2, size_t extranonce2_len,
                                uint32_t ntime, uint32_t nonce,
                                uint8_t header_out[80]);
-esp_err_t b3_work_build_pow_seed(const b3_work_job_t *job, uint32_t extranonce2,
+esp_err_t b3_work_build_pow_seed(const b3_work_job_t *job,
+                                 const uint8_t *extranonce2, size_t extranonce2_len,
                                  uint32_t ntime, uint8_t seed_out[32]);
+esp_err_t b3_work_derive_targets(b3_work_job_t *job);
+bool b3_work_hash_meets_target(const uint8_t hash_le[32],
+                               const uint8_t target_be[32]);

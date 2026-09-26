@@ -29,18 +29,25 @@ pub fn pool_diff1_target() -> BigUint {
 /// Uses a 1_000_000 scale so fractional difficulties (e.g. the test-net
 /// 0.0001) survive the integer divide. Mirrors
 /// targetFromShareDifficulty() in difficulty-math.ts.
-pub fn target_from_share_difficulty(share_diff: f64) -> BigUint {
+pub const MIN_SHARE_DIFFICULTY: f64 = 0.000001;
+
+pub fn target_from_share_difficulty(share_diff: f64) -> Result<BigUint, String> {
     if !share_diff.is_finite() || share_diff <= 0.0 {
-        return uint256_max();
+        return Err(format!("share difficulty must be finite and > 0, got {share_diff}"));
+    }
+    if share_diff < MIN_SHARE_DIFFICULTY {
+        return Err(format!(
+            "share difficulty {share_diff} is below {MIN_SHARE_DIFFICULTY}"
+        ));
     }
     let scale: u64 = 1_000_000;
-    let scaled = (share_diff * scale as f64) as i128;
+    let scaled = (share_diff * scale as f64).round() as i128;
     if scaled <= 0 {
-        return uint256_max();
+        return Err(format!("share difficulty {share_diff} failed fixed-point conversion"));
     }
     let scaled_b = BigUint::from(scaled as u128);
     let lhs = pool_diff1_target() * BigUint::from(scale);
-    lhs / scaled_b
+    Ok(lhs / scaled_b)
 }
 
 /// Convert compact nBits to a 256-bit target.
@@ -122,7 +129,7 @@ mod tests {
     /// share_diff = 1 -> target == diff1.
     #[test]
     fn share_diff_one_equals_diff1() {
-        let t = target_from_share_difficulty(1.0);
+        let t = target_from_share_difficulty(1.0).unwrap();
         assert_eq!(t, pool_diff1_target());
     }
 
@@ -132,7 +139,7 @@ mod tests {
     /// We just check the BE hex for the leading bytes.
     #[test]
     fn share_diff_1024_leading_bytes() {
-        let t = target_from_share_difficulty(1024.0);
+        let t = target_from_share_difficulty(1024.0).unwrap();
         let be = to_be_hex_64(&t);
         // 0xffff0000 / 1024 = 0x003fffc0..., scaled match.
         assert!(be.starts_with("00000000003fffc"), "got {be}");

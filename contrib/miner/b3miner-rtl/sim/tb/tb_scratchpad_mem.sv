@@ -19,6 +19,8 @@ module tb_scratchpad_mem;
     logic              wb_en   [0:LANES-1];
     logic [ADDR_BITS-1:0] wb_addr [0:LANES-1];
     logic [511:0]      wb_data [0:LANES-1];
+    logic init_write, copy_en;
+    logic [ADDR_BITS-1:0] copy_addr;
 
     scratchpad_mem u_dut (
         .clk    (clk),
@@ -28,7 +30,10 @@ module tb_scratchpad_mem;
         .ra_data(ra_data),
         .wb_en  (wb_en),
         .wb_addr(wb_addr),
-        .wb_data(wb_data)
+        .wb_data(wb_data),
+        .init_write(init_write),
+        .copy_en(copy_en),
+        .copy_addr(copy_addr)
     );
 
     initial begin
@@ -36,11 +41,13 @@ module tb_scratchpad_mem;
             ra_en[L] = 0; ra_addr[L] = 0;
             wb_en[L] = 0; wb_addr[L] = 0; wb_data[L] = 0;
         end
+        init_write = 0; copy_en = 0; copy_addr = 0;
         repeat (5) @(posedge clk);
         rst_n = 1;
         repeat (5) @(posedge clk);
 
-        // Write distinct value to each lane at address 5.
+        // Initialize both pristine and working copies.
+        init_write = 1;
         for (int L = 0; L < LANES; L++) begin
             wb_en  [L] = 1;
             wb_addr[L] = 11'd5;
@@ -48,6 +55,21 @@ module tb_scratchpad_mem;
         end
         @(posedge clk);
         for (int L = 0; L < LANES; L++) wb_en[L] = 0;
+        init_write = 0;
+        @(posedge clk);
+
+        // Mutate the working copy, then restore it from pristine.
+        for (int L = 0; L < LANES; L++) begin
+            wb_en[L] = 1;
+            wb_addr[L] = 11'd5;
+            wb_data[L] = {496'h0, 16'(16'hF000 | L)};
+        end
+        @(posedge clk);
+        for (int L = 0; L < LANES; L++) wb_en[L] = 0;
+        copy_addr = 11'd5;
+        copy_en = 1;
+        @(posedge clk);
+        copy_en = 0;
         @(posedge clk);
 
         // Read back from address 5

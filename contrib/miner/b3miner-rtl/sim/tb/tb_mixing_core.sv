@@ -36,6 +36,7 @@ module tb_mixing_core;
         .clk      (clk),
         .rst_n    (rst_n),
         .start    (start),
+        .abort_i  (1'b0),
         .seed     (seed),
         .nonce    (nonce),
         .busy     (busy),

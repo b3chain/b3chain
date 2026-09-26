@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-09-25T08:19:43.958659+00:00",
+  "board": "XCKU5P-2FFVB676",
+  "part": "xcku5p-ffvb676-2-e",
+  "top": "xcku5p_b3miner_top",
+  "spec_version": "0x00010101",
+  "register_magic": "0xB3110003",
+  "sources": [
+    {
+      "path": "rtl/b3miner_core.sv",
+      "bytes": 7314,
+      "sha256": "08c33c20cac5faffa440c996dc084a45a4db7ac66519846e621baee2af5b8447"
+    },
+    {
+      "path": "rtl/b3miner_top.sv",
+      "bytes": 11566,
+      "sha256": "98e9f9afe083535a58291e3b8e5670adfe083a96fe747bc6faac01ac721b9de9"
+    },
+    {
+      "path": "rtl/b3miner_top_refactored.sv",
+      "bytes": 2190,
+      "sha256": "04e5757fe3d816ea89535596087b112f0c243681d6aa758c7bca20b717ecb22e"
+    },
+    {
+      "path": "rtl/blake3_compress.sv",
+      "bytes": 8360,
+      "sha256": "e84c7beaa55af8a7332a7f4884cd5da6c54a62132f7d14e3097d34963baf2ac1"
+    },
+    {
+      "path": "rtl/blake3_xof.sv",
+      "bytes": 2619,
+      "sha256": "0640783041e62a52c0a3feccf6faded9074f711e621b052bb37e7eb8bfd04ddd"
+    },
+    {
+      "path": "rtl/header_seed.sv",
+      "bytes": 3673,
+      "sha256": "fbb28bdb455ef871a628dc47321c672a226d401f2655c4cc33494894241ac79a"
+    },
+    {
+      "path": "rtl/miner_cdc_bridge.sv",
+      "bytes": 10266,
+      "sha256": "f7b2d44fc4eee8009436cceb29eca831943949f3ef00dec1db3628edcbc6fc71"
+    },
+    {
+      "path": "rtl/mixing_core.sv",
+      "bytes": 21706,
+      "sha256": "4bf321921ac3aaf1d4159f7662b0219a00537f93cf4bb8faa8649297fa60cf6c"
+    },
+    {
+      "path": "rtl/params_pkg.sv",
+      "bytes": 7595,
+      "sha256": "8f6916eb56c4076ed4c567fc47b40198aa3569e3bacac3059ee61e00f6ba46a5"
+    },
+    {
+      "path": "rtl/pow_top.sv",
+      "bytes": 11964,
+      "sha256": "34fc1f08320153bafe83c1bd185ff422e878d22da5be8b76c5775555eea52a50"
+    },
+    {
+      "path": "rtl/regfile.sv",
+      "bytes": 10560,
+      "sha256": "6bef9c8da6193ac059d4673ec58a38b73db14923cbec13c6ad73a90a4a1ba370"
+    },
+    {
+      "path": "rtl/scratch_init.sv",
+      "bytes": 5483,
+      "sha256": "a0dc3d2b7eadd9fbd635e1cd1334bddbba9fafc08e7a338ede22a691a2c62335"
+    },
+    {
+      "path": "rtl/scratchpad_mem.sv",
+      "bytes": 3723,
+      "sha256": "46a847b93abbb6a3d2efe7abb5caf34d81ac2a939f90be11e1f4b22fc47abe70"
+    },
+    {
+      "path": "rtl/spi_slave.sv",
+      "bytes": 8278,
+      "sha256": "c6ce71e4a53fbee5b09cd02d417c9bd3075ee8551532a0043b10b9b01401658b"
+    },
+    {
+      "path": "rtl/target_compare.sv",
+      "bytes": 1049,
+      "sha256": "f7073c1e432668b002f7c6ef3cbac4ec35f089a9c88eb5d280155eda27b5010e"
+    },
+    {
+      "path": "rtl/xadc_monitor.sv",
+      "bytes": 3506,
+      "sha256": "247a4b6f7c90cf7b1fd11d625488162ea4cc9751e708c9bd168d39910dc4b1a6"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/rtl/xcku5p_b3miner_top.sv",
+      "bytes": 2110,
+      "sha256": "50cea85af8405b83d926b4d1297bfbc715849897d9c5345f62b31b92c42b1f3b"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/xdc/xcku5p_b3miner_pins.xdc",
+      "bytes": 983,
+      "sha256": "92fac7b8c35b2c086afb27ff9e4d7be3619238e96c5f1637aa4794ef16e8daa7"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/xdc/xcku5p_b3miner_timing.xdc",
+      "bytes": 1418,
+      "sha256": "f166a6c29699866594e281661f73e75e4a51097daed2293aff7739d9b8e22547"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/board_contract.json",
+      "bytes": 2267,
+      "sha256": "8f63bc21f051afd943b3c50e27db5da6e60c9aeca2a555a70b42e3364b1da8e1"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/build/build_board.tcl",
+      "bytes": 4371,
+      "sha256": "8dd896beaf647b0317b30de1fb13f04fbd3fd9a047c6ad922d8a4a5005665541"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/build/program_volatile.tcl",
+      "bytes": 1067,
+      "sha256": "b91fe21122f95c8d282c859a46489b091e3cd1abbab81946888993eb68b2f529"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/build/create_manifest.py",
+      "bytes": 1665,
+      "sha256": "1e5887bb7e9a53cbc97507e622c0d694f1c213b52285c55e120473455b2a9d6e"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/host/52-b3chain-esp32-usb.rules",
+      "bytes": 224,
+      "sha256": "4db5dd45bcf2bbeab95c11b1d919a858d0665aaa06f2a7f3ec475ce9f9c67882"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/host/52-b3chain-tul-jtag.rules",
+      "bytes": 421,
+      "sha256": "befe09e71c1c2422da86913c1c6edc1d229fc8ff9135a70c5d3b4e1ad8984ea1"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/host/b3miner-jtag-autoload.service",
+      "bytes": 422,
+      "sha256": "c504374cb9ce875665549aa39584d6dd5e48cd072ef386326a4c04838cdfddac"
+    },
+    {
+      "path": "boards/xcku5p-2ffvb676/host/verified_jtag_autoload.sh",
+      "bytes": 939,
+      "sha256": "a0fe028e4a2f56141bbc00d5917374d24c71eb891a7eec15f6af9e2f9c210f66"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "build/xcku5p_b3miner/xcku5p_b3miner.bit",
+      "bytes": 15431348,
+      "sha256": "ad7f897dc406c53c9a84718db72252d71bb7f5a07e5845b17c2d846340f9e1ea"
+    },
+    {
+      "path": "build/xcku5p_b3miner/xcku5p_b3miner_routed.dcp",
+      "bytes": 46918734,
+      "sha256": "38b91a234e9fdc7f1c11ee151eb029cb1ccc2fd39a6f7c8ec7d68ce1f620bf2e"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/cdc_impl.rpt",
+      "bytes": 276912,
+      "sha256": "84c47cb2edfdab452869407b48c35bf78484db9a63acd80254b82f980c402f76"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/cdc_synth.rpt",
+      "bytes": 276918,
+      "sha256": "6da4c0bcb1686af19fcc60055408cabf3880c71c82f3bf45f41a85be95ddf134"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/clocks_synth.rpt",
+      "bytes": 2230,
+      "sha256": "4c1e1778f72dc56a4673b825cacc5210e36d32ba00b00c8125636a0b9fae3a07"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/drc.rpt",
+      "bytes": 13227,
+      "sha256": "5b25faaaec3d0d46aef3a4bd000e223bca7f08077a5461add9339b9201338e22"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/io.rpt",
+      "bytes": 231320,
+      "sha256": "50b11a7cf21bcfe6a8b949e80a5bdb0378f1b2f8af557632129888129aa2041d"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/methodology.rpt",
+      "bytes": 200757,
+      "sha256": "2d20fddd66e1f26469b7428266856f9a6eb9514d18048d43ce883783829c6ca1"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/power.rpt",
+      "bytes": 9791,
+      "sha256": "ee92f53d7733320f38c8f23f9b166936cf77d1ab528b7817bf6e99da2687ab2d"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/route_status.rpt",
+      "bytes": 651,
+      "sha256": "dafeb8b196fc2338c66f046ff32c22d7cdfef637814dd84256c9d1cdaf044948"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/timing.rpt",
+      "bytes": 61610,
+      "sha256": "3f2c35013df6b383f433661c4db554a06b95da4e1098d671572aee546b5e3d26"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/utilization_impl.rpt",
+      "bytes": 13104,
+      "sha256": "87f36a7a821c2f403774faad78c2748dc541d0c03a452ad4fc57406e2de08ebb"
+    },
+    {
+      "path": "build/xcku5p_b3miner/reports/utilization_synth.rpt",
+      "bytes": 10902,
+      "sha256": "f91deb331fc6e276405a853fb80b99c9bf7f86587b8c6e8605844d4ace3f38c3"
+    }
+  ]
+}

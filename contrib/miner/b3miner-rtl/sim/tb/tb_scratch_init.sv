@@ -26,6 +26,7 @@ module tb_scratch_init;
         .clk             (clk),
         .rst_n           (rst_n),
         .start           (start),
+        .abort_i         (1'b0),
         .prev_block_hash (prev_block_hash),
         .busy            (busy),
         .done            (done),
@@ -35,10 +36,11 @@ module tb_scratch_init;
     );
 
     // Mirror the writes locally so we can check against the vector.
-    logic [511:0] capture [0:LANES-1][0:LANE_BLOCKS-1];
-    always_ff @(posedge clk) begin
-        for (int L = 0; L < LANES; L++)
-            if (wb_en[L]) capture[L][wb_addr[L]] <= wb_data[L];
+    logic [511:0] capture [0:3];
+    always @(posedge clk) begin
+        if (wb_en[0] && wb_addr[0] < 4) begin
+            capture[wb_addr[0]] = wb_data[0];
+        end
     end
 
     initial begin
@@ -54,9 +56,8 @@ module tb_scratch_init;
         @(posedge clk);
         start = 0;
 
-        // Wait for done (16384 blocks × ~10 cycles + some overhead).
-        // Cap at 250k clk_sys cycles = 2.5 ms simulated.
-        for (int t = 0; t < 250000; t++) begin
+        // Wait for done (16384 blocks × ~60 cycles + overhead).
+        for (int t = 0; t < 1200000; t++) begin
             @(posedge clk);
             if (done) break;
         end
@@ -82,7 +83,8 @@ module tb_scratch_init;
             // Check first 4 blocks (256 bytes) of lane 0.
             for (int blk = 0; blk < 4; blk++) begin
                 for (int b = 0; b < 64; b++) begin
-                    byte unsigned dut_b = capture[0][blk][8*b +: 8];
+                    byte unsigned dut_b;
+                    dut_b = capture[blk][8*b +: 8];
                     if (dut_b !== expect_bytes[blk*64 + b]) begin
                         $error("blk %0d byte %0d: dut=%02h exp=%02h",
                             blk, b, dut_b, expect_bytes[blk*64 + b]);

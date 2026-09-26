@@ -57,7 +57,7 @@ set_property IOSTANDARD   LVCMOS33 [get_ports fan_pwm]
 ## per SCHEMATIC §5.3.
 
 ## ---- DRIVE-strength + slew for everything in bank 65 ----
-## SPI runs at 25 MHz which is well within FAST slew at default DRIVE.
+## SPI is capped at 5 MHz for the clk_sys-oversampled slave.
 
 set_property SLEW FAST  [get_ports {spi_sck spi_miso spi_csn share_irq}]
 set_property DRIVE 8    [get_ports {spi_miso share_irq}]

@@ -2,6 +2,21 @@
 
 All notable changes to `b3miner-rtl` are recorded here. Newest entries on top.
 
+## v1.1.5 — XCKU5P board implementation and miner ABI build 0003
+
+- Added the `xcku5p-2ffvb676` board contract, 100 MHz clock wrapper, XDC,
+  and licensed Vivado build flow for `xcku5p-ffvb676-2-e`.
+- Added per-nonce BLAKE3 hashing of the complete 80-byte header. Previous
+  RTL incorrectly swept multiple nonces using one fixed seed.
+- Added a programmable 256-bit share target and explicit share ACK.
+- Added a safe 100/250 MHz command mailbox, Gray hash counter crossing, and
+  one-entry asynchronous share FIFO.
+- Quarter-pipelined the memory-hard mixer and shared BLAKE3 compressor for
+  the 250 MHz timing target.
+- Completed full-chip hash parity, dual-clock CDC, target, and register-map
+  simulations. Register magic is now `0xB3110003`; older firmware/bitstreams
+  must not be mixed with build 0003.
+
 ## v1.1.4 — miner doc cleanup + `LANE_SHUFFLE` relocation (no consensus change)
 
 Cosmetic / source-organisation pass.  No bitstream needs rebuilding,

@@ -1,0 +1,186 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "ee305209-3650-493c-b050-584d476cb34a")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "04_ethernet — §7")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (hierarchical_label "V12_BUS"
+    (shape input)
+    (at 20.32 30.48 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "fa314411-532e-4d6e-b89d-fcf35df907e2")
+  )
+
+  (hierarchical_label "V3V3_SYS"
+    (shape input)
+    (at 20.32 38.1 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "b7d3de5f-7863-4f5b-9ba0-1cd825b66202")
+  )
+
+  (hierarchical_label "W5500_SCK"
+    (shape input)
+    (at 20.32 45.72 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "02e6c290-3aeb-4408-a90e-b92cb4a5bedb")
+  )
+
+  (hierarchical_label "W5500_MOSI"
+    (shape input)
+    (at 20.32 53.339999999999996 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "715c814c-0bb4-4bd5-aa1a-02aa936b3512")
+  )
+
+  (hierarchical_label "W5500_MISO"
+    (shape input)
+    (at 20.32 60.959999999999994 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "82c3d012-e65d-49bf-abc6-e15e3cdb3d8f")
+  )
+
+  (hierarchical_label "W5500_CS"
+    (shape input)
+    (at 20.32 68.58 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "323cb114-3b7b-4171-b812-cef29eeb0b8b")
+  )
+
+  (hierarchical_label "W5500_INT"
+    (shape input)
+    (at 20.32 76.2 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "a37a2add-b9f2-4751-8f46-c74aef35c087")
+  )
+
+  (hierarchical_label "W5500_RST"
+    (shape input)
+    (at 20.32 83.82000000000001 180)
+          (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+    (uuid "4fc5e820-3bef-4209-a073-48c5bf1e5845")
+  )
+
+  (symbol
+    (lib_id "power:GND")
+    (at 25.4 177.8 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (fields_autoplaced)
+    (uuid "7e297a5c-745c-41b0-8b74-c8301fe2340e")
+    (property "Reference" "#PWR"
+      (at 25.4 173.99 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 25.4 181.35600000000002 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Datasheet" ""
+      (at 25.4 177.8 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000004-0004-4000-8000-000000000004"
+          (reference "#PWR")
+          (unit 1)
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 — 04_ethernet\nSCHEMATIC.md §7: W5500 LQFP-48, 25MHz xtal, Pulse J0011D01BNL magjack, Bob-Smith term\nKey parts: W5500, NX2520SA-25M, J0011D01BNL magjack\nHierarchical labels match kicad-bringup.md §2.1 — do not rename without updating b3miner1.kicad_pro netclass_patterns.\nPlace symbols from lib/b3chain.kicad_sym (contract house)."
+    (exclude_from_sim no)
+    (at 25.4 25.4 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "ee7a4327-37dc-43a1-82fb-4b859107b55c")
+  )
+  (sheet_instances
+    (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890/b1000004-0004-4000-8000-000000000004"
+      (page "5")
+    )
+  )
+)

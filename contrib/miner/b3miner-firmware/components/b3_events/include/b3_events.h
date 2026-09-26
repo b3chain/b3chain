@@ -18,7 +18,8 @@ typedef struct {
     uint32_t job_epoch;
     uint32_t nonce;
     uint32_t ntime;
-    uint8_t  extranonce2[4];
+    uint8_t  extranonce2[32];
+    uint8_t  extranonce2_len;
     uint8_t  pow_hash_le[32];
     bool     meets_network_target;
 } b3_share_event_t;

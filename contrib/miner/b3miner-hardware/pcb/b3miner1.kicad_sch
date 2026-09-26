@@ -1,0 +1,1065 @@
+(kicad_sch
+  (version 20231120)
+  (generator "b3chain-gen")
+  (generator_version "8.0")
+  (uuid "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+  (paper "A3")
+  (title_block
+    (title "B3Miner-1")
+    (date "2026-05-21")
+    (rev "r0")
+    (company "b3chain")
+    (comment 1 "XCKU5P-2FFVB676E + ESP32-S3 — Option A W5500")
+    (comment 2 "Spec: ../SCHEMATIC.md")
+    (comment 3 "root / cover")
+    (comment 4 "Capture skeleton — contract house completes parts/wiring")
+  )
+  (lib_symbols)
+
+  (sheet
+    (at 25.4 25.4)
+    (size 50.0 53.34)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000001-0001-4000-8000-000000000001")
+    (property "Sheetname" "01_power"
+      (at 25.4 22.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "01_power.kicad_sch"
+      (at 25.4 81.28000000000002 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V12_BUS" output
+      (at 75.4 33.019999999999996 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "12d6e6cc-9742-4048-a8b9-7b2ee6c3f3a6")
+    )
+    (pin "V5V0" output
+      (at 75.4 38.099999999999994 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "eee9e246-a8b3-45b2-b8c9-f806d8bbeca5")
+    )
+    (pin "V3V3_SYS" output
+      (at 75.4 43.17999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "87082172-39f1-4db8-a90d-3bf39ffb68e6")
+    )
+    (pin "V1V8_AUX" output
+      (at 75.4 48.25999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "16dcaa21-2a86-4cda-bc58-25e6aabe1c37")
+    )
+    (pin "VCCINT" output
+      (at 75.4 53.33999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "fd3bf386-6707-4bfe-ba01-bb1fd207a591")
+    )
+    (pin "PG_ALL" output
+      (at 75.4 58.41999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "b0679099-0abf-4d1a-b036-f10bfaba8562")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "2")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 120.4 25.4)
+    (size 50.0 144.78)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000002-0002-4000-8000-000000000002")
+    (property "Sheetname" "02_fpga"
+      (at 120.4 22.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "02_fpga.kicad_sch"
+      (at 120.4 172.72 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V12_BUS" input
+      (at 120.4 33.019999999999996 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "66f0b6ae-657a-4850-8c0a-002c51398170")
+    )
+    (pin "V3V3_SYS" input
+      (at 120.4 38.099999999999994 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "9bfb8d6f-89c8-452c-a224-bcd4aaf1d066")
+    )
+    (pin "V1V8_AUX" input
+      (at 120.4 43.17999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "6f1c2161-82ed-447c-b6f7-73fe9dc0ede0")
+    )
+    (pin "VCCINT" input
+      (at 120.4 48.25999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "a0dbce20-2802-4929-9dba-c62f15ad214d")
+    )
+    (pin "PG_ALL" input
+      (at 120.4 53.33999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "b1791af4-c0ec-441a-89b4-a7f52707aac9")
+    )
+    (pin "FPGA_PROG_B" input
+      (at 120.4 58.41999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "bc5d7a18-312c-4bc3-bb95-2c760be6e9f6")
+    )
+    (pin "FPGA_SPI_CLK" input
+      (at 120.4 63.499999999999986 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "b7e89a97-8e11-4775-b959-6dc536e40cc7")
+    )
+    (pin "FPGA_SPI_MOSI" input
+      (at 120.4 68.57999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "cad5547f-7321-48a6-84ee-ea64c2e64416")
+    )
+    (pin "FPGA_SPI_CS" input
+      (at 120.4 73.65999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "24569aeb-f438-4ecc-9b59-f103c5a37e3c")
+    )
+    (pin "JTAG_TCK" input
+      (at 120.4 78.73999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "15c0863a-0a3c-4d56-875b-2dcd1be75421")
+    )
+    (pin "JTAG_TDI" input
+      (at 120.4 83.81999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "81e8c7f7-4951-4dc0-a081-d6afe1f9821d")
+    )
+    (pin "JTAG_TDO" input
+      (at 120.4 88.89999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "547fec2d-bc2a-4018-abea-03e9c4381793")
+    )
+    (pin "JTAG_TMS" input
+      (at 120.4 93.97999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "6234543f-016f-4f8b-98e5-8a05a781396d")
+    )
+    (pin "JTAG_VREF" input
+      (at 120.4 99.05999999999997 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "40c57a43-bad1-4b5e-afd3-1e096cf4feb9")
+    )
+    (pin "FPGA_SPI_MISO" output
+      (at 170.4 33.019999999999996 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "f6d1a78d-b875-491e-af00-a88c243349bd")
+    )
+    (pin "FPGA_SHARE_IRQ" output
+      (at 170.4 38.099999999999994 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "754f5af4-6150-426c-93d7-e347bf419736")
+    )
+    (pin "FPGA_INIT_B" output
+      (at 170.4 43.17999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "656e1926-43e4-4f85-923d-9a28909ed87c")
+    )
+    (pin "FPGA_DONE" output
+      (at 170.4 48.25999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "ef8b1daf-86ed-4bf5-989b-4f8fb40971d8")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "3")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 215.4 25.4)
+    (size 50.0 182.88)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000003-0003-4000-8000-000000000003")
+    (property "Sheetname" "03_host"
+      (at 215.4 22.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "03_host.kicad_sch"
+      (at 215.4 210.82 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V3V3_SYS" input
+      (at 215.4 33.019999999999996 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "a6f70c17-19cc-4f89-a569-2fb5f67259e4")
+    )
+    (pin "PG_ALL" input
+      (at 215.4 38.099999999999994 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "057d7e2e-dd35-40e9-b533-8fbbcc9db993")
+    )
+    (pin "FPGA_SPI_MISO" input
+      (at 215.4 43.17999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "69d98a64-e6cc-4bcf-ae2d-f767a834723c")
+    )
+    (pin "FPGA_SHARE_IRQ" input
+      (at 215.4 48.25999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "4e82902e-4311-4db8-9dce-8a5275509226")
+    )
+    (pin "FPGA_INIT_B" input
+      (at 215.4 53.33999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "64aa3984-89fb-47ea-8182-ab4ad6ab75a7")
+    )
+    (pin "FPGA_DONE" input
+      (at 215.4 58.41999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "8f4ef12d-397a-48e3-b22f-84dd448cbe8c")
+    )
+    (pin "FAN_TACH" input
+      (at 215.4 63.499999999999986 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "ba84f853-ea3f-4fc6-98d5-8290c1fb1c68")
+    )
+    (pin "FPGA_PROG_B" output
+      (at 265.4 33.019999999999996 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "6bb32344-bac9-4fb1-b233-cd1ac188aed9")
+    )
+    (pin "FPGA_SPI_CLK" output
+      (at 265.4 38.099999999999994 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "7664a7eb-baf3-4adf-8606-a126ca85e9de")
+    )
+    (pin "FPGA_SPI_MOSI" output
+      (at 265.4 43.17999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "279ccfe8-08ee-4a67-ad71-c897ff93037d")
+    )
+    (pin "FPGA_SPI_CS" output
+      (at 265.4 48.25999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "a5221a6e-8a70-4da6-900c-b54cde77e25c")
+    )
+    (pin "W5500_SCK" output
+      (at 265.4 53.33999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "469fb0be-da74-42f1-a45a-54cbb623b779")
+    )
+    (pin "W5500_MOSI" output
+      (at 265.4 58.41999999999999 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "ff150ad0-a059-429d-ad7b-c252aed535dd")
+    )
+    (pin "W5500_MISO" output
+      (at 265.4 63.499999999999986 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "27a1555b-e3d2-4fd2-9cbb-6e2921b61908")
+    )
+    (pin "W5500_CS" output
+      (at 265.4 68.57999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "2ebd9fe1-9e2d-4a9c-b088-dbe04065811d")
+    )
+    (pin "W5500_INT" output
+      (at 265.4 73.65999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "1641a447-51d2-49e5-8190-7a3f4a816c6f")
+    )
+    (pin "W5500_RST" output
+      (at 265.4 78.73999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "01581923-92fc-4b70-87d5-7c0206f7f5b3")
+    )
+    (pin "USB_DP" output
+      (at 265.4 83.81999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "7ea0107c-cf76-44cd-bd8e-caa5a3bcf5bb")
+    )
+    (pin "USB_DM" output
+      (at 265.4 88.89999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "5e979934-6b99-41a4-82d9-120491f9a15a")
+    )
+    (pin "LED_POWER" output
+      (at 265.4 93.97999999999998 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "e80a941c-1125-4b4b-80e0-0c8abd1ca8a7")
+    )
+    (pin "LED_LINK" output
+      (at 265.4 99.05999999999997 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "bdae8649-a33e-454b-8830-d81b2470db03")
+    )
+    (pin "LED_MINING" output
+      (at 265.4 104.13999999999997 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "c6890720-ceb5-4b55-abb9-86c7218eab74")
+    )
+    (pin "FAN_PWM" output
+      (at 265.4 109.21999999999997 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "2cac2a58-f479-4b19-87df-bc8df8ff3ae5")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "4")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 310.4 25.4)
+    (size 50.0 68.58)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000004-0004-4000-8000-000000000004")
+    (property "Sheetname" "04_ethernet"
+      (at 310.4 22.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "04_ethernet.kicad_sch"
+      (at 310.4 96.52 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V12_BUS" input
+      (at 310.4 33.019999999999996 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "4bb23847-d922-4de8-b85d-92e8e574d5f9")
+    )
+    (pin "V3V3_SYS" input
+      (at 310.4 38.099999999999994 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "69224d83-02f3-4f27-98e0-86070db9cd9f")
+    )
+    (pin "W5500_SCK" input
+      (at 310.4 43.17999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "5ac6627d-4414-4b3d-b167-89c8769330ef")
+    )
+    (pin "W5500_MOSI" input
+      (at 310.4 48.25999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "139e7f16-a5ea-493f-9505-ed9811f20839")
+    )
+    (pin "W5500_MISO" input
+      (at 310.4 53.33999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "697c9858-6850-4c98-be75-ea6e636bd4ab")
+    )
+    (pin "W5500_CS" input
+      (at 310.4 58.41999999999999 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "bd1d69fd-0131-41a7-8869-7a7b2c4cffe6")
+    )
+    (pin "W5500_INT" input
+      (at 310.4 63.499999999999986 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "a2d3cb7a-47d0-4947-bbb3-1d7f8c704db4")
+    )
+    (pin "W5500_RST" input
+      (at 310.4 68.57999999999998 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "b6416bf6-a17c-413c-b0ea-a5e28d0878ef")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "5")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 25.4 80.4)
+    (size 50.0 25.4)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000005-0005-4000-8000-000000000005")
+    (property "Sheetname" "05_usb"
+      (at 25.4 77.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "05_usb.kicad_sch"
+      (at 25.4 108.34000000000002 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "USB_DP" input
+      (at 25.4 88.02000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "c09f1813-6cba-4ef3-8bb1-dbb7ed4d8a49")
+    )
+    (pin "USB_DM" input
+      (at 25.4 93.10000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "a3e11f60-c5b3-4b95-8aef-2040a2784d64")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "6")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 120.4 80.4)
+    (size 50.0 53.34)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000006-0006-4000-8000-000000000006")
+    (property "Sheetname" "06_jtag"
+      (at 120.4 77.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "06_jtag.kicad_sch"
+      (at 120.4 136.28 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V3V3_SYS" input
+      (at 120.4 88.02000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "7b76ed85-4581-42b7-a783-6d485acc3063")
+    )
+    (pin "JTAG_TCK" output
+      (at 170.4 88.02000000000001 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "fd7c62ca-3cab-4c14-aaff-dd216a03fe8d")
+    )
+    (pin "JTAG_TDI" output
+      (at 170.4 93.10000000000001 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "bf61f457-ff68-4b39-b0ae-5861cfdf5975")
+    )
+    (pin "JTAG_TDO" output
+      (at 170.4 98.18 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "f2c7d2eb-1340-416e-a898-79d81c5a301b")
+    )
+    (pin "JTAG_TMS" output
+      (at 170.4 103.26 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "189924f5-e526-4e17-b16b-4b422e1a8544")
+    )
+    (pin "JTAG_VREF" output
+      (at 170.4 108.34 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "7d3be6fc-2673-46ff-b1f7-00bc17746487")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "7")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 215.4 80.4)
+    (size 50.0 45.72)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000007-0007-4000-8000-000000000007")
+    (property "Sheetname" "07_io_led"
+      (at 215.4 77.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "07_io_led.kicad_sch"
+      (at 215.4 128.66 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V3V3_SYS" input
+      (at 215.4 88.02000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "61ca7a1d-c534-4ec0-b5ff-a7a3474ae1b6")
+    )
+    (pin "LED_POWER" input
+      (at 215.4 93.10000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "3e00d4b1-e8e6-4873-8ca7-3a688792d77f")
+    )
+    (pin "LED_LINK" input
+      (at 215.4 98.18 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "b211cb3d-3c7e-4853-b4c1-9df6f8b3d686")
+    )
+    (pin "LED_MINING" input
+      (at 215.4 103.26 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "37ba6fce-4a36-4d03-97f3-9b186d55a0ec")
+    )
+    (pin "FPGA_DONE" input
+      (at 215.4 108.34 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "d4959ed4-efdd-4b73-91d4-dea47da6ce26")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "8")
+        )
+      )
+    )
+  )
+
+  (sheet
+    (at 310.4 80.4)
+    (size 50.0 30.48)
+    (fields_autoplaced)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 0 0 0 0.0000)
+    )
+    (uuid "b1000008-0008-4000-8000-000000000008")
+    (property "Sheetname" "08_thermal"
+      (at 310.4 77.86 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "08_thermal.kicad_sch"
+      (at 310.4 113.42000000000002 0)
+      (effects
+        (font
+          (size 1.524 1.524)
+        )
+        (justify left top)
+      )
+    )
+    
+    (pin "V12_BUS" input
+      (at 310.4 88.02000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "c4831280-ecae-4840-bcfd-65266b1b0a4a")
+    )
+    (pin "FAN_PWM" input
+      (at 310.4 93.10000000000001 180)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "dc6b602a-2ab2-44c1-9971-63654350bf8b")
+    )
+    (pin "FAN_TACH" output
+      (at 360.4 88.02000000000001 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left)
+      )
+      (uuid "f8582d92-f7cf-4186-abb3-2c27e5e67a32")
+    )
+    (instances
+      (project "b3miner1"
+        (path "/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (page "9")
+        )
+      )
+    )
+  )
+
+  (text "B3Miner-1 rev A — hierarchical root\nSpec: ../SCHEMATIC.md (R0, Option A W5500)\nNet names per Appendix A — tied to b3miner1.kicad_pro net classes\nInter-sheet nets: see kicad-bringup.md §2.1\nContract house: capture parts inside each subsheet, then ERC/DRC"
+    (exclude_from_sim no)
+    (at 25.4 180.0 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "bc191b85-3c9a-4e0f-b57c-5b0e857d7ebe")
+  )
+  (sheet_instances
+    (path "/"
+      (page "1")
+    )
+  )
+)

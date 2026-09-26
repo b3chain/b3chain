@@ -26,6 +26,7 @@ module scratch_init
     input  logic              rst_n,
 
     input  logic              start,
+    input  logic              abort_i,
     input  logic [255:0]      prev_block_hash,    // 32 bytes, byte0 = bits 7:0
 
     output logic              busy,
@@ -95,12 +96,16 @@ module scratch_init
                 wb_addr[L] <= '0;
                 wb_data[L] <= 512'h0;
             end
+        end else if (abort_i) begin
+            state <= S_IDLE;
+            xof_start <= 1'b0;
+            for (int L = 0; L < LANES; L++) wb_en[L] <= 1'b0;
         end else begin
             xof_start <= 1'b0;
             for (int L = 0; L < LANES; L++) wb_en[L] <= 1'b0;
 
             unique case (state)
-                S_IDLE: if (start) begin
+                S_IDLE: if (start && !xof_busy) begin
                     block_idx <= '0;
                     xof_start <= 1'b1;
                     state     <= S_WAIT;
@@ -138,7 +143,7 @@ module scratch_init
         end
     end
 
-    assign busy = (state != S_IDLE && state != S_DONE);
+    assign busy = (state != S_IDLE && state != S_DONE) || xof_busy;
     assign done = (state == S_DONE);
 
 endmodule : scratch_init

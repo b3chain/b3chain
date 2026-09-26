@@ -11,8 +11,8 @@ real miner at it, and validates:
   2. mining.set_difficulty + mining.notify reach the miner.
   3. The miner finds and submits shares within the configured window.
   4. The JSONL log contains share_submit entries.
-  5. For each submitted share, BLAKE3(BLAKE3(header_hex)) byte-matches
-     the recorded pow_hash_le. (Reconstruction sanity check.)
+    5. For each submitted share, B3PoW-Scratch v1.1 byte-matches the
+       recorded pow_hash_le.
 
 Run:
   pip3 install blake3
@@ -31,15 +31,11 @@ import tempfile
 import threading
 import time
 
-import blake3
-
-
 HERE = os.path.dirname(os.path.abspath(__file__))
 MINER = os.path.join(HERE, "b3chain-cpuminer.py")
-
-
-def _double_blake3(b: bytes) -> bytes:
-    return blake3.blake3(blake3.blake3(b).digest()).digest()
+RTL_REF = os.path.join(HERE, "b3miner-rtl", "ref")
+sys.path.insert(0, RTL_REF)
+import b3pow_ref  # noqa: E402
 
 
 def _serialize_header(version: int, prev_le: bytes, merkle_le: bytes,
@@ -70,7 +66,9 @@ class MockStratumServer:
     BRANCHES_BE: list[str] = []
     VERSION = 0x20000000
     BITS = 0x207fffff   # regtest: highest possible target -> shares are trivial
-    SHARE_DIFFICULTY = 0.0001
+    # Below the pool's 1e-6 fixed-point resolution, so the target saturates
+    # to MAX_UINT256 and one expensive reference B3PoW hash is sufficient.
+    SHARE_DIFFICULTY = 1e-12
 
     def __init__(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -164,7 +162,7 @@ class MockStratumServer:
 
 
 def _verify_jsonl(path: str) -> int:
-    """Return number of share_submit entries that pass the BLAKE3d check."""
+    """Return the number of submissions that pass B3PoW-Scratch verification."""
     submitted = 0
     verified = 0
     with open(path, "r", encoding="utf-8") as f:
@@ -178,7 +176,9 @@ def _verify_jsonl(path: str) -> int:
             submitted += 1
             header_hex = obj["header_hex"]
             pow_hex = obj["pow_hash_le"]
-            recomputed = _double_blake3(bytes.fromhex(header_hex)).hex()
+            header = bytes.fromhex(header_hex)
+            prev_le = header[4:36]
+            recomputed = b3pow_ref.b3pow_scratch(header, prev_le).pow_hash.hex()
             if recomputed != pow_hex:
                 print(f"  MISMATCH for share_seq={obj.get('share_seq')}:")
                 print(f"    header   = {header_hex}")
@@ -186,7 +186,7 @@ def _verify_jsonl(path: str) -> int:
                 print(f"    got      = {recomputed}")
                 continue
             verified += 1
-    print(f"  share_submit JSONL entries: {submitted}; BLAKE3d verified: {verified}")
+    print(f"  share_submit JSONL entries: {submitted}; B3PoW verified: {verified}")
     return verified
 
 
@@ -207,7 +207,7 @@ def main() -> int:
         "--user", "test@b3chain.org.cpu1",
         "--pass", "x",
         "--threads", "1",
-        "--max-attempts", "5",
+        "--max-attempts", "1",
         "--progress-interval", "100000",
         "--quiet-progress",
         "--json-log", jsonl_path,
@@ -215,7 +215,7 @@ def main() -> int:
     print("Running miner:")
     print("  " + " ".join(cmd))
     print()
-    proc = subprocess.run(cmd, timeout=120,
+    proc = subprocess.run(cmd, timeout=180,
                           stdout=sys.stdout, stderr=sys.stderr)
     print()
     print(f"miner exited with rc={proc.returncode}")
@@ -229,12 +229,12 @@ def main() -> int:
     verified = _verify_jsonl(jsonl_path)
 
     ok = (proc.returncode == 0
-          and srv.shares_received >= 5
-          and verified >= 5)
+          and srv.shares_received >= 1
+          and verified >= 1)
 
     if ok:
         print()
-        print("PASS: miner submitted 5 shares; JSONL BLAKE3d-verified.")
+        print("PASS: miner submitted a share; JSONL B3PoW-verified.")
         os.unlink(jsonl_path)
         return 0
     else:

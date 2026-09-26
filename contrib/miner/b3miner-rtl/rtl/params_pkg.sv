@@ -17,12 +17,12 @@ package params_pkg;
   // Spec version (mirrors SPEC.md §3)
   // ------------------------------------------------------------------------
   // Packed 4-byte tag: 00 (RESV) / 01 (major) / 01 (minor) / 01 (patch).
-  // v1.1.1 = F-1 fix (ITER_MUL[7] made distinct).  Firmware must read
-  // 0xB3110002 from REG_ID (offset 0x00) -- old 0xB3110001 bitstreams
-  // mine the v1.1.0 algorithm and are rejected.
+  // v1.1.1 = F-1 fix (ITER_MUL[7] made distinct). Firmware must read
+  // build 0003, which adds per-nonce header hashing, a programmable target,
+  // and acknowledged share delivery.
   // The high byte 0xB3 is the project tag; the low 24 bits encode version.
   localparam logic [31:0] SPEC_VERSION = 32'h00010101;
-  localparam logic [31:0] REG_ID_MAGIC = 32'hB3110002;
+  localparam logic [31:0] REG_ID_MAGIC = 32'hB3110003;
 
   // ------------------------------------------------------------------------
   // Scratchpad
@@ -115,7 +115,10 @@ package params_pkg;
   //   B3_FPGA_REG_POW_HASH    = 0x100 -> word 0x40
   localparam logic [6:0] REG_NONCE_START   = 7'h20;       // byte 0x80 / 4
   localparam logic [6:0] REG_NONCE_END     = 7'h21;       // byte 0x84 / 4
+  localparam logic [6:0] REG_NONCE_COUNT   = 7'h22;       // byte 0x88 / 4
+  localparam logic [6:0] REG_TARGET_BASE   = 7'h28;       // byte 0xA0 / 4 (8 × 32-bit RW)
   localparam logic [6:0] REG_POW_HASH_BASE = 7'h40;       // byte 0x100 / 4 (8 × 32-bit RO)
+  localparam logic [6:0] REG_HEADER_BASE   = 7'h48;       // byte 0x120 / 4 (19 × 32-bit RW)
 
   // STATUS bits
   localparam int STATUS_BUSY    = 0;
@@ -126,6 +129,7 @@ package params_pkg;
   localparam int CTRL_START_JOB    = 0;
   localparam int CTRL_ABORT        = 1;
   localparam int CTRL_SCRATCH_INIT = 2;
+  localparam int CTRL_SHARE_ACK    = 3;
 
   // ------------------------------------------------------------------------
   // Clocks (mirrors b3miner_timing.xdc)
@@ -133,7 +137,7 @@ package params_pkg;
   localparam real CLK_REF_MHZ  = 200.0;
   localparam real CLK_MINE_MHZ = 250.0;
   localparam real CLK_SYS_MHZ  = 100.0;
-  localparam real CLK_SPI_MHZ  = 25.0;
+  localparam real CLK_SPI_MHZ  = 5.0;
 
   // ------------------------------------------------------------------------
   // Derived widths

@@ -30,6 +30,8 @@ help:
 	@echo "  make impl        place + route (Vivado)"
 	@echo "  make bin         write b3miner.bin into build/artifacts/ (Vivado)"
 	@echo "  make report      collect timing / utilisation reports"
+	@echo "  make board-build build the XCKU5P-2FFVB676 miner profile"
+	@echo "  make board-manifest hash board-profile sources and outputs"
 	@echo "  make clean       drop generated files (keeps SPEC/RTL/refs)"
 
 # --- Python reference ----------------------------------------------------
@@ -83,6 +85,17 @@ report:
 .PHONY: timing-explore
 timing-explore:
 	$(VIVADO) -mode batch -source $(BUILD_DIR)/timing_explore.tcl
+
+.PHONY: board-build
+board-build:
+	$(VIVADO) -mode batch \
+	    -source boards/xcku5p-2ffvb676/build/build_board.tcl \
+	    -log build/xcku5p_b3miner.log \
+	    -journal build/xcku5p_b3miner.jou
+
+.PHONY: board-manifest
+board-manifest:
+	$(PYTHON) boards/xcku5p-2ffvb676/build/create_manifest.py
 
 $(ARTIFACTS):
 	mkdir -p $@

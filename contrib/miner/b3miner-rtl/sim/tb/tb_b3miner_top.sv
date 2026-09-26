@@ -2,21 +2,16 @@
 // tb_b3miner_top.sv -- chip-level integration TB.
 //
 // Drives the SPI port to mimic the firmware bring-up sequence:
-//   1. Read REG_ID -- expect REG_ID_MAGIC (0xB3110002 in v1.1.1 build 0002)
+//   1. Read REG_ID -- expect REG_ID_MAGIC (0xB3110003)
 //   2. Write PREV_HASH = 0x00..00, CTRL.scratch_init -- wait for STATUS.scratch_ready
 //   3. Write SEED = blake3(header), NONCE_START/END, JOB_EPOCH, CTRL.start
-//   4. Poll STATUS until share_valid (TB cheats: forces share_threshold to
-//      "any hash" by writing 0xFFFFFFFF to a hypothetical mask register;
-//      until then this TB just runs N hashes and reports success).
-//
-// This is the v1 TB -- it asserts the chip *runs* end-to-end through the
-// FSM; deeper byte-parity vs the Python ref is checked by the unit TBs
-// (tb_blake3_compress, tb_scratch_init).  Phase 5 follow-up: assert
-// pow_hash matches vectors/full_hash.hex byte-for-byte.
+//   4. Program an all-ones share target, mine nonce zero, and compare the
+//      returned hash byte-for-byte with vectors/full_hash.hex.
 // ============================================================================
 
 `timescale 1ns/1ps
 `include "params_pkg.sv"
+`include "vector_reader.svh"
 
 module tb_b3miner_top;
     import params_pkg::*;
@@ -31,6 +26,16 @@ module tb_b3miner_top;
 
     logic share_irq, led_share, led_busy, fan_pwm;
     logic fan_tach = 0;
+    vector_record_t full_hash_rec;
+    vector_record_t full_hash_nonce1_rec;
+    int full_hash_fd;
+
+    function automatic logic [31:0] le_word(
+        input byte unsigned data [0:1023],
+        input int off
+    );
+        return {data[off+3], data[off+2], data[off+1], data[off]};
+    endfunction
 
     b3miner_top u_dut (
         .clk_ref_p (clk_ref),
@@ -83,6 +88,17 @@ module tb_b3miner_top;
     initial begin
         repeat (1000) @(posedge clk_ref);  // let MMCM lock
 
+        full_hash_fd = vr_open("full_hash.hex");
+        if (!vr_read(full_hash_fd, full_hash_rec))
+            $fatal(1, "tb_b3miner_top: full_hash vector missing");
+        if (!vr_read(full_hash_fd, full_hash_nonce1_rec))
+            $fatal(1, "tb_b3miner_top: nonce-one vector missing");
+        vr_close(full_hash_fd);
+        if (full_hash_rec.label != "zero_header_zero_prev")
+            $fatal(1, "tb_b3miner_top: unexpected first vector");
+        if (full_hash_nonce1_rec.label != "zero_header_nonce_one")
+            $fatal(1, "tb_b3miner_top: unexpected second vector");
+
         // 1) REG_ID
         begin
             logic [31:0] id;
@@ -120,15 +136,17 @@ module tb_b3miner_top;
             $display("[PASS] TEMP_RAW = 0x%08x", r);
         end
 
-        // 2) PREV_HASH = 0 + CTRL.scratch_init
-        for (int i = 0; i < 8; i++) spi_write(7'(REG_PREV_BASE + i), 32'h0);
+        // 2) PREV_HASH + CTRL.scratch_init
+        for (int i = 0; i < 8; i++)
+            spi_write(7'(REG_PREV_BASE + i), le_word(full_hash_rec.fields[1], 4*i));
         spi_write(REG_CTRL, 32'h4);   // scratch_init bit
 
         // Poll STATUS.scratch_ready (~2 ms expected -- the sim is slow,
         // give it a generous bound).
         begin
             logic [31:0] st;
-            int polled = 0;
+            int polled;
+            polled = 0;
             do begin
                 spi_read(REG_STATUS, st);
                 polled++;
@@ -137,12 +155,91 @@ module tb_b3miner_top;
             $display("[PASS] STATUS.scratch_ready set after %0d polls", polled);
         end
 
-        // 3) For the v1 TB we stop here.  Phase 5 follow-up will:
-        //    - write seed = blake3(zero header)
-        //    - write nonce_start/end + start
-        //    - poll for share
-        //    - compare pow_hash vs vectors/full_hash.hex first record
-        $display("tb_b3miner_top: bring-up sequence PASS (mining loop deferred)");
+        // 3) Program the 76-byte header prefix, accept-anything target, and
+        // nonce range [0, 2).  The FPGA restores the pristine scratchpad and
+        // derives BLAKE3(header) independently for each nonce.
+        for (int i = 0; i < 8; i++) begin
+            spi_write(7'(REG_TARGET_BASE + i), 32'hFFFF_FFFF);
+        end
+        for (int i = 0; i < 19; i++)
+            spi_write(7'(REG_HEADER_BASE + i), le_word(full_hash_rec.fields[0], 4*i));
+        spi_write(REG_NONCE_START, 32'h0);
+        spi_write(REG_NONCE_END, 32'h2);
+        spi_write(REG_NONCE_COUNT, 32'h2);
+        spi_write(REG_CTRL, 32'h1);
+
+        for (int expected_nonce = 0; expected_nonce < 2; expected_nonce++) begin
+            logic [31:0] st, got_nonce;
+            int polled;
+            polled = 0;
+            do begin
+                spi_read(REG_STATUS, st);
+                polled++;
+                if (polled > 20000) $fatal(1, "tb_b3miner_top: share never arrived");
+            end while ((st & 32'h2) == 0);
+            spi_read(REG_NONCE_LO, got_nonce);
+            if (got_nonce !== expected_nonce)
+                $fatal(1, "nonce got=%08h expected=%08h", got_nonce, expected_nonce);
+            for (int i = 0; i < 8; i++) begin
+                logic [31:0] got, expected;
+                spi_read(7'(REG_POW_HASH_BASE + i), got);
+                if (expected_nonce == 0)
+                    expected = le_word(full_hash_rec.fields[3], 4*i);
+                else
+                    expected = le_word(full_hash_nonce1_rec.fields[3], 4*i);
+                if (got !== expected)
+                    $fatal(1, "nonce %0d POW_HASH[%0d] got=%08h expected=%08h",
+                           expected_nonce, i, got, expected);
+            end
+            $display("[PASS] nonce %0d matches fresh-pad Python vector", expected_nonce);
+
+            spi_write(REG_CTRL, 32'h8);
+            for (int i = 0; i < 20; i++) begin
+                spi_read(REG_STATUS, st);
+                if ((st & 32'h2) == 0) break;
+            end
+            if (st & 32'h2) $fatal(1, "share ACK did not clear status");
+        end
+
+        // Abort a live batch, wait for all engines to quiesce, then prove a
+        // fresh job still produces the canonical nonce-zero hash.
+        spi_write(REG_NONCE_START, 32'h0);
+        spi_write(REG_NONCE_END, 32'd100);
+        spi_write(REG_NONCE_COUNT, 32'd100);
+        spi_write(REG_CTRL, 32'h1);
+        begin
+            logic [31:0] st;
+            do begin
+                spi_read(REG_STATUS, st);
+            end while ((st & 32'h1) == 0);
+            spi_write(REG_CTRL, 32'h2);
+            do begin
+                spi_read(REG_STATUS, st);
+            end while ((st & 32'h1) != 0);
+            if (st & 32'h2) $fatal(1, "abort left a stale share");
+        end
+
+        spi_write(REG_NONCE_START, 32'h0);
+        spi_write(REG_NONCE_END, 32'h1);
+        spi_write(REG_NONCE_COUNT, 32'h1);
+        spi_write(REG_CTRL, 32'h1);
+        begin
+            logic [31:0] st;
+            do begin
+                spi_read(REG_STATUS, st);
+            end while ((st & 32'h2) == 0);
+            for (int i = 0; i < 8; i++) begin
+                logic [31:0] got, expected;
+                spi_read(7'(REG_POW_HASH_BASE + i), got);
+                expected = le_word(full_hash_rec.fields[3], 4*i);
+                if (got !== expected)
+                    $fatal(1, "post-abort POW_HASH[%0d] mismatch", i);
+            end
+            spi_write(REG_CTRL, 32'h8);
+        end
+        $display("[PASS] abort quiescence and restart");
+
+        $display("tb_b3miner_top: full mining flow PASS");
         $finish;
     end
 

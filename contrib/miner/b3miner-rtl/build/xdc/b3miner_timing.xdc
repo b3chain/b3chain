@@ -5,7 +5,7 @@
 ##   clk_ref   200.0 MHz   external LVDS XO       (bank 65 MRCC)
 ##   clk_mine  250.0 MHz   MMCM CLKOUT0           (data path)
 ##   clk_sys   100.0 MHz   MMCM CLKOUT1           (control)
-##   clk_spi    25.0 MHz   external (ESP32 SCK)   (bank 65, async)
+##   clk_spi     5.0 MHz   external (ESP32 SCK)   (bank 65, async)
 ## ============================================================================
 
 # ---- External primary clocks ----
@@ -13,7 +13,7 @@ create_clock -name clk_ref -period 5.000  [get_ports clk_ref_p]
 # clk_spi is a *virtual* input clock used to constrain the SPI pin timing.
 # The SPI slave is internally clocked by clk_sys and oversamples the
 # async SPI pins, so clk_spi has no flops inside the FPGA.
-create_clock -name clk_spi -period 40.000 [get_ports spi_sck]
+create_clock -name clk_spi -period 200.000 [get_ports spi_sck]
 
 # ---- Derived clocks (the MMCM in b3miner_top.sv generates these) ----
 # These get named automatically by Vivado from the MMCM output ports,
@@ -41,7 +41,7 @@ set_clock_groups -asynchronous \
 # SPI is mode-0 (CPOL=0, CPHA=0): MOSI sampled on SCK rising edge,
 # MISO updated on SCK falling edge.
 # ESP32-S3 spec (DS, §3.10): tco_max = 7 ns, tho_min = 1 ns on MOSI.
-# Allow generous margins -- we run at 25 MHz (40 ns period).
+# Allow generous margins -- the synchronized slave is capped at 5 MHz.
 set_input_delay  -clock clk_spi  -max 12.0 [get_ports spi_mosi]
 set_input_delay  -clock clk_spi  -min  2.0 [get_ports spi_mosi]
 set_input_delay  -clock clk_spi  -max  8.0 [get_ports spi_csn]

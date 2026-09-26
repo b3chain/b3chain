@@ -22,9 +22,15 @@ use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, LaunchAsync, LaunchConfi
 use std::sync::Arc;
 
 const PTX_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/miner.ptx"));
-const KERNEL_NAME_SEARCH: &str = "double_blake3_search";
-const KERNEL_NAME_DUMP: &str = "double_blake3_dump";
+const KERNEL_NAME_SEARCH: &str = "b3pow_scratch_search";
+const KERNEL_NAME_DUMP: &str = "b3pow_scratch_dump";
+const KERNEL_NAME_LEGACY_SEARCH: &str = "double_blake3_search";
+const KERNEL_NAME_LEGACY_DUMP: &str = "double_blake3_dump";
 const MODULE_NAME: &str = "b3chain_gpuminer";
+const SCRATCH_BYTES: usize = 1_048_576;
+/// One working pad is 1 MiB. 8192 slots is 8 GiB, which fits a 32 GiB
+/// RTX 5090 with memory left for other processes on that GPU.
+pub const MAX_SLOTS: usize = 8192;
 
 /// Mirrors the C `b3::ShareCandidate` struct in kernels/miner.cu.
 #[repr(C)]
@@ -38,9 +44,11 @@ pub struct ShareCandidate {
 // padding gaps that would expose uninit memory across the device-host
 // boundary (the [u8; 32] starts at offset 4, total size = 36, alignment = 4).
 unsafe impl DeviceRepr for ShareCandidate {}
+unsafe impl cudarc::driver::ValidAsZeroBits for ShareCandidate {}
 
 pub struct KernelLaunch<'a> {
     pub header_template_le: &'a [u8; 80],
+    pub prev_block_hash_le: &'a [u8; 32],
     pub share_target_le: &'a [u8; 32],
     pub nonce_start: u32,
     pub nonce_count: u32,
@@ -64,17 +72,22 @@ pub struct MinerKernel {
     // Persistent device buffers.
     header_dev: CudaSlice<u8>,         // 80 bytes
     target_dev: CudaSlice<u8>,         // 32 bytes
+    pad_dev: CudaSlice<u8>,            // 1 MiB pristine parent pad
+    work_dev: CudaSlice<u8>,           // SLOTS * 1 MiB working copies
     results_dev: CudaSlice<ShareCandidate>,
     counter_dev: CudaSlice<u32>,
     // Cached host copies for change detection.
     last_header: [u8; 80],
+    last_prev: [u8; 32],
     last_target: [u8; 32],
     last_header_valid: bool,
+    last_prev_valid: bool,
     last_target_valid: bool,
+    slots: u32,
 }
 
 impl MinerKernel {
-    pub fn new(device_ordinal: usize) -> Result<Self> {
+    pub fn new(device_ordinal: usize, slots: u32) -> Result<Self> {
         let dev = CudaDevice::new(device_ordinal)
             .with_context(|| format!("opening CUDA device #{device_ordinal}"))?;
 
@@ -95,7 +108,12 @@ impl MinerKernel {
         dev.load_ptx(
             ptx_owned,
             MODULE_NAME,
-            &[KERNEL_NAME_SEARCH, KERNEL_NAME_DUMP],
+            &[
+                KERNEL_NAME_SEARCH,
+                KERNEL_NAME_DUMP,
+                KERNEL_NAME_LEGACY_SEARCH,
+                KERNEL_NAME_LEGACY_DUMP,
+            ],
         )
         .context("loading miner.ptx into CUDA module")?;
 
@@ -103,6 +121,19 @@ impl MinerKernel {
             dev.alloc_zeros::<u8>(80).context("alloc header buffer")?;
         let target_dev: CudaSlice<u8> =
             dev.alloc_zeros::<u8>(32).context("alloc target buffer")?;
+        let pad_dev: CudaSlice<u8> = dev
+            .alloc_zeros::<u8>(SCRATCH_BYTES)
+            .context("alloc parent scratchpad")?;
+        let requested = slots;
+        let slots = slots.clamp(1, MAX_SLOTS as u32);
+        if slots != requested {
+            eprintln!(
+                "slots clamped from {requested} to {slots} (max {MAX_SLOTS})"
+            );
+        }
+        let work_dev: CudaSlice<u8> = dev
+            .alloc_zeros::<u8>(SCRATCH_BYTES * slots as usize)
+            .context("alloc working scratchpads")?;
         let results_dev: CudaSlice<ShareCandidate> = dev
             .alloc_zeros::<ShareCandidate>(MAX_RESULTS as usize)
             .context("alloc result buffer")?;
@@ -113,12 +144,17 @@ impl MinerKernel {
             dev,
             header_dev,
             target_dev,
+            pad_dev,
+            work_dev,
             results_dev,
             counter_dev,
             last_header: [0u8; 80],
+            last_prev: [0u8; 32],
             last_target: [0u8; 32],
             last_header_valid: false,
+            last_prev_valid: false,
             last_target_valid: false,
+            slots,
         })
     }
 
@@ -135,6 +171,14 @@ impl MinerKernel {
                 .context("copy header template")?;
             self.last_header = *plan.header_template_le;
             self.last_header_valid = true;
+        }
+        if !self.last_prev_valid || &self.last_prev != plan.prev_block_hash_le {
+            let pad = crate::b3pow::init_scratchpad(plan.prev_block_hash_le);
+            self.dev
+                .htod_sync_copy_into(&pad, &mut self.pad_dev)
+                .context("copy parent scratchpad")?;
+            self.last_prev = *plan.prev_block_hash_le;
+            self.last_prev_valid = true;
         }
         if !self.last_target_valid || &self.last_target != plan.share_target_le {
             self.dev
@@ -156,8 +200,9 @@ impl MinerKernel {
             .get_func(MODULE_NAME, KERNEL_NAME_SEARCH)
             .ok_or_else(|| anyhow!("kernel {KERNEL_NAME_SEARCH} not loaded"))?;
 
-        let block = plan.block_size.max(32).min(1024);
-        let grid = (plan.nonce_count + block - 1) / block;
+        let block = plan.block_size.clamp(1, self.slots);
+        let nslots = self.slots;
+        let grid = nslots.div_ceil(block);
         let cfg = LaunchConfig {
             grid_dim: (grid, 1, 1),
             block_dim: (block, 1, 1),
@@ -169,6 +214,9 @@ impl MinerKernel {
                 (
                     &self.header_dev,
                     &self.target_dev,
+                    &self.pad_dev,
+                    &mut self.work_dev,
+                    nslots,
                     plan.nonce_start,
                     plan.nonce_count,
                     MAX_RESULTS,
@@ -212,8 +260,8 @@ impl MinerKernel {
             self.dev.alloc_zeros::<u8>(32).context("alloc output")?;
         let func = self
             .dev
-            .get_func(MODULE_NAME, KERNEL_NAME_DUMP)
-            .ok_or_else(|| anyhow!("kernel {KERNEL_NAME_DUMP} not loaded"))?;
+            .get_func(MODULE_NAME, KERNEL_NAME_LEGACY_DUMP)
+            .ok_or_else(|| anyhow!("kernel {KERNEL_NAME_LEGACY_DUMP} not loaded"))?;
         let cfg = LaunchConfig {
             grid_dim: (1, 1, 1),
             block_dim: (1, 1, 1),
@@ -226,6 +274,42 @@ impl MinerKernel {
             .dev
             .dtoh_sync_copy(&output_dev)
             .context("read dump output")?;
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&out);
+        Ok(arr)
+    }
+
+    /// Hash one header against an already-built parent pad.
+    pub fn scratch_dump(&self, header: &[u8; 80], pad: &[u8]) -> Result<[u8; 32]> {
+        if pad.len() != SCRATCH_BYTES {
+            anyhow::bail!("scratch_dump: pad must be {SCRATCH_BYTES} bytes");
+        }
+        let header_dev = self.dev.htod_copy(header.to_vec()).context("htod header")?;
+        let pad_dev = self.dev.htod_copy(pad.to_vec()).context("htod pad")?;
+        let mut work_dev: CudaSlice<u8> = self
+            .dev
+            .alloc_zeros::<u8>(SCRATCH_BYTES)
+            .context("alloc work")?;
+        let mut output_dev: CudaSlice<u8> =
+            self.dev.alloc_zeros::<u8>(32).context("alloc output")?;
+        let func = self
+            .dev
+            .get_func(MODULE_NAME, KERNEL_NAME_DUMP)
+            .ok_or_else(|| anyhow!("kernel {KERNEL_NAME_DUMP} not loaded"))?;
+        let cfg = LaunchConfig {
+            grid_dim: (1, 1, 1),
+            block_dim: (1, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        unsafe {
+            func.launch(
+                cfg,
+                (&header_dev, &pad_dev, &mut work_dev, &mut output_dev),
+            )
+        }
+        .context("launch scratch dump")?;
+        self.dev.synchronize()?;
+        let out = self.dev.dtoh_sync_copy(&output_dev).context("read scratch")?;
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&out);
         Ok(arr)

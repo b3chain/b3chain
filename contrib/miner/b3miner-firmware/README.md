@@ -1,6 +1,7 @@
 # B3Miner-1 Firmware (ESP32-S3)
 
-Host firmware for the B3Miner-1 standalone card (XCKU5P + ESP32-S3 + Ethernet).
+Host firmware for XCKU5P + ESP32-S3 miners. The XCKU5P-2FFVB676
+profile uses Wi-Fi initially; its RTL8211E path is a separate FPGA feature.
 
 ## Architecture
 
@@ -18,7 +19,7 @@ Host firmware for the B3Miner-1 standalone card (XCKU5P + ESP32-S3 + Ethernet).
 │ b3_config           NVS pool URL, worker name, thresholds     │
 │ b3_events           FreeRTOS event group + queues             │
 └─────────────────────────────────────────────────────────────┘
-         │ SPI 25 MHz                    │ TCP :3333 / :3336
+         │ SPI 5 MHz                     │ TCP :3333 / :3336
          ▼                               ▼
     [XCKU5P FPGA]                   [B3Chain pool]
 ```
@@ -34,7 +35,7 @@ network — mainnet, testnet, testnet4, and regtest — runs B3PoW-Scratch
 from genesis, so the firmware no longer carries a legacy double-BLAKE3
 fallback (the old `CONFIG_B3_POW_LEGACY_DOUBLE_BLAKE3` Kconfig option
 was retired alongside that gate; the FPGA bitstream's `REG_ID` magic
-must read `0xB3110002` after configuration).
+must read `0xB3110003` after configuration).
 
 ## Build
 
@@ -42,7 +43,7 @@ must read `0xB3110002` after configuration).
 cd contrib/miner/b3miner-firmware
 idf.py set-target esp32s3
 idf.py build
-idf.py -p COMx flash monitor
+# Flashing requires a separate board/artifact authorization.
 ```
 
 Requires ESP-IDF v5.2+.
@@ -64,9 +65,9 @@ See `components/b3_fpga/include/b3_fpga_regs.h`.
 
 ## Fill-in checklist (skeleton → production)
 
-- [ ] `b3_work_build_header()` — coinbase + merkle (port from gpuminer `work/`)
-- [ ] `b3_stratum_v1_parse_notify()` — full notify decode + clean_jobs
+- [x] `b3_work_build_header()` — coinbase, merkle, targets, 80-byte header
+- [x] `b3_stratum_v1_parse_notify()` — full notify decode + clean_jobs
 - [ ] `b3_stratum_v2_*` — Noise XX handshake + SV2 template messages
-- [ ] `b3_fpga_load_bitstream()` — SelectMAP or SPI slave config from flash
+- [ ] Persistent FPGA loader — board-specific; XCKU5P-2FFVB676 is JTAG-only
 - [ ] `b3_web` — embed `web/dist/` SPA (build step in CMake)
 - [ ] Sign OTA images with project key; enable Secure Boot V2 in sdkconfig

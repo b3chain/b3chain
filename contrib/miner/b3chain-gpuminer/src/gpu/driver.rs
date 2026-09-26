@@ -173,7 +173,6 @@ impl Driver {
             };
 
             let job: CurrentJob = snap.current_job.clone().unwrap();
-            let share_target_le = target::to_le_bytes_32(&snap.share_target);
 
             if last_job_id.as_deref() != Some(job.job_id.as_str())
                 || last_clean_epoch != snap.clean_epoch
@@ -231,16 +230,23 @@ impl Driver {
                 let remaining: u64 = total_nonces - nonces_done;
                 let count: u32 = remaining.min(self.batch_nonces as u64) as u32;
 
-                let res = self
-                    .kernel
-                    .launch(KernelLaunch {
+                let search_target = if s.share_target >= job.network_target {
+                    s.share_target.clone()
+                } else {
+                    job.network_target.clone()
+                };
+                let search_target_le = target::to_le_bytes_32(&search_target);
+                let res = tokio::task::block_in_place(|| {
+                    self.kernel.launch(KernelLaunch {
                         header_template_le: &header_template,
-                        share_target_le: &share_target_le,
+                        prev_block_hash_le: &prev_le,
+                        share_target_le: &search_target_le,
                         nonce_start,
                         nonce_count: count,
                         block_size: self.block_size,
                     })
-                    .context("kernel launch")?;
+                })
+                .context("kernel launch")?;
 
                 attempts_since_progress += count as u64;
                 attempts_for_job += count as u64;
@@ -249,6 +255,19 @@ impl Driver {
                     self.share_seq += 1;
                     let mut full_header = header_template;
                     full_header[76..80].copy_from_slice(&cand.nonce.to_le_bytes());
+                    let recomputed = crate::b3pow::b3pow_scratch(&full_header, &prev_le);
+                    if recomputed != cand.hash_le {
+                        self.logger.emit(
+                            "share_dropped",
+                            &json!({
+                                "reason": "host_recheck_mismatch",
+                                "nonce": cand.nonce,
+                                "gpu": hex::encode(cand.hash_le),
+                                "host": hex::encode(recomputed),
+                            }),
+                        );
+                        continue;
+                    }
                     let pow_le = cand.hash_le;
                     let mut pow_be = pow_le;
                     pow_be.reverse();

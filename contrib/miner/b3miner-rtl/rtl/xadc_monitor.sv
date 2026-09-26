@@ -36,6 +36,7 @@ module xadc_monitor
     // continuous mode; the DRP interface is left disconnected.
     // -----------------------------------------------------------------------
     logic [15:0] sysmon_temp;
+    logic drp_den, drp_ready, end_of_conversion;
 
     SYSMONE4 #(
         .INIT_40 (16'h3000),    // Configuration register 0 (continuous)
@@ -45,17 +46,17 @@ module xadc_monitor
     ) u_sysmon (
         // DRP -- unused
         .DCLK    (clk),
-        .DEN     (1'b0),
+        .DEN     (drp_den),
         .DI      (16'h0),
         .DADDR   (7'h0),
         .DWE     (1'b0),
         .DO      (sysmon_temp),
-        .DRDY    (),
+        .DRDY    (drp_ready),
         // Reset
         .RESET   (~rst_n),
         // Channel addr / busy out -- unused
         .CHANNEL (),
-        .EOC     (),
+        .EOC     (end_of_conversion),
         .EOS     (),
         .BUSY    (),
         // Analog inputs -- internal-only mode, all tied off
@@ -78,8 +79,13 @@ module xadc_monitor
     );
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) temp_raw <= 32'h0;
-        else        temp_raw <= {16'h0, sysmon_temp};
+        if (!rst_n) begin
+            drp_den <= 1'b0;
+            temp_raw <= 32'h0;
+        end else begin
+            drp_den <= end_of_conversion;
+            if (drp_ready) temp_raw <= {16'h0, sysmon_temp};
+        end
     end
 
 `else

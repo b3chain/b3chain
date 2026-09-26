@@ -127,6 +127,7 @@ Future work:
 
 - Add a "result over time" chart to the website.
 - Add an actual physical-power meter to the benchmark machine.
+- The reduced-memory rows from `bench-b3pow-cpu.py` are recorded artifacts. They are not a 5% wall-clock CI failure. Mix-step floors are enforced by `ref/tests/test_reduced_memory.py`.
 
 ### Expected security gain
 
@@ -462,6 +463,39 @@ case.
 - Watcher false-positives during legitimate operator action (every
   `finalizeblock` fires `finalized_drift_source_flip` at `info`
   severity); intentional, since SRE wants to know.
+
+---
+
+## 11. Measured memory-hardness (V-10)
+
+| Field | Value |
+|-------|-------|
+| **Status**       | `done` (in-repo measurement) |
+| **Priority**     | High |
+| **Effort**       | Landed with the checkpoint-replay simulator and pytest floors |
+| **Dependencies** | SPEC §8.C floors; external audit remains §4 `proposed` |
+| **Owner**        | (unassigned) |
+| **In-tree** | [`contrib/miner/b3miner-rtl/ref/b3pow_reduced.py`](../contrib/miner/b3miner-rtl/ref/b3pow_reduced.py), [`ref/tests/test_reduced_memory.py`](../contrib/miner/b3miner-rtl/ref/tests/test_reduced_memory.py), [`contrib/testing/bench/MEASUREMENT.md`](../contrib/testing/bench/MEASUREMENT.md), [`bench-b3pow-cpu.py`](../contrib/testing/bench/bench-b3pow-cpu.py) reduced rows |
+
+### Scope
+
+In-repo measurement of the reduced-memory recompute that V-10 used to
+leave open. This does not commission the §4 audit firm.
+
+- Simulator: checkpoint replay with a resident cap. Not consensus, not a miner.
+- Negative check: `BLAKE3-XOF(prev || i)` after a write differs from the honest block.
+- Floors: 2× at 512 KiB, 4× at 256 KiB, 8× at 128 KiB. A hash-equivalent run under a floor fails CI until SPEC §8.C is lowered to that measurement.
+- Ledger: measured, modeled, and unmeasured rates, including the superseded ~8 MH/s whitepaper estimate and the superseded 20.4 kH/s FPGA row.
+
+### Expected security gain
+
+The 2× / 4× / 8× sentences are now a test, and the reference-header
+charges are written down. A later shortcut has a number it must beat.
+
+### Risks
+
+- The published charges are one strategy and one header. A cheaper strategy is still possible. §4 remains the review for that.
+- Replay charging does not add nested misses, so the recorded ratio is a lower bound for this strategy only.
 
 ---
 
