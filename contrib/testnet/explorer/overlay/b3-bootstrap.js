@@ -11,6 +11,13 @@
 
 module.exports = function bootstrap(expressApp, config) {
 	try {
+		// Render quotes in the parent page; DENY frame protection stays enabled.
+		const quoteItems = require("./app/coins/btcQuotes.js").items;
+		const footerQuotes = quoteItems.map((quote, index) => ({ quote, index }))
+			.filter(item => !Object.prototype.hasOwnProperty.call(item.quote, "duplicateIndex"));
+		expressApp.locals.b3FooterQuote = function () {
+			return footerQuotes.length ? footerQuotes[Math.floor(Math.random() * footerQuotes.length)] : null;
+		};
 		const utils = require("./app/utils.js");
 		const scriptLabels = require("./app/services/b3-script-labels.js");
 		utils.coinbaseScriptSummary = scriptLabels.coinbaseScriptSummary;

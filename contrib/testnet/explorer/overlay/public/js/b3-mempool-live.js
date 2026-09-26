@@ -185,6 +185,17 @@
 		updateEmptyState();
 	}
 
+	function applyChartTheme() {
+		if (!state.chart) return;
+		const palette = getComputedStyle(document.documentElement);
+		["x", "y"].forEach(function (axis) {
+			state.chart.options.scales[axis].ticks.color = palette.getPropertyValue("--b3-muted").trim();
+			state.chart.options.scales[axis].grid = { color: palette.getPropertyValue("--b3-border").trim() };
+		});
+		state.chart.data.datasets[0].backgroundColor = palette.getPropertyValue("--b3-accent").trim();
+		state.chart.update("none");
+	}
+
 	function renderFeeChart(feeHistogram) {
 		const canvas = document.getElementById("feeLevelChart");
 		if (!canvas || typeof Chart === "undefined") return;
@@ -220,6 +231,7 @@
 				},
 			},
 		});
+		applyChartTheme();
 	}
 
 	function applyInfo(payload) {
@@ -370,6 +382,9 @@
 	}
 
 	root.B3LiveMempool = { init: init };
+	new MutationObserver(applyChartTheme).observe(document.documentElement, {
+		attributes: true, attributeFilter: ["data-b3-theme"],
+	});
 
 	// In case the script loads after DOMContentLoaded the inline
 	// initialiser in live.pug guards itself by reading B3LiveMempool;

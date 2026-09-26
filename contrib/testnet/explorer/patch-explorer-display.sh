@@ -295,6 +295,11 @@ if [ -f "$LABELS_PATCH" ]; then
     EXP_DIR="$EXP_DIR" python3 "$LABELS_PATCH"
 fi
 
+THEME_PATCH="$(cd "$(dirname "$0")" && pwd)/patch-theme-switch.py"
+if [ -f "$THEME_PATCH" ]; then
+    EXP_DIR="$EXP_DIR" python3 "$THEME_PATCH"
+fi
+
 systemctl restart b3chain-explorer.service
 sleep 5
 if ! systemctl is-active --quiet b3chain-explorer.service; then

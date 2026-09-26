@@ -167,7 +167,7 @@
 					{
 						data: values,
 						backgroundColor: colors,
-						borderColor: "#fff",
+						borderColor: getComputedStyle(document.documentElement).getPropertyValue("--b3-card").trim(),
 						borderWidth: 2,
 					},
 				],
@@ -240,7 +240,7 @@
 						stacked: true,
 						grid: { color: COLORS.grid },
 						ticks: { color: COLORS.text },
-						title: { display: true, text: "Blocks per day" },
+						title: { display: true, text: "Blocks per day", color: COLORS.text },
 					},
 				},
 			},
@@ -249,6 +249,14 @@
 
 	function render() {
 		if (!state.canvas) return;
+		var palette = getComputedStyle(document.documentElement);
+		COLORS.blue = palette.getPropertyValue("--b3-accent").trim();
+		COLORS.blueSoft = palette.getPropertyValue("--b3-accent-soft").trim();
+		COLORS.text = palette.getPropertyValue("--b3-muted").trim();
+		COLORS.grid = palette.getPropertyValue("--b3-border").trim();
+		POOL_PALETTE = document.documentElement.getAttribute("data-b3-theme") === "light"
+			? ["#2457b2", "#157a45", "#8a6200", "#b4232c", "#7c3aed", "#087c91", "#b91c73", "#52751b", "#b54708", "#475569"]
+			: ["#8eb4ff", "#3dce7a", "#e2b340", "#f07178", "#b49bff", "#51c9d8", "#ef91c0", "#b2ce69", "#f5ac73", "#b7c3d4"];
 		var cfg;
 		if (state.chartType === "doughnut" && state.fullPools) {
 			cfg = buildDoughnutConfig(state.fullPools);
@@ -334,4 +342,8 @@
 		setRange: setRange,
 		setScale: setScale,
 	};
+	new MutationObserver(function () {
+		// Reuse loaded data and the current range/scale; do not fetch on theme changes.
+		if (state.chart) render();
+	}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-b3-theme"] });
 })(window);
