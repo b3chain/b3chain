@@ -2,7 +2,7 @@
 
 <section class="hero">
   <h1>B3Chain Mining Pool</h1>
-  <p class="subtitle">Stratum V1 mining pool for B3Chain. PPLNS payouts, <%= feePercent %>% fee, hourly automatic payouts.</p>
+  <p class="subtitle">Stratum V1 mining pool for B3Chain <%= network %>. PPLNS over <%= pplnsNShares %> shares, <%= feePercent %>% fee. <% if (payoutHourly) { %>The payout job runs hourly<% } else { %>The payout job runs on its configured interval<% } %> after <%= confirmationsRequired %> confirmations, to a verified account with a valid <%= network %> address and a balance of at least the minimum. New accounts start at 1 B3C.</p>
   <div class="copy-row">
     <code id="pool-url"><%= poolUrl %></code>
     <button class="btn-secondary" type="button" id="copy-pool-url">Copy</button>
@@ -15,24 +15,25 @@
 
 <section>
   <h2>Pool stats</h2>
-  <p id="live-status" class="muted" hidden></p>
+  <p id="live-status" class="muted" role="status" hidden></p>
+  <p id="share-note" class="muted" role="status" hidden></p>
   <div class="grid-3">
     <div class="tile"><div class="tile-label">Share hashrate (5 min)</div><div class="tile-value" id="pool-hashrate">…</div></div>
     <div class="tile"><div class="tile-label">Connected miners</div><div class="tile-value" id="pool-miners">…</div></div>
-    <div class="tile"><div class="tile-label">Chain tip</div><div class="tile-value" id="pool-height">…</div></div>
+    <div class="tile"><div class="tile-label">Work height</div><div class="tile-value" id="pool-height">…</div></div>
     <div class="tile"><div class="tile-label">Pool blocks found</div><div class="tile-value" id="pool-blocks"><%= blocksFound %></div></div>
   </div>
   <div class="range-row">
-    <button type="button" class="btn-secondary" data-range="1h">1h</button>
+    <button type="button" class="btn-secondary" data-range="1h" aria-pressed="true">1h</button>
     <button type="button" class="btn-secondary" data-range="24h">24h</button>
     <button type="button" class="btn-secondary" data-range="7d">7d</button>
     <button type="button" class="btn-secondary" data-range="30d">30d</button>
   </div>
-  <canvas id="pool-chart" height="120"></canvas>
+  <canvas id="pool-chart" height="120" aria-label="Share hashrate over time"></canvas>
 </section>
 
 <section>
-  <h2>Last 10 blocks</h2>
+  <h2>Last 10 pool blocks</h2>
   <p id="no-blocks" <%= blocks.length === 0 ? '' : 'hidden' %>>No blocks yet. Be the first finder.</p>
   <div class="table-scroll" id="blocks-table-wrap" <%= blocks.length === 0 ? 'hidden' : '' %>>
   <table id="blocks-table">
@@ -42,14 +43,14 @@
       <tr>
         <td><%= b.height %></td>
         <td class="mono"><a href="/blocks/<%= b.hash %>"><%= String(b.hash).slice(0, 16) %>…</a></td>
-        <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
-        <td>
+        <td class="num"><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+        <td class="num">
           <% if (b.is_orphan) { %>
             <span class="tag tag-fail">orphan</span>
           <% } else if (b.is_confirmed) { %>
             <span class="tag tag-pass">confirmed</span>
           <% } else { %>
-            <%= b.confirmations %>/100
+            <%= b.confirmations %>/<%= confirmationsRequired %>
           <% } %>
         </td>
         <td class="muted"><time data-ts="<%= b.found_at %>"><%= b.found_at %></time></td>
@@ -63,6 +64,6 @@
 <script src="/vendor/socket.io.min.js?v=20260926"></script>
 <script src="/vendor/chart.umd.js?v=20260926"></script>
 <script id="pool-buckets" type="application/json"><%- JSON.stringify(buckets || []).replace(/</g, "\\u003c") %></script>
-<script src="/js/home.js?v=20260926b"></script>
+<script src="/js/home.js?v=20260926c"></script>
 
 <%- include('partials/footer') %>

@@ -16,7 +16,7 @@
   </div>
   <p>Hash <span class="mono"><%= block.hash %></span></p>
   <p>Found <time data-ts="<%= block.found_at %>"><%= block.found_at %></time></p>
-  <p>Finder <%= block.email ? block.email : "unknown" %><% if (block.worker_name) { %> · <span class="mono"><%= block.worker_name %></span><% } %></p>
+  <p>Finder <% if (block.worker_name) { %><span class="mono"><%= block.worker_name %></span><% } else { %>unknown<% } %></p>
   <p><a href="<%= explorerUrl %>" target="_blank" rel="noopener">View on the explorer</a></p>
 </section>
 

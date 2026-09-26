@@ -74,6 +74,20 @@ export function networkDifficultyFromBits(bits: number): number {
     return Number((POOL_DIFF1_TARGET * scale) / target) / Number(scale);
 }
 
+/** Share difficulty actually given to a miner: never harder than the job network target. */
+export function assignedShareDifficulty(configured: number, network: number | null): number {
+    if (network == null || !Number.isFinite(network) || network <= 0) return configured;
+    if (!Number.isFinite(configured) || configured <= 0) return network;
+    return Math.min(configured, network);
+}
+
+export function formatDifficulty(d: number): string {
+    if (!Number.isFinite(d)) return "unavailable";
+    if (d >= 100) return String(Math.round(d));
+    const text = d.toPrecision(6);
+    return text.replace(/\.?0+$/, "");
+}
+
 // Hashrate (H/s) estimated from total weighted-share difficulty over a window.
 export function hashrateFromShares(totalDiff: number, windowSeconds: number): number {
     if (windowSeconds <= 0) return 0;

@@ -97,13 +97,24 @@ test("getting started names B3PoW-Scratch and omits blake3d", async () => {
         network: "testnet",
         defaultDifficulty: 1024,
         vardiffTargetSeconds: 600,
-        vardiffEnabled: true,
+        vardiffEnabled: false,
+        networkDifficultyText: "0.00224692",
+        assignedDifficultyText: "0.00224692",
         user: null,
         path: "/getting-started",
         csrfToken: "t",
         feePercent: 1,
+        confirmationsRequired: 100,
+        pplnsNShares: 4032,
+        payoutHourly: true,
+        formatDifficulty: (n: number) => String(n),
     });
     assert.match(html, /B3PoW-Scratch/);
     assert.equal(html.toLowerCase().includes("blake3d"), false);
-    assert.match(html, /600/);
+    assert.match(html, /id="network-difficulty">0\.00224692/);
+    assert.match(html, /id="assigned-difficulty">0\.00224692/);
+    assert.match(html, /Shares are recorded when that email matches a registered account/);
+    assert.match(html, /Payouts require a verified email/);
+    assert.equal(html.includes("stay at the starting difficulty"), false);
+    assert.equal(html.includes("Connections stay at"), false);
 });

@@ -6,6 +6,7 @@ import { JobManager } from "./job-manager";
 import { StratumServer } from "./server";
 import { IpcClient } from "../lib/ipc";
 import { addressToScriptPubKey } from "../lib/address";
+import { assignedShareDifficulty, networkDifficultyFromBits } from "../lib/difficulty-math";
 import * as http from "http";
 
 const log = makeLogger("stratum-main");
@@ -39,10 +40,17 @@ async function main(): Promise<void> {
     // web service (no auth, bind localhost only).
     const stats = http.createServer((req, res) => {
         if (req.url === "/stats") {
+            const job = jobs.getCurrent();
+            const networkDifficulty = job ? networkDifficultyFromBits(job.bits) : null;
+            const assignedDifficulty = job
+                ? assignedShareDifficulty(config.stratum.defaultDifficulty, networkDifficulty)
+                : null;
             const body = JSON.stringify({
                 miners: server.clientCount(),
                 hashrate: server.estimatedHashrate(),
-                lastJobHeight: jobs.getCurrent()?.height ?? null,
+                lastJobHeight: job?.height ?? null,
+                networkDifficulty,
+                assignedDifficulty,
                 connections: server.connectionStats(),
             });
             res.writeHead(200, { "content-type": "application/json" });

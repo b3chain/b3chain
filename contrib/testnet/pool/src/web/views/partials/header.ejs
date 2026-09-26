@@ -4,12 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><%= title %> · B3Chain Pool</title>
-<link rel="stylesheet" href="/css/style.css?v=20260926">
+<link rel="stylesheet" href="/css/style.css?v=20260926c">
 </head>
-<body>
+<body data-confirmations="<%= typeof confirmationsRequired !== 'undefined' ? confirmationsRequired : 100 %>">
+<a class="skip-link" href="#main">Skip to content</a>
 <header class="site-nav">
   <div class="wrap-wide nav-row">
-    <a class="brand" href="/">B3Chain Pool</a>
+    <div class="brand-row">
+      <a class="brand" href="/">B3Chain Pool</a>
+      <span class="tag tag-pending"><%= network %></span>
+    </div>
     <nav>
       <a href="/" class="<%= path === '/' ? 'active' : '' %>">Home</a>
       <a href="/blocks" class="<%= path === '/blocks' ? 'active' : '' %>">Blocks</a>
@@ -30,7 +34,7 @@
     </nav>
   </div>
 </header>
-<main class="wrap">
+<main id="main" class="wrap">
   <% if (typeof flashSuccess !== 'undefined' && flashSuccess) { %>
     <div class="flash flash-success"><%= flashSuccess %></div>
   <% } %>

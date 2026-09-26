@@ -2,7 +2,7 @@
 <%- include('partials/dashnav') %>
 
 <section>
-  <p id="live-status" class="muted" hidden></p>
+  <p id="live-status" class="muted" role="status" hidden></p>
   <div class="grid-3">
     <div class="tile">
       <div class="tile-label">Hashrate (5-min avg)</div>
@@ -19,12 +19,12 @@
   </div>
   <h2>Hashrate</h2>
   <div class="range-row">
-    <button type="button" class="btn-secondary" data-range="1h">1h</button>
+    <button type="button" class="btn-secondary" data-range="1h" aria-pressed="true">1h</button>
     <button type="button" class="btn-secondary" data-range="24h">24h</button>
     <button type="button" class="btn-secondary" data-range="7d">7d</button>
     <button type="button" class="btn-secondary" data-range="30d">30d</button>
   </div>
-  <canvas id="user-chart" height="120"></canvas>
+  <canvas id="user-chart" height="120" aria-label="Share hashrate over time"></canvas>
 </section>
 
 <section>
@@ -39,7 +39,7 @@
       <% recentShares.forEach(s => { %>
         <tr>
           <td><%= s.worker_name %></td>
-          <td><%= Number(s.diff).toFixed(2) %></td>
+          <td class="num"><%= formatDifficulty(Number(s.diff)) %></td>
           <td><%= s.is_block ? 'YES (block ' + s.block_hash.slice(0, 12) + '…)' : '' %></td>
           <td class="muted"><time data-ts="<%= s.submitted_at %>"><%= s.submitted_at %></time></td>
         </tr>
@@ -61,11 +61,11 @@
       <tr>
         <td><%= b.height %></td>
         <td class="mono"><%= b.hash.slice(0, 16) %>…</td>
-        <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
-        <td>
+        <td class="num"><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+        <td class="num">
           <% if (b.is_orphan) { %><span class="tag tag-fail">orphan</span>
           <% } else if (b.is_confirmed) { %><span class="tag tag-pass">confirmed</span>
-          <% } else { %><%= b.confirmations %>/100<% } %>
+          <% } else { %><%= b.confirmations %>/<%= confirmationsRequired %><% } %>
         </td>
         <td class="muted"><time data-ts="<%= b.found_at %>"><%= b.found_at %></time></td>
       </tr>
@@ -80,6 +80,6 @@
 <script src="/vendor/chart.umd.js?v=20260926"></script>
 <script id="user-buckets" type="application/json"><%- JSON.stringify(buckets || []).replace(/</g, "\\u003c") %></script>
 <script id="user-initial" type="application/json"><%- JSON.stringify(stats || {}).replace(/</g, "\\u003c") %></script>
-<script src="/js/dashboard.js?v=20260926b"></script>
+<script src="/js/dashboard.js?v=20260926c"></script>
 
 <%- include('../partials/footer') %>

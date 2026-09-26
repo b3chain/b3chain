@@ -2,7 +2,7 @@
 
 <section>
   <h1>Getting started</h1>
-  <p class="subtitle">Point a B3PoW-Scratch miner at <code><%= poolUrl %></code>. Username format is <code>&lt;email&gt;.&lt;workerName&gt;</code>. The password is ignored. Shares are credited when that email matches a registered, verified account.</p>
+  <p class="subtitle">This pool is on <strong><%= network %></strong>. Point a B3PoW-Scratch miner at <code><%= poolUrl %></code>. Username format is <code>&lt;email&gt;.&lt;workerName&gt;</code>. The password is ignored. Shares are recorded when that email matches a registered account. Payouts require a verified email.</p>
 </section>
 
 <section>
@@ -15,11 +15,18 @@
 
 <section>
   <h2>Difficulty</h2>
-  <p>Starting difficulty is <strong><%= defaultDifficulty %></strong>.
-  <% if (vardiffEnabled) { %>
-    Variable difficulty is on. The pool retunes each connection toward one share about every <strong><%= vardiffTargetSeconds %></strong> seconds.
+  <p>Configured starting difficulty is <strong><%= defaultDifficulty %></strong>.
+  <% if (networkDifficultyText) { %>
+    The live network difficulty is <strong id="network-difficulty"><%= networkDifficultyText %></strong>.
+    Miners are assigned <strong id="assigned-difficulty"><%= assignedDifficultyText %></strong> on the current job, the easier of the configured start and the network target.
   <% } else { %>
-    Variable difficulty is off. Connections stay at the starting difficulty.
+    The live network difficulty is unavailable right now.
+    Miners are assigned the easier of the configured start and the current job's network difficulty.
+  <% } %>
+  <% if (vardiffEnabled) { %>
+    Variable difficulty is on. The pool retunes each connection toward one share about every <strong><%= vardiffTargetSeconds %></strong> seconds, and still will not assign a target harder than the network.
+  <% } else { %>
+    Variable difficulty is off. The assignment above is what a new connection receives for the current job.
   <% } %>
   </p>
   <p>The pool checks each share with B3PoW-Scratch, the same proof the node uses for a block. A share that also meets the network target is submitted as a block.</p>

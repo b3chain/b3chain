@@ -57,9 +57,15 @@
     },
   });
 
+  function selectRange(range) {
+    document.querySelectorAll(".range-row button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-range") === range ? "true" : "false");
+    });
+  }
   document.querySelectorAll(".range-row button").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var range = btn.getAttribute("data-range");
+      selectRange(range);
       fetch("/api/pool/buckets?range=" + encodeURIComponent(range))
         .then(function (r) { return r.json(); })
         .then(function (rows) {
@@ -87,6 +93,22 @@
   s.on("disconnect", showDisconnected);
   s.on("connect_error", showDisconnected);
   s.on("hashrate:update", function (msg) {
+    var note = document.getElementById("share-note");
+    if (note) {
+      var miners = Number(msg.miners) || 0;
+      var rate = Number(msg.hashrate) || 0;
+      if (miners > 0 && rate <= 0) {
+        var text = "No shares in the last 5 minutes.";
+        if (msg.assignedDifficultyText && msg.networkDifficultyText) {
+          text += " Assigned difficulty " + msg.assignedDifficultyText + ". Network difficulty " + msg.networkDifficultyText + ".";
+        }
+        note.hidden = false;
+        note.textContent = text;
+      } else {
+        note.hidden = true;
+        note.textContent = "";
+      }
+    }
     var hashEl = document.getElementById("pool-hashrate");
     var minersEl = document.getElementById("pool-miners");
     var heightEl = document.getElementById("pool-height");
@@ -127,8 +149,9 @@
     link.textContent = hash.slice(0, 16) + "…";
     hashCell.appendChild(link);
     tr.appendChild(hashCell);
-    tr.appendChild(cell(msg.reward != null ? Number(msg.reward).toFixed(4) + " B3C" : ""));
-    tr.appendChild(cell("0/100"));
+    tr.appendChild(cell(msg.reward != null ? Number(msg.reward).toFixed(4) + " B3C" : "", "num"));
+    var need = document.body.getAttribute("data-confirmations") || "100";
+    tr.appendChild(cell("0/" + need, "num"));
     var whenCell = document.createElement("td");
     whenCell.className = "muted";
     var time = document.createElement("time");

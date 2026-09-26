@@ -10,6 +10,7 @@ import { adminRoutes } from "./routes/admin";
 import { metricsRoutes } from "./routes/metrics";
 import { apiLimiter } from "./middleware/ratelimit";
 import { config } from "../config";
+import { formatDifficulty } from "../lib/difficulty-math";
 
 export function buildApp(): Application {
     const app = express();
@@ -36,6 +37,10 @@ export function buildApp(): Application {
     app.use((req, res, next) => {
         res.locals.network = config.network;
         res.locals.feePercent = config.pool.feePercent;
+        res.locals.confirmationsRequired = config.pool.blockConfirmations;
+        res.locals.pplnsNShares = config.pool.pplnsNShares;
+        res.locals.payoutHourly = config.pool.payoutIntervalMs === 3_600_000;
+        res.locals.formatDifficulty = formatDifficulty;
         res.locals.path = req.path;
         next();
     });

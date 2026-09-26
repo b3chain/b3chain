@@ -6,6 +6,8 @@ import {
     shareDifficultyFromTarget,
     POOL_DIFF1_TARGET,
     networkDifficultyFromBits,
+    assignedShareDifficulty,
+    formatDifficulty,
     bigIntFromBytesLE,
 } from "../src/lib/difficulty-math";
 
@@ -34,6 +36,13 @@ test("network difficulty grows as nBits target shrinks", () => {
     const easy = networkDifficultyFromBits(0x1d00ffff);
     const hard = networkDifficultyFromBits(0x1c00ffff);
     assert.ok(hard > easy);
+});
+
+test("assigned share difficulty is the easier of the configured start and the network", () => {
+    assert.equal(assignedShareDifficulty(1024, 0.00225), 0.00225);
+    assert.equal(assignedShareDifficulty(0.000009, 0.00225), 0.000009);
+    assert.equal(assignedShareDifficulty(1024, null), 1024);
+    assert.equal(formatDifficulty(0.00224692), "0.00224692");
 });
 
 test("sub-micro difficulty is rejected instead of becoming all-accepting", () => {

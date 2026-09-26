@@ -51,9 +51,15 @@
     },
   });
 
+  function selectRange(range) {
+    document.querySelectorAll(".range-row button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-range") === range ? "true" : "false");
+    });
+  }
   document.querySelectorAll(".range-row button").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var range = btn.getAttribute("data-range");
+      selectRange(range);
       fetch("/api/me/buckets?range=" + encodeURIComponent(range))
         .then(function (r) { return r.json(); })
         .then(function (rows) {

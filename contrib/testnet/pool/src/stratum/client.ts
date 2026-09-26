@@ -6,7 +6,7 @@ import { Vardiff, VardiffParams } from "./difficulty";
 import { Logger } from "../lib/logger";
 import { config } from "../config";
 import { StratumJob } from "./job-manager";
-import { networkDifficultyFromBits, MIN_SHARE_DIFFICULTY } from "../lib/difficulty-math";
+import { assignedShareDifficulty, networkDifficultyFromBits, MIN_SHARE_DIFFICULTY } from "../lib/difficulty-math";
 
 export interface RpcCall {
     id: number | string | null;
@@ -38,6 +38,8 @@ export class StratumClient extends EventEmitter {
     public lastJob: StratumJob | null = null;
     /** Share difficulty stamped when that job id was last sent. */
     public readonly jobShareDiff = new Map<string, number>();
+    /** Last mining.set_difficulty value written to this socket. */
+    public lastNotifiedDiff: number | null = null;
     public ip: string;
     public seenShares = new Set<string>();
     private buf = "";
@@ -107,7 +109,15 @@ export class StratumClient extends EventEmitter {
     }
 
     pushDifficulty(d: number): void {
+        this.lastNotifiedDiff = d;
         this.sendNotify("mining.set_difficulty", [d]);
+        this.log.info({ connId: this.connId, difficulty: d }, "set_difficulty");
+    }
+
+    /** Difficulty to put on the wire: never harder than the current job's network target. */
+    wireShareDifficulty(configured: number): number {
+        const network = this.lastJob ? networkDifficultyFromBits(this.lastJob.bits) : null;
+        return assignedShareDifficulty(configured, network);
     }
 
     /** Cap the connection difficulty so it is never harder than this job's network target. */
@@ -126,7 +136,8 @@ export class StratumClient extends EventEmitter {
 
     pushJob(job: StratumJob): void {
         this.lastJob = job;
-        this.stampJob(job);
+        const assigned = this.stampJob(job);
+        if (this.lastNotifiedDiff !== assigned) this.pushDifficulty(assigned);
         this.sendNotify("mining.notify", [
             job.jobId,
             job.prevHashHexBE,

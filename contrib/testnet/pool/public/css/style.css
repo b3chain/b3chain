@@ -53,12 +53,20 @@ body {
 .nav-row {
   display: flex; justify-content: space-between; align-items: center;
 }
+.brand-row { display: flex; align-items: center; gap: 10px; }
 .brand {
   font-weight: 700; font-size: 18px; color: var(--accent);
   text-decoration: none; letter-spacing: -0.01em;
 }
+.skip-link {
+  position: absolute; left: 8px; top: -48px;
+  background: var(--bg); color: var(--text);
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px;
+  z-index: 10;
+}
+.skip-link:focus { top: 8px; }
 .site-nav nav { display: flex; gap: 14px; align-items: center; font-size: 14px; }
-.site-nav nav a { color: var(--accent); text-decoration: none; padding: 6px 4px; }
+.site-nav nav a { color: var(--accent); text-decoration: none; padding: 6px 4px; min-height: 44px; display: inline-flex; align-items: center; }
 .site-nav nav a:hover { text-decoration: underline; }
 .site-nav nav a.active { font-weight: 600; }
 
@@ -125,10 +133,12 @@ th {
 td {
   padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top;
 }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ----- Buttons ----- */
 .btn-primary, .btn-secondary {
-  display: inline-block;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px;
   padding: 9px 16px; border-radius: 6px;
   font: inherit; font-weight: 600; font-size: 14px;
   text-decoration: none; border: 1px solid transparent;
@@ -167,6 +177,9 @@ form.stacked button { margin-top: 18px; }
 .copy-row code { font-size: 14px; padding: 8px 12px; }
 .cta-row { display: flex; gap: 10px; margin-top: 18px; }
 .range-row { display: flex; gap: 8px; margin: 12px 0; }
+.range-row button[aria-pressed="true"] {
+  background: var(--primary); color: var(--primary-text); border-color: var(--primary);
+}
 
 /* ----- Tiles ----- */
 .grid-3 {

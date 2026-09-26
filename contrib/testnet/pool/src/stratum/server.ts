@@ -68,7 +68,7 @@ export class StratumServer {
             out.push({
                 user,
                 worker,
-                difficulty: c.vardiff.diff,
+                difficulty: c.lastNotifiedDiff ?? c.vardiff.diff,
                 accepted: c.sharesAccepted,
                 rejected: c.sharesRejected,
                 lastShareAt: c.lastShareAt > 0 ? c.lastShareAt : null,
@@ -111,7 +111,7 @@ export class StratumServer {
                 if (!config.stratum.vardiffEnabled) continue;
                 const next = c.vardiff.maybeRetune(now);
                 if (next !== null) {
-                    c.pushDifficulty(next);
+                    c.pushDifficulty(c.wireShareDifficulty(next));
                     // New difficulty applies to the next notify, not shares
                     // already stamped on the current job id.
                 }
@@ -161,7 +161,7 @@ export class StratumServer {
                     const want = Number((msg.params as unknown[])[0] ?? 0);
                     try {
                         const applied = c.vardiff.setDiff(want);
-                        c.pushDifficulty(applied);
+                        c.pushDifficulty(c.wireShareDifficulty(applied));
                         c.sendResult(msg.id ?? null, true);
                     } catch (e) {
                         c.sendError(msg.id ?? null, 23, (e as Error).message);
@@ -169,7 +169,7 @@ export class StratumServer {
                     break;
                 }
                 case "mining.suggest_target":
-                    c.sendResult(msg.id ?? null, true);
+                    c.sendError(msg.id ?? null, 23, "use mining.suggest_difficulty");
                     break;
                 default:
                     c.sendError(msg.id ?? null, -3, `unknown method ${msg.method}`);
@@ -211,8 +211,6 @@ export class StratumServer {
         }
         c.sendResult(msg.id ?? null, true);
 
-        // Push initial difficulty + current job.
-        c.pushDifficulty(c.vardiff.diff);
         const job = this.jobs.getCurrent();
         if (job) c.pushJob(job);
         this.log.info({ connId: c.connId, user: username }, "authorized");

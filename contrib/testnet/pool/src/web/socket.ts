@@ -16,12 +16,15 @@ import { query } from "../lib/db";
 import { consumeNew } from "../lib/event-cursor";
 import { userIdForSession } from "./session-store";
 import { shareHashrateHps, SHARE_HASHRATE_WINDOW_SECONDS } from "../lib/pool-stats";
+import { formatDifficulty } from "../lib/difficulty-math";
 import { Logger, makeLogger } from "../lib/logger";
 import * as http from "http";
 
 interface StratumStats {
     miners: number;
     lastJobHeight: number | null;
+    networkDifficulty?: number | null;
+    assignedDifficulty?: number | null;
     connections?: LiveConnection[];
 }
 
@@ -164,11 +167,17 @@ export class SocketIoBus {
             query<{ n: string }>("SELECT COUNT(*)::text AS n FROM blocks"),
         ]);
         const totalDiff = parseFloat(diffRows[0]?.d ?? "0");
+        const network = stats.networkDifficulty;
+        const assigned = stats.assignedDifficulty;
         this.io.emit("hashrate:update", {
             hashrate: shareHashrateHps(totalDiff, SHARE_HASHRATE_WINDOW_SECONDS),
             miners: stats.miners,
             height: stats.lastJobHeight,
             blocksFound: parseInt(blockRows[0]?.n ?? "0", 10) || 0,
+            networkDifficulty: network ?? null,
+            assignedDifficulty: assigned ?? null,
+            networkDifficultyText: network == null ? null : formatDifficulty(network),
+            assignedDifficultyText: assigned == null ? null : formatDifficulty(assigned),
             t: Date.now(),
         });
     }

@@ -3,6 +3,8 @@ import { query } from "../../lib/db";
 import { config } from "../../config";
 import { explorerBlockUrl } from "../../lib/explorer";
 import { shareHashrateHps, SHARE_HASHRATE_WINDOW_SECONDS } from "../../lib/pool-stats";
+import { getBlockTemplate } from "../../lib/rpc";
+import { assignedShareDifficulty, formatDifficulty, networkDifficultyFromBits } from "../../lib/difficulty-math";
 import { fetchStratumStats } from "../socket";
 import { requireAuth, AuthedUser } from "../middleware/auth";
 import type { Request } from "express";
@@ -26,7 +28,7 @@ export function publicRoutes(): Router {
         const buckets = await query<{ bucket_at: string; hashrate_hps: string }>(
             `SELECT bucket_at::text, hashrate_hps::text
                FROM pool_hashrate_buckets
-              WHERE bucket_at >= NOW() - interval '24 hours'
+              WHERE bucket_at >= NOW() - interval '1 hour'
               ORDER BY bucket_at ASC`
         );
         const found = await query<{ n: string }>("SELECT COUNT(*)::text AS n FROM blocks");
@@ -85,14 +87,27 @@ export function publicRoutes(): Router {
         });
     });
 
-    r.get("/getting-started", (_req, res) => {
+    r.get("/getting-started", async (_req, res) => {
+        let networkDifficulty: number | null = null;
+        try {
+            const tpl = await getBlockTemplate();
+            networkDifficulty = networkDifficultyFromBits(parseInt(tpl.bits, 16));
+        } catch {
+            networkDifficulty = null;
+        }
+        const configured = config.stratum.defaultDifficulty;
+        const assigned = networkDifficulty == null
+            ? null
+            : assignedShareDifficulty(configured, networkDifficulty);
         res.render("getting-started", {
             title: "Getting started",
             poolUrl: stratumPublicUrl(),
             network: config.network,
-            defaultDifficulty: config.stratum.defaultDifficulty,
+            defaultDifficulty: configured,
             vardiffTargetSeconds: config.stratum.vardiffTargetSeconds,
             vardiffEnabled: config.stratum.vardiffEnabled,
+            networkDifficultyText: networkDifficulty == null ? null : formatDifficulty(networkDifficulty),
+            assignedDifficultyText: assigned == null ? null : formatDifficulty(assigned),
         });
     });
 
@@ -124,6 +139,8 @@ export function publicRoutes(): Router {
             chainTip: stats.lastJobHeight,
             blocksFound: parseInt(blockRows[0]?.n ?? "0", 10) || 0,
             feePercent: config.pool.feePercent,
+            networkDifficulty: stats.networkDifficulty ?? null,
+            assignedDifficulty: stats.assignedDifficulty ?? null,
         });
     });
 

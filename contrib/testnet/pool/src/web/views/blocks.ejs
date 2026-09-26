@@ -19,14 +19,14 @@
       <tr>
         <td><%= b.height %></td>
         <td class="mono"><a href="/blocks/<%= b.hash %>"><%= String(b.hash).slice(0, 16) %>…</a></td>
-        <td><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
-        <td>
+        <td class="num"><%= Number(b.reward_b3c).toFixed(4) %> B3C</td>
+        <td class="num">
           <% if (b.is_orphan) { %>
             <span class="tag tag-fail">orphan</span>
           <% } else if (b.is_confirmed) { %>
             <span class="tag tag-pass">confirmed</span>
           <% } else { %>
-            <%= b.confirmations %>/100
+            <%= b.confirmations %>/<%= confirmationsRequired %>
           <% } %>
         </td>
         <td class="muted"><time data-ts="<%= b.found_at %>"><%= b.found_at %></time></td>
