@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "b3_sec.h"
+
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -83,8 +85,20 @@ void b3_config_load_runtime(b3_runtime_config_t *out)
     nvs_get_str(h, "pool_url", out->pool_url, &len);
     len = sizeof(out->worker_user);
     nvs_get_str(h, "worker_user", out->worker_user, &len);
-    len = sizeof(out->worker_pass);
-    nvs_get_str(h, "worker_pass", out->worker_pass, &len);
+    if (b3_sec_provisioned()) {
+        uint8_t ct[32];
+        size_t clen = sizeof(ct);
+        uint8_t pt[32];
+        if (nvs_get_blob(h, "worker_pass_enc", ct, &clen) == ESP_OK && clen == sizeof(ct) &&
+            b3_sec_aes_decrypt_block(3, ct, pt) == ESP_OK &&
+            b3_sec_aes_decrypt_block(3, ct + 16, pt + 16) == ESP_OK) {
+            memcpy(out->worker_pass, pt, sizeof(out->worker_pass));
+            out->worker_pass[sizeof(out->worker_pass) - 1] = '\0';
+        }
+    } else {
+        len = sizeof(out->worker_pass);
+        nvs_get_str(h, "worker_pass", out->worker_pass, &len);
+    }
     len = sizeof(out->hostname);
     nvs_get_str(h, "hostname", out->hostname, &len);
     uint8_t proto = 0;
@@ -108,7 +122,22 @@ esp_err_t b3_config_save_runtime(const b3_runtime_config_t *cfg)
     ESP_ERROR_CHECK(nvs_open(NS, NVS_READWRITE, &h));
     ESP_ERROR_CHECK(nvs_set_str(h, "pool_url", cfg->pool_url));
     ESP_ERROR_CHECK(nvs_set_str(h, "worker_user", cfg->worker_user));
-    ESP_ERROR_CHECK(nvs_set_str(h, "worker_pass", cfg->worker_pass));
+    if (b3_sec_provisioned()) {
+        uint8_t pt[32];
+        uint8_t ct[32];
+        memset(pt, 0, sizeof(pt));
+        memcpy(pt, cfg->worker_pass, sizeof(pt));
+        if (b3_sec_aes_encrypt_block(3, pt, ct) == ESP_OK &&
+            b3_sec_aes_encrypt_block(3, pt + 16, ct + 16) == ESP_OK) {
+            ESP_ERROR_CHECK(nvs_set_blob(h, "worker_pass_enc", ct, sizeof(ct)));
+            nvs_erase_key(h, "worker_pass");
+        } else {
+            ESP_LOGW(TAG, "slot 3 encrypt failed; storing pool password in the clear");
+            ESP_ERROR_CHECK(nvs_set_str(h, "worker_pass", cfg->worker_pass));
+        }
+    } else {
+        ESP_ERROR_CHECK(nvs_set_str(h, "worker_pass", cfg->worker_pass));
+    }
     ESP_ERROR_CHECK(nvs_set_str(h, "hostname", cfg->hostname));
     ESP_ERROR_CHECK(nvs_set_u8(h, "stratum_proto", (uint8_t)cfg->stratum_proto));
     esp_err_t err = nvs_commit(h);

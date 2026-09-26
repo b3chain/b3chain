@@ -254,3 +254,12 @@ float b3_fpga_read_die_celsius(void)
     sim_unlock();
     return running ? 58.0f : 42.0f;
 }
+
+int b3_fpga_try_read_die_celsius(float *out_c)
+{
+    if (!out_c) {
+        return 0;
+    }
+    *out_c = b3_fpga_read_die_celsius();
+    return 1;
+}

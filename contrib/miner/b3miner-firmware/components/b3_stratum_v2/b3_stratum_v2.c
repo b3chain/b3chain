@@ -16,6 +16,10 @@
 
 #include "b3_stratum_v2.h"
 
+#include <string.h>
+
+#include "b3_sec.h"
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -43,6 +47,14 @@ typedef struct {
 static sv2_state_t sv2_run_handshake(sv2_ctx_t *ctx)
 {
     (void)ctx;
+    uint8_t msg[32];
+    uint8_t sig[64];
+    memset(msg, 0, sizeof(msg));
+    /* Noise XX static key signs inside the ATECC. The private key is not copied. */
+    if (b3_sec_sign_p256(0, msg, sig) != ESP_OK) {
+        ESP_LOGW(TAG, "SV2 static sign unavailable");
+    }
+    (void)sig;
     ESP_LOGW(TAG, "SV2 handshake STUB — falling back to V1 recommended for v1.0 ship");
     return SV2_ST_DISCONNECTED;
 }

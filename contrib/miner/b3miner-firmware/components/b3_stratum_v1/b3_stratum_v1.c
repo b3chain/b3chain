@@ -31,6 +31,7 @@
 
 #include "b3_events.h"
 #include "b3_hex.h"
+#include "b3_sec.h"
 #include "b3_stratum_json.h"
 #include "b3_work.h"
 
@@ -38,6 +39,7 @@
 #include "esp_timer.h"
 #include "esp_tls.h"
 #include "freertos/FreeRTOS.h"
+#include "mbedtls/sha256.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -117,6 +119,7 @@ static esp_err_t recv_line(int sock, char *buf, size_t buflen, int timeout_ms)
  * received in between are dispatched normally. */
 static esp_err_t rpc_call(stratum_v1_ctx_t *ctx, const char *method,
                           const char *params_json, b3_json_t **resp_out);
+static void advertise_pubkey(stratum_v1_ctx_t *ctx);
 
 /* Forward declarations for notification handlers */
 static void on_mining_notify(stratum_v1_ctx_t *ctx, const b3_json_value_t *params);
@@ -351,7 +354,60 @@ static esp_err_t handshake(stratum_v1_ctx_t *ctx)
         b3_metrics_set_connected(1);
     }
     b3_json_free(resp);
+    if (ok) {
+        advertise_pubkey(ctx);
+    }
     return ok ? ESP_OK : ESP_FAIL;
+}
+
+static void advertise_pubkey(stratum_v1_ctx_t *ctx)
+{
+    if (!b3_sec_present()) {
+        return;
+    }
+    uint8_t pub[64];
+    if (b3_sec_pubkey(0, pub) != ESP_OK) {
+        ESP_LOGW(TAG, "slot 0 pubkey unavailable");
+        return;
+    }
+    char hex[129];
+    b3_hex_encode(pub, 64, hex);
+    char params[160];
+    snprintf(params, sizeof(params), "[\"%s\"]", hex);
+    b3_json_t *resp = NULL;
+    if (rpc_call(ctx, "mining.pubkey", params, &resp) != ESP_OK) {
+        ESP_LOGW(TAG, "mining.pubkey failed");
+        return;
+    }
+    b3_json_free(resp);
+    ESP_LOGI(TAG, "advertised slot 0 public key");
+}
+
+static void on_mining_challenge(stratum_v1_ctx_t *ctx, const b3_json_value_t *params)
+{
+    const char *hex = b3_json_as_string(b3_json_array_get(params, 0));
+    uint8_t msg[32];
+    uint8_t sig[64];
+    if (!hex || b3_hex_decode(hex, msg, sizeof(msg)) != ESP_OK) {
+        ESP_LOGW(TAG, "challenge: bad message");
+        return;
+    }
+    if (b3_sec_sign_p256(0, msg, sig) != ESP_OK) {
+        ESP_LOGW(TAG, "challenge: sign failed");
+        return;
+    }
+    char sig_hex[129];
+    b3_hex_encode(sig, 64, sig_hex);
+    char body[220];
+    char line[280];
+    snprintf(body, sizeof(body), "[\"%s\"]", sig_hex);
+    ctx->req_id++;
+    int n = b3_json_format_request(line, sizeof(line), ctx->req_id, "mining.attest", body);
+    if (n <= 0 || send_line(ctx->sock, line) != ESP_OK) {
+        ESP_LOGW(TAG, "challenge: attest send failed");
+        return;
+    }
+    ESP_LOGI(TAG, "signed pool challenge");
 }
 
 /* --------------------------------------------------------------------- *
@@ -369,6 +425,8 @@ static bool dispatch_notification(stratum_v1_ctx_t *ctx, const b3_json_t *msg)
         on_set_difficulty(ctx, params);
     } else if (strcmp(method, "mining.set_extranonce") == 0) {
         on_set_extranonce(ctx, params);
+    } else if (strcmp(method, "mining.challenge") == 0) {
+        on_mining_challenge(ctx, params);
     } else {
         ESP_LOGD(TAG, "unknown notify method '%s' (ignoring)", method);
     }
@@ -441,11 +499,34 @@ static esp_err_t submit_share(stratum_v1_ctx_t *ctx, const b3_work_job_t *job,
     }
     b3_hex_encode(ev->extranonce2, en2_size, en2_hex);
 
-    char params[256];
-    char line[512];
-    snprintf(params, sizeof(params),
-             "[\"%s\",\"%s\",\"%s\",\"%08" PRIx32 "\",\"%08" PRIx32 "\"]",
-             ctx->cfg.worker_user, job->job_id, en2_hex, ev->ntime, ev->nonce);
+    char canon[192];
+    uint8_t digest[32];
+    uint8_t sig[64];
+    char sig_hex[129];
+    int have_sig = 0;
+    snprintf(canon, sizeof(canon), "%s|%s|%08" PRIx32 "|%08" PRIx32,
+             job->job_id, en2_hex, ev->ntime, ev->nonce);
+    if (b3_sec_present()) {
+        mbedtls_sha256((const unsigned char *)canon, strlen(canon), digest, 0);
+        if (b3_sec_sign_p256(0, digest, sig) == ESP_OK) {
+            b3_hex_encode(sig, 64, sig_hex);
+            have_sig = 1;
+        } else {
+            ESP_LOGW(TAG, "share sign failed");
+        }
+    }
+
+    char params[512];
+    char line[640];
+    if (have_sig) {
+        snprintf(params, sizeof(params),
+                 "[\"%s\",\"%s\",\"%s\",\"%08" PRIx32 "\",\"%08" PRIx32 "\",\"%s\"]",
+                 ctx->cfg.worker_user, job->job_id, en2_hex, ev->ntime, ev->nonce, sig_hex);
+    } else {
+        snprintf(params, sizeof(params),
+                 "[\"%s\",\"%s\",\"%s\",\"%08" PRIx32 "\",\"%08" PRIx32 "\"]",
+                 ctx->cfg.worker_user, job->job_id, en2_hex, ev->ntime, ev->nonce);
+    }
 
     ctx->req_id++;
     uint64_t want_id = ctx->req_id;

@@ -7,6 +7,7 @@ import { StratumServer } from "./server";
 import { IpcClient } from "../lib/ipc";
 import { addressToScriptPubKey } from "../lib/address";
 import { assignedShareDifficulty, networkDifficultyFromBits } from "../lib/difficulty-math";
+import { PgPassportStore } from "../lib/passports";
 import * as http from "http";
 
 const log = makeLogger("stratum-main");
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
     ipc.start();
 
     const jobs = new JobManager(makeLogger("jobs"));
-    const server = new StratumServer(jobs, ipc, makeLogger("stratum"));
+    const server = new StratumServer(jobs, ipc, makeLogger("stratum"), new PgPassportStore());
 
     jobs.start();
     await server.listen();
@@ -55,6 +56,37 @@ async function main(): Promise<void> {
             });
             res.writeHead(200, { "content-type": "application/json" });
             res.end(body);
+            return;
+        }
+        if (req.method === "POST" && req.url === "/device-slots") {
+            let buf = "";
+            req.on("data", (c) => {
+                buf += c;
+                if (buf.length > 2048) req.destroy();
+            });
+            req.on("end", () => {
+                try {
+                    const userId = Number(JSON.parse(buf).userId);
+                    if (!Number.isInteger(userId) || userId <= 0) {
+                        res.writeHead(400);
+                        res.end();
+                        return;
+                    }
+                    void server.slotAdded(userId).then(
+                        () => {
+                            res.writeHead(204);
+                            res.end();
+                        },
+                        () => {
+                            res.writeHead(500);
+                            res.end();
+                        },
+                    );
+                } catch {
+                    res.writeHead(400);
+                    res.end();
+                }
+            });
             return;
         }
         res.writeHead(404);

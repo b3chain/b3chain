@@ -77,6 +77,13 @@ void b3_metrics_share_rejected(void)
     xSemaphoreGive(s_mtx);
 }
 
+void b3_metrics_note_wifi_disconnect(void)
+{
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_snap.wifi_disconnects++;
+    xSemaphoreGive(s_mtx);
+}
+
 void b3_metrics_get_snapshot(b3_metrics_snapshot_t *out)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);

@@ -4,43 +4,58 @@
 // mining.set_difficulty + mining.notify on new jobs and on vardiff retunes.
 // Forwards every accepted share to the pool daemon over the IPC socket.
 
+import * as crypto from "crypto";
 import * as net from "net";
 import { StratumClient, RpcCall } from "./client";
 import { JobManager, StratumJob } from "./job-manager";
 import { validateShare } from "./share-validator";
 import { Logger, makeLogger } from "../lib/logger";
 import { config } from "../config";
-import { IpcClient, RejectEvent, ShareEvent } from "../lib/ipc";
+import { IpcClient, RejectEvent, ShareAttest, ShareEvent, ShareSigEvent } from "../lib/ipc";
 import { normalizeRejectReason } from "../lib/reject-reason";
 import { submitBlock } from "../lib/rpc";
 import { networkDifficultyFromBits } from "../lib/difficulty-math";
+import { verifyP256Digest } from "../lib/p256";
+import { MemoryPassportStore, PassportStore } from "../lib/passports";
+import { nonceHex, shareDigest } from "../lib/share-digest";
 
 export class StratumServer {
     private server: net.Server;
     private clients = new Map<number, StratumClient>();
     public readonly log: Logger;
     private retuneTimer: NodeJS.Timeout | null = null;
+    private readonly heldSlots = new Set<number>();
+    public readonly signatureLog: ShareSigEvent[] = [];
 
     constructor(
         private jobs: JobManager,
         private ipc: IpcClient,
-        log?: Logger
+        log?: Logger,
+        private passports: PassportStore = new MemoryPassportStore(),
+        private recordSignatures = false,
     ) {
         this.log = log ?? makeLogger("stratum");
         this.server = net.createServer((s) => this.onConnection(s));
         this.jobs.on("job", (j: StratumJob) => this.broadcastJob(j));
     }
 
-    listen(): Promise<void> {
+    listen(port = config.stratum.port): Promise<void> {
         return new Promise((res, rej) => {
             this.server.once("error", rej);
-            this.server.listen(config.stratum.port, config.stratum.bind, () => {
+            this.server.listen(port, config.stratum.bind, () => {
                 this.server.removeListener("error", rej);
-                this.log.info({ bind: config.stratum.bind, port: config.stratum.port }, "stratum listening");
+                const addr = this.server.address();
+                const bound = typeof addr === "object" && addr ? addr.port : port;
+                this.log.info({ bind: config.stratum.bind, port: bound }, "stratum listening");
                 this.startVardiffLoop();
                 res();
             });
         });
+    }
+
+    boundPort(): number {
+        const addr = this.server.address();
+        return typeof addr === "object" && addr ? addr.port : 0;
     }
 
     close(): Promise<void> {
@@ -60,6 +75,8 @@ export class StratumServer {
         accepted: number;
         rejected: number;
         lastShareAt: number | null;
+        pubkey: string | null;
+        attest: "pending" | "valid" | "invalid" | null;
     }> {
         const out = [];
         for (const c of this.clients.values()) {
@@ -72,6 +89,8 @@ export class StratumServer {
                 accepted: c.sharesAccepted,
                 rejected: c.sharesRejected,
                 lastShareAt: c.lastShareAt > 0 ? c.lastShareAt : null,
+                pubkey: c.pubkey,
+                attest: c.attest === "" ? null : c.attest,
             });
         }
         return out;
@@ -124,6 +143,10 @@ export class StratumServer {
         this.clients.set(c.connId, c);
         this.log.info({ connId: c.connId, ip: c.ip }, "connection opened");
         c.on("close", () => {
+            if (c.reservedSlotId !== null) {
+                this.heldSlots.delete(c.reservedSlotId);
+                c.reservedSlotId = null;
+            }
             this.clients.delete(c.connId);
             this.log.info({ connId: c.connId, ip: c.ip }, "connection closed");
         });
@@ -149,7 +172,13 @@ export class StratumServer {
                     this.onSubscribe(c, msg);
                     break;
                 case "mining.authorize":
-                    this.onAuthorize(c, msg);
+                    await this.onAuthorize(c, msg);
+                    break;
+                case "mining.pubkey":
+                    await this.onPubkey(c, msg);
+                    break;
+                case "mining.attest":
+                    await this.onAttest(c, msg);
                     break;
                 case "mining.submit":
                     await this.onSubmit(c, msg);
@@ -196,7 +225,7 @@ export class StratumServer {
         this.log.info({ connId: c.connId, ua: c.userAgent }, "subscribed");
     }
 
-    private onAuthorize(c: StratumClient, msg: RpcCall): void {
+    private async onAuthorize(c: StratumClient, msg: RpcCall): Promise<void> {
         const params = (msg.params as unknown[]) ?? [];
         const username = String(params[0] ?? "").trim();
         if (!username) {
@@ -205,6 +234,14 @@ export class StratumServer {
         }
         c.username = username;
         c.state = "authorized";
+        c.authorizedAt = Date.now();
+        const [email] = splitUserName(username);
+        try {
+            c.userId = await this.passports.findUserId(email);
+        } catch (e) {
+            this.log.warn({ err: (e as Error).message }, "device slot user lookup failed");
+            c.userId = null;
+        }
         const pinned = config.stratum.workerDifficulty.get(username);
         if (pinned !== undefined) {
             c.vardiff.setDiff(pinned);
@@ -214,6 +251,98 @@ export class StratumServer {
         const job = this.jobs.getCurrent();
         if (job) c.pushJob(job);
         this.log.info({ connId: c.connId, user: username }, "authorized");
+    }
+
+    async slotAdded(userId: number): Promise<void> {
+        const pending = [...this.clients.values()]
+            .filter((c) => c.state === "authorized" && c.attest === "pending" && c.pubkey && c.userId === userId)
+            .sort((a, b) => a.authorizedAt - b.authorizedAt);
+        const c = pending[0];
+        if (!c || !c.pubkey) return;
+        const slot = await this.passports.reserveEmpty(userId, this.heldSlots);
+        if (!slot) return;
+        c.reservedSlotId = slot.id;
+        c.attest = "";
+        this.sendChallenge(c);
+    }
+
+    private sendChallenge(c: StratumClient): void {
+        c.challenge = crypto.randomBytes(32);
+        c.sendNotify("mining.challenge", [c.challenge.toString("hex")]);
+    }
+
+    private noteSignature(evt: ShareSigEvent): void {
+        this.ipc.send(evt);
+        if (this.recordSignatures) this.signatureLog.push(evt);
+    }
+
+    private async onPubkey(c: StratumClient, msg: RpcCall): Promise<void> {
+        if (c.state !== "authorized" || !c.username) {
+            c.sendError(msg.id ?? null, 24, "Unauthorized worker");
+            return;
+        }
+        const hex = String((msg.params as unknown[])?.[0] ?? "").toLowerCase();
+        if (!/^[0-9a-f]{128}$/.test(hex)) {
+            c.sendError(msg.id ?? null, 23, "bad public key");
+            return;
+        }
+        c.pubkey = hex;
+        if (c.userId === null) {
+            c.attest = "pending";
+            c.sendResult(msg.id ?? null, true);
+            return;
+        }
+        const existing = await this.passports.findSlotByPubkey(hex);
+        if (existing && existing.userId !== c.userId) {
+            c.attest = "invalid";
+            c.sendResult(msg.id ?? null, true);
+            return;
+        }
+        if (existing && existing.userId === c.userId) {
+            c.attest = "";
+            c.sendResult(msg.id ?? null, true);
+            this.sendChallenge(c);
+            return;
+        }
+        const empty = await this.passports.reserveEmpty(c.userId, this.heldSlots);
+        if (!empty) {
+            c.attest = "pending";
+            c.sendResult(msg.id ?? null, true);
+            return;
+        }
+        c.reservedSlotId = empty.id;
+        c.attest = "";
+        c.sendResult(msg.id ?? null, true);
+        this.sendChallenge(c);
+    }
+
+    private async onAttest(c: StratumClient, msg: RpcCall): Promise<void> {
+        const sigHex = String((msg.params as unknown[])?.[0] ?? "").toLowerCase();
+        const challenge = c.challenge;
+        c.challenge = null;
+        const ok = !!challenge && !!c.pubkey && verifyP256Digest(c.pubkey, challenge, sigHex);
+        if (!ok) {
+            if (c.reservedSlotId !== null) {
+                this.heldSlots.delete(c.reservedSlotId);
+                c.reservedSlotId = null;
+            }
+            c.attest = "invalid";
+            c.sendResult(msg.id ?? null, false);
+            return;
+        }
+        if (c.reservedSlotId !== null) {
+            const slotId = c.reservedSlotId;
+            const locked = await this.passports.lock(slotId, c.pubkey!);
+            this.heldSlots.delete(slotId);
+            c.reservedSlotId = null;
+            if (!locked) {
+                c.attest = "invalid";
+                c.sendResult(msg.id ?? null, false);
+                return;
+            }
+        }
+        c.attest = "valid";
+        c.sendResult(msg.id ?? null, true);
     }
 
     private async onSubmit(c: StratumClient, msg: RpcCall): Promise<void> {
@@ -242,8 +371,17 @@ export class StratumServer {
             c.sendResult(msg.id ?? null, false);
             return;
         }
+        const attest = this.shareAttest(c, jobId, en2, ntime, nonce, p[5]);
+        if (attest.result !== "valid") {
+            this.recordUncredited(c, attest);
+            c.sharesRejected++;
+            this.sendReject(c, "invalid");
+            c.sendError(msg.id ?? null, 23, attest.result === "missing" ? "signature required" : "bad signature");
+            return;
+        }
         const dedupKey = `${jobId}:${en2}:${ntime}:${nonce}`;
         if (c.seenShares.has(dedupKey)) {
+            this.recordUncredited(c, attest);
             c.sharesRejected++;
             this.sendReject(c, "duplicate");
             c.sendError(msg.id ?? null, 22, "Duplicate share");
@@ -269,6 +407,7 @@ export class StratumServer {
             shareDifficulty: assigned,
         });
         if (!check.ok) {
+            this.recordUncredited(c, attest);
             c.sharesRejected++;
             this.sendReject(c, check.reason);
             c.sendError(msg.id ?? null, 23, `low difficulty: ${check.reason}`);
@@ -315,8 +454,39 @@ export class StratumServer {
             blockHeight,
             networkDifficulty,
             timestampMs: Date.now(),
+            attest,
         };
         this.ipc.send(evt);
+    }
+
+    private shareAttest(
+        c: StratumClient,
+        jobId: string,
+        en2: string,
+        ntime: number,
+        nonce: number,
+        sigAny: unknown,
+    ): ShareAttest {
+        const signature = sigAny === undefined || sigAny === null || sigAny === ""
+            ? null
+            : String(sigAny).toLowerCase();
+        let result: ShareAttest["result"] = "missing";
+        if (signature !== null) {
+            const digest = shareDigest(jobId, en2, ntime, nonce);
+            result = c.pubkey && verifyP256Digest(c.pubkey, digest, signature) ? "valid" : "invalid";
+        }
+        return { jobId, nonce: nonceHex(nonce), pubkey: c.pubkey, signature, result };
+    }
+
+    private recordUncredited(c: StratumClient, attest: ShareAttest): void {
+        const [user, worker] = splitUserName(c.username);
+        this.noteSignature({
+            type: "share_sig",
+            user,
+            workerName: worker,
+            timestampMs: Date.now(),
+            attest,
+        });
     }
 }
 

@@ -27,6 +27,7 @@
 #include "b3_events.h"
 #include "b3_fpga.h"
 #include "b3_metrics.h"
+#include "b3_sec.h"
 #include "b3_ota.h"
 #include "b3_stratum_v1.h"
 #include "b3_stratum_v2.h"
@@ -37,6 +38,8 @@ static const char *TAG = "b3_main";
 /* XCKU5P-2FFVB676 board contract: page 4/page 8. */
 #define PIN_FPGA_IRQ        18   /* ESP32_RX1 <- FPGA AD14 */
 #define PIN_LED_STATUS      4    /* ESP32_LED */
+#define PIN_SEC_I2C_SDA     1
+#define PIN_SEC_I2C_SCL     2
 
 #if CONFIG_B3_NETWORK_ETHERNET
 #define PIN_ETH_PHY_ADDR    0
@@ -96,6 +99,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        b3_metrics_note_wifi_disconnect();
         b3_events_post(B3_EVT_ETH_DOWN);
         esp_wifi_connect();
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -166,28 +170,44 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "B3Miner-1 firmware boot");
+    esp_err_t sec = b3_sec_init(PIN_SEC_I2C_SDA, PIN_SEC_I2C_SCL);
+    if (sec == ESP_OK) {
+        if (b3_sec_seed_drbg() != ESP_OK) {
+            ESP_LOGW(TAG, "ATECC random seed failed; keeping existing RNG");
+        }
+    } else {
+        ESP_LOGW(TAG, "ATECC608B not available (%s)", esp_err_to_name(sec));
+    }
+    const bool mining_blocked = b3_sec_mining_blocked();
+    if (mining_blocked) {
+        ESP_LOGW(TAG, "%s", b3_sec_status_text());
+    }
+
     b3_config_init();
     b3_events_init();
     b3_metrics_init();
-    ESP_ERROR_CHECK(b3_fpga_init(PIN_FPGA_IRQ));
+    if (!mining_blocked) {
+        ESP_ERROR_CHECK(b3_fpga_init(PIN_FPGA_IRQ));
 #if CONFIG_B3_FPGA_BOOT_SELFTEST
-    ESP_ERROR_CHECK(b3_fpga_run_selftest());
+        ESP_ERROR_CHECK(b3_fpga_run_selftest());
 #endif
+    }
     ESP_ERROR_CHECK(init_network());
 
     /* Stratum: prefer V2 URL scheme if configured, else V1 */
     b3_runtime_config_t rcfg;
     b3_config_load_runtime(&rcfg);
 
-    if (rcfg.stratum_proto == B3_STRATUM_PROTO_V2) {
-        ESP_LOGI(TAG, "Starting Stratum V2 client");
-        b3_stratum_v2_start(&rcfg);
-    } else {
-        ESP_LOGI(TAG, "Starting Stratum V1 client");
-        b3_stratum_v1_start(&rcfg);
+    if (!mining_blocked) {
+        if (rcfg.stratum_proto == B3_STRATUM_PROTO_V2) {
+            ESP_LOGI(TAG, "Starting Stratum V2 client");
+            b3_stratum_v2_start(&rcfg);
+        } else {
+            ESP_LOGI(TAG, "Starting Stratum V1 client");
+            b3_stratum_v1_start(&rcfg);
+        }
+        b3_fpga_worker_start();
     }
-
-    b3_fpga_worker_start();
     b3_web_start(CONFIG_B3_WEB_HTTP_PORT);
     b3_ota_start(CONFIG_B3_OTA_UPDATE_URL);
 

@@ -42,6 +42,12 @@ export class StratumClient extends EventEmitter {
     public lastNotifiedDiff: number | null = null;
     public ip: string;
     public seenShares = new Set<string>();
+    public pubkey: string | null = null;
+    public attest: "" | "pending" | "valid" | "invalid" = "";
+    public userId: number | null = null;
+    public authorizedAt = 0;
+    public challenge: Buffer | null = null;
+    public reservedSlotId: number | null = null;
     private buf = "";
     public readonly vardiff: Vardiff;
 

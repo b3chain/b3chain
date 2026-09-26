@@ -35,6 +35,8 @@ export interface LiveConnection {
     accepted: number;
     rejected: number;
     lastShareAt: number | null;
+    pubkey?: string | null;
+    attest?: "pending" | "valid" | "invalid" | null;
 }
 
 export async function fetchStratumStats(): Promise<StratumStats> {

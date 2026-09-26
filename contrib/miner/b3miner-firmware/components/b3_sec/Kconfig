@@ -1,0 +1,11 @@
+menu "B3 secure element"
+
+    config B3_SEC_REQUIRE_PROVISIONED
+        bool "Refuse to mine when the ATECC608B is missing or unlocked"
+        default n
+        help
+            Off: log the chip state and keep mining.
+            On: skip Stratum and FPGA work and show
+            "Card unprovisioned — run factory fixture".
+
+endmenu

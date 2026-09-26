@@ -26,6 +26,10 @@ async function main(): Promise<void> {
             void writer.acceptReject(msg);
             return;
         }
+        if (msg.type === "share_sig") {
+            void writer.acceptSig(msg);
+            return;
+        }
         if (msg.type !== "share") return;
         void writer.accept(msg);
         if (msg.isBlock) void recordFoundBlock(msg, log);

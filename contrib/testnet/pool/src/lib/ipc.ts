@@ -8,6 +8,14 @@ import * as net from "net";
 import * as fs from "fs";
 import { EventEmitter } from "events";
 
+export type ShareAttest = {
+    jobId: string;
+    nonce: string;
+    pubkey: string | null;
+    signature: string | null;
+    result: "valid" | "invalid" | "missing";
+};
+
 export type ShareEvent = {
     type: "share";
     user: string;            // <email>.<workerName> (or anon connId in Phase A)
@@ -18,6 +26,15 @@ export type ShareEvent = {
     blockHeight?: number;
     networkDifficulty?: number;
     timestampMs: number;
+    attest?: ShareAttest;
+};
+
+export type ShareSigEvent = {
+    type: "share_sig";
+    user: string;
+    workerName: string;
+    timestampMs: number;
+    attest: ShareAttest;
 };
 
 export type RejectEvent = {
@@ -29,7 +46,7 @@ export type RejectEvent = {
     timestampMs: number;
 };
 
-export type IpcMessage = ShareEvent | RejectEvent;
+export type IpcMessage = ShareEvent | ShareSigEvent | RejectEvent;
 
 export class IpcServer extends EventEmitter {
     private server: net.Server;

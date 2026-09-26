@@ -359,3 +359,16 @@ float b3_fpga_read_die_celsius(void)
     const uint16_t raw16 = (uint16_t)raw;
     return ((float)raw16 * 503.975f / 65536.0f) - 273.15f;
 }
+
+int b3_fpga_try_read_die_celsius(float *out_c)
+{
+    uint32_t raw = 0;
+    if (!out_c) {
+        return 0;
+    }
+    if (reg_read32(B3_FPGA_REG_TEMP_RAW, &raw) != ESP_OK) {
+        return 0;
+    }
+    *out_c = ((float)(uint16_t)raw * 503.975f / 65536.0f) - 273.15f;
+    return 1;
+}

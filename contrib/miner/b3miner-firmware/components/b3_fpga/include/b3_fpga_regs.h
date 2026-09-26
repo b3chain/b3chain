@@ -64,4 +64,5 @@ bool b3_fpga_poll_share(b3_fpga_share_t *out);
 esp_err_t b3_fpga_ack_share(void);
 uint32_t b3_fpga_read_hash_count(void);
 float b3_fpga_read_die_celsius(void);
+int b3_fpga_try_read_die_celsius(float *out_c);
 void b3_fpga_worker_start(void);

@@ -1,5 +1,22 @@
 # B3Chain Project History
 
+## ATECC608B miner identity and pool device slots (2026-09-26)
+
+- Miner firmware wraps the ESP32-S3 ATECC608B-MAHDA-T in `components/b3_sec`.
+  The chip is on I2C GPIO 1/2. Firmware does not generate keys or lock zones.
+  A missing or unlocked chip keeps mining unless `CONFIG_B3_SEC_REQUIRE_PROVISIONED`
+  is turned on.
+- After authorize, a card with the chip sends `mining.pubkey`. The pool
+  challenges it only when that account has an empty device slot, or when the
+  key is already locked to that account. A valid signature locks the passport.
+  No empty slot stays pending until an admin adds one.
+- Each share from a card that advertised a key is signed over
+  `job_id|extranonce2|ntime|nonce`. The pool credits a share only when that
+  signature is valid. Invalid and missing signatures are stored and not credited.
+- The factory script `contrib/miner/b3miner-hardware/provisioning/atecc_provision.py`
+  refuses to open a device unless `--confirm`, `--i2c-bus`, and the slot
+  payloads are all present. It was not run against a card.
+
 ## Explorer script labels (2026-09-26)
 
 - Block and transaction pages label a BIP34 coinbase with its block height
