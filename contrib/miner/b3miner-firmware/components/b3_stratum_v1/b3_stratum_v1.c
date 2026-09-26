@@ -39,7 +39,7 @@
 #include "esp_timer.h"
 #include "esp_tls.h"
 #include "freertos/FreeRTOS.h"
-#include "mbedtls/sha256.h"
+#include "psa/crypto.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -507,8 +507,13 @@ static esp_err_t submit_share(stratum_v1_ctx_t *ctx, const b3_work_job_t *job,
     snprintf(canon, sizeof(canon), "%s|%s|%08" PRIx32 "|%08" PRIx32,
              job->job_id, en2_hex, ev->ntime, ev->nonce);
     if (b3_sec_present()) {
-        mbedtls_sha256((const unsigned char *)canon, strlen(canon), digest, 0);
-        if (b3_sec_sign_p256(0, digest, sig) == ESP_OK) {
+        size_t written = 0;
+        if (psa_crypto_init() != PSA_SUCCESS ||
+            psa_hash_compute(PSA_ALG_SHA_256, (const uint8_t *)canon, strlen(canon),
+                             digest, sizeof(digest), &written) != PSA_SUCCESS ||
+            written != sizeof(digest)) {
+            ESP_LOGW(TAG, "share digest failed");
+        } else if (b3_sec_sign_p256(0, digest, sig) == ESP_OK) {
             b3_hex_encode(sig, 64, sig_hex);
             have_sig = 1;
         } else {
