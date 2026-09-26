@@ -146,17 +146,20 @@ INDEX_HTML = """<!doctype html>
 <html lang=en><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>B3Chain testnet faucet</title>
-<link rel="stylesheet" href="/css/style.css" />
+<meta name="theme-color" content="#0c1118">
 <style>
-body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4em auto; padding: 0 1em; }
+:root { color-scheme: dark; }
+body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; max-width: 640px; margin: 4em auto; padding: 0 1em; background: #0c1118; color: #e7edf5; }
+a { color: #8eb4ff; }
+h1 { letter-spacing: -0.01em; }
 form { display: flex; gap: .5em; margin: 1em 0; }
-input[type=text] { flex: 1; padding: .5em; font-family: monospace; }
-button { padding: .5em 1em; cursor: pointer; }
-.msg { padding: 1em; border-left: 4px solid #ccc; background: #f6f6f6; }
-.ok  { border-color: #4c7; }
-.err { border-color: #c44; }
-.foot { color: #888; font-size: .85em; margin-top: 3em; }
-code { background: #f0f0f0; padding: 2px 4px; }
+input[type=text] { flex: 1; padding: .6em .7em; font-family: ui-monospace, monospace; background: #0e141c; color: #e7edf5; border: 1px solid #314155; border-radius: 6px; }
+button { padding: .6em 1em; cursor: pointer; background: #3d6fbf; color: #f4f7fb; border: 0; border-radius: 6px; }
+.msg { padding: 1em; border-left: 4px solid #314155; background: #161d27; border-radius: 6px; }
+.ok  { border-color: #3dce7a; }
+.err { border-color: #f07178; }
+.foot { color: #8b9bb0; font-size: .85em; margin-top: 3em; }
+code { background: #243041; padding: 2px 4px; border-radius: 3px; }
 </style>
 </head><body>
 <h1>B3Chain testnet faucet</h1>

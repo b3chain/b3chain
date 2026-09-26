@@ -1,0 +1,9 @@
+/* Align explorer-ng chrome with the pool site. Fee bars stay their own colors. */
+.btn-purple,
+.btn-purple:hover,
+.btn-purple:focus,
+.btn-purple:active,
+li.nav-item.active {
+  background-color: #3d6fbf !important;
+  border-color: #3d6fbf !important;
+}

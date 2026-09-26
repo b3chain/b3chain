@@ -1,5 +1,11 @@
 # B3Chain Project History
 
+## Dark palette on the explorer and faucet (2026-09-26)
+
+- The block explorer overlay and the Live Explorer chrome use the same dark
+  surfaces as the pool. Fee bars on `/v2/` are unchanged.
+- The testnet faucet page uses that same dark form.
+
 ## XCKU5P B3PoW-Scratch miner ABI build 0003 (2026-09-24)
 
 - Added the XCKU5P-2FFVB676 board profile, reviewed pin contract, 100 MHz

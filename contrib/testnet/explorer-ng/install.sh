@@ -370,6 +370,17 @@ if [ "$REBUILD_FRONTEND" = 1 ] || [ ! -f "$EXPLORER_NG_WEB/index.html" ]; then
     find "$EXPLORER_NG_WEB" -type f -exec chmod 0644 {} +
 fi
 
+# Pool-site chrome on the Live Explorer. A frontend rebuild replaces
+# index.html, so re-apply the stylesheet link whenever this script runs.
+if [ -f "$THIS_DIR/assets/pool-theme.css" ] && [ -f "$EXPLORER_NG_WEB/index.html" ]; then
+    install -m 0644 -o root -g www-data \
+        "$THIS_DIR/assets/pool-theme.css" "$EXPLORER_NG_WEB/pool-theme.css"
+    if ! grep -q 'pool-theme.css' "$EXPLORER_NG_WEB/index.html"; then
+        sed -i 's|</head>|<link rel="stylesheet" href="pool-theme.css?v=20260926f">\n</head>|' \
+            "$EXPLORER_NG_WEB/index.html"
+    fi
+fi
+
 # Production ng build drops src/resources from assets; index.html still
 # loads /resources/config.js and /resources/customize.js at domain root.
 if [ -d "$EXPLORER_NG_SRC/frontend/src/resources" ]; then

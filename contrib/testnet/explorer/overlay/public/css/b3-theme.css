@@ -2,8 +2,8 @@
  * b3chain explorer theme overlay.
  *
  * Loaded AFTER btc-rpc-explorer's bootstrap CSS. We override what we
- * want and let the rest fall through. The goal is the clean,
- * card-on-light-grey look of blockchain.com / explorer style guides.
+ * want and let the rest fall through. Surfaces match the pool site:
+ * background #0c1118, cards #161d27, accent #8eb4ff.
  *
  * No external fonts: explorer runs with BTCEXP_PRIVACY_MODE=true so we
  * avoid Google Fonts and stick to the system UI font stack, which
@@ -11,21 +11,21 @@
  */
 
 :root {
-	--b3-bg: #f6f8fb;
-	--b3-bg-alt: #ffffff;
-	--b3-card: #ffffff;
-	--b3-ink: #0c1322;
-	--b3-ink-soft: #20283a;
-	--b3-muted: #5a6478;
-	--b3-muted-soft: #8c95a8;
-	--b3-border: #e5e8ef;
-	--b3-border-strong: #d4d9e2;
-	--b3-accent: #1a4dd6;
-	--b3-accent-2: #2563eb;
-	--b3-accent-soft: #e8efff;
-	--b3-success: #15a36e;
-	--b3-warn: #d97706;
-	--b3-danger: #dc2626;
+	--b3-bg: #0c1118;
+	--b3-bg-alt: #121821;
+	--b3-card: #161d27;
+	--b3-ink: #e7edf5;
+	--b3-ink-soft: #b7c3d4;
+	--b3-muted: #8b9bb0;
+	--b3-muted-soft: #667588;
+	--b3-border: #314155;
+	--b3-border-strong: #4b6076;
+	--b3-accent: #8eb4ff;
+	--b3-accent-2: #b3ccff;
+	--b3-accent-soft: #243656;
+	--b3-success: #3dce7a;
+	--b3-warn: #e2b340;
+	--b3-danger: #f07178;
 	--b3-radius: 12px;
 	--b3-radius-sm: 8px;
 	--b3-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
@@ -79,7 +79,7 @@ body .bg-main {
 }
 
 .navbar .navbar-toggler-icon {
-	filter: invert(0.4);
+	filter: none;
 }
 
 .navbar .bg-header-footer-highlight {
@@ -192,9 +192,10 @@ a:hover {
 	background: var(--b3-accent) !important;
 }
 
-.alert-info {
+.alert-info,
+.alert-primary {
 	background: var(--b3-accent-soft);
-	border-color: var(--b3-accent-soft);
+	border-color: var(--b3-border);
 	color: var(--b3-ink);
 }
 
@@ -388,9 +389,9 @@ a:hover {
 }
 
 .b3-callout--warn {
-	background: #fff8eb;
-	border-color: #fcd9a3;
-	color: #8a5a00;
+	background: #2a2416;
+	border-color: #6b5420;
+	color: var(--b3-warn);
 }
 
 .b3-detail__toolbar {
@@ -648,9 +649,9 @@ a:hover {
 }
 
 .b3-callout--warn {
-	background: #fff8eb;
-	color: #8a5a00;
-	border-color: #fcd9a3;
+	background: #2a2416;
+	color: var(--b3-warn);
+	border-color: #6b5420;
 }
 
 /* =====================================================================
@@ -718,7 +719,7 @@ a:hover {
 }
 
 .b3-tx-badge--pending {
-	background: #fff4d6;
+	background: #2a2416;
 	color: var(--b3-warn);
 }
 
@@ -1108,8 +1109,8 @@ a:hover {
 .b3-addr-list .text-info    { color: var(--b3-warn)    !important; }
 
 .b3-addr-error {
-	background: #fff5f5;
-	border: 1px solid #fecaca;
+	background: #3a1c22;
+	border: 1px solid #f07178;
 	color: var(--b3-danger);
 	border-radius: var(--b3-radius);
 	padding: 20px 24px;
@@ -1126,5 +1127,44 @@ a:hover {
 	.b3-addr-hero__qr { justify-self: start; }
 	.b3-addr-stats { grid-template-columns: repeat(2, 1fr); }
 	.b3-addr-list-head { flex-direction: column; align-items: flex-start; }
+}
+
+/* Bootstrap leftovers that stay light after the dark theme stylesheet. */
+.dropdown-menu {
+	background: var(--b3-card);
+	color: var(--b3-ink);
+	border-color: var(--b3-border);
+}
+.dropdown-item,
+.dropdown-item:hover,
+.dropdown-item:focus {
+	color: var(--b3-ink);
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+	background: var(--b3-accent-soft);
+}
+.dropdown-header,
+.dropdown-divider {
+	color: var(--b3-muted);
+	border-color: var(--b3-border);
+}
+.bg-light,
+.badge.bg-light {
+	background: var(--b3-accent-soft) !important;
+	color: var(--b3-ink) !important;
+}
+.text-dark { color: var(--b3-ink) !important; }
+.form-control,
+.form-select {
+	background: var(--b3-bg);
+	color: var(--b3-ink);
+	border-color: var(--b3-border);
+}
+.card.border-2 { border-color: var(--b3-border) !important; }
+.modal-content,
+.list-group-item {
+	background: var(--b3-card);
+	color: var(--b3-ink);
 }
 
