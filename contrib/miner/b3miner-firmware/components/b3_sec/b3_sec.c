@@ -12,15 +12,16 @@
 #define ESP_LOGI(tag, fmt, ...) printf("I (%s) " fmt "\n", tag, ##__VA_ARGS__)
 #define ESP_LOGW(tag, fmt, ...) printf("W (%s) " fmt "\n", tag, ##__VA_ARGS__)
 #define ESP_LOGE(tag, fmt, ...) printf("E (%s) " fmt "\n", tag, ##__VA_ARGS__)
-#ifndef CONFIG_B3_SEC_REQUIRE_PROVISIONED
-#define CONFIG_B3_SEC_REQUIRE_PROVISIONED 0
-#endif
 #else
 #include "cryptoauthlib.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "mbedtls/private/ctr_drbg.h"
+#endif
+
+#ifndef CONFIG_B3_SEC_REQUIRE_PROVISIONED
+#define CONFIG_B3_SEC_REQUIRE_PROVISIONED 0
 #endif
 
 static const char *TAG = "b3_sec";
